@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink-50:  #f6f7f9;
+  --color-ink-100: #eceef2;
+  --color-ink-200: #d5d9e2;
+  --color-ink-300: #b0b7c6;
+  --color-ink-400: #7c8598;
+  --color-ink-500: #5a6376;
+  --color-ink-600: #434b5c;
+  --color-ink-700: #333a48;
+  --color-ink-800: #21262f;
+  --color-ink-900: #14181f;
+  --color-ink-950: #0c0f14;
+
+  --color-heat-low:  #38bdf8;
+  --color-heat-mid:  #f59e0b;
+  --color-heat-high: #f43f5e;
+}
+
+:root { color-scheme: light dark; }
+
+html, body, #root { height: 100%; }
+
+body {
+  @apply bg-ink-50 text-ink-900 antialiased;
+  font-feature-settings: "cv02", "cv03", "cv04", "tnum";
+}
+
+@media (prefers-color-scheme: dark) {
+  body { @apply bg-ink-950 text-ink-100; }
+}
+
+/* Tabular numerals everywhere stats are shown, so columns don't jitter. */
+.nums { font-variant-numeric: tabular-nums; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise 0.35s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+.shimmer::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.08), transparent);
+  transform: translateX(-100%);
+  animation: shimmer 1.6s infinite;
+}
