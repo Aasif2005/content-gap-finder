@@ -36,7 +36,16 @@ export function parseDuration(iso) {
   return d * 86400 + h * 3600 + min * 60 + s;
 }
 
-export function windowToPublishedAfter(window) {
+export const MAX_CUSTOM_WINDOW_DAYS = 365;
+
+export function windowToPublishedAfter(window, customAfter) {
+  if (window === 'custom') {
+    const at = new Date(customAfter ?? '');
+    if (Number.isNaN(at.getTime())) {
+      throw Object.assign(new Error('A custom range needs a valid start date.'), { status: 400, code: 'VALIDATION' });
+    }
+    return at.toISOString();
+  }
   const hours = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30, '90d': 24 * 90 }[window];
   if (!hours) throw Object.assign(new Error(`Unknown time window: ${window}`), { status: 400 });
   return new Date(Date.now() - hours * 3600 * 1000).toISOString();
@@ -47,7 +56,7 @@ export function windowToPublishedAfter(window) {
  * duration filter below will discard some, and search.list cannot filter on
  * the <=180s Shorts boundary itself.
  */
-export async function searchVideos({ niche, window, contentType, regionCode, relevanceLanguage, order = 'viewCount' }) {
+export async function searchVideos({ niche, window, customAfter, contentType, regionCode, relevanceLanguage, order = 'viewCount' }) {
   // videoDuration buckets are short(<4m) / medium(4-20m) / long(>20m). Shorts are
   // <=3m, so "short" is a superset we refine after videos.list returns durations.
   const videoDuration = contentType === 'shorts' ? 'short' : contentType === 'long' ? 'medium' : 'any';
@@ -58,7 +67,7 @@ export async function searchVideos({ niche, window, contentType, regionCode, rel
     type: 'video',
     order,
     maxResults: 50,
-    publishedAfter: windowToPublishedAfter(window),
+    publishedAfter: windowToPublishedAfter(window, customAfter),
     videoDuration,
     regionCode,
     relevanceLanguage,

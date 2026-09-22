@@ -168,7 +168,8 @@ Two wrinkles worth knowing:
 ```bash
 curl -X POST localhost:8787/api/analyze -H 'Content-Type: application/json' -d '{
   "niche": "cast iron restoration",
-  "window": "7d",           # 24h | 7d | 30d | 90d
+  "window": "7d",           # 24h | 7d | 30d | 90d | custom
+  "customAfter": null,      # required when window is "custom": ISO 8601, max 365d back
   "contentType": "both",    # shorts | long | both
   "gapMode": "inclusive",   # inclusive | strict
   "minViews": 0,
@@ -215,6 +216,8 @@ web/
   be disabled. Those videos score on the signals that remain rather than being dropped.
 - **Single search page.** One `search.list` call caps a run at 50 videos. Paginating costs
   another 100 units per page.
+- **Custom ranges reach back 365 days.** `search.list` will go further, but older windows
+  make view-velocity scoring meaningless — everything looks slow.
 - **In-process jobs and disk cache** assume a single server instance. `lib/jobs.js` and
   `lib/cache.js` are the seams to swap for Redis/BullMQ before running more than one.
 - **Comment relevance ordering** is YouTube's own; the API won't sort by like count.

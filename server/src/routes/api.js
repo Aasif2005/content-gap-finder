@@ -5,13 +5,14 @@ import { rateLimit } from '../lib/rateLimit.js';
 import { quotaStatus } from '../lib/quota.js';
 import { runPipeline } from '../services/pipeline.js';
 import { config } from '../config.js';
+import { MAX_CUSTOM_WINDOW_DAYS } from '../services/youtube.js';
 
 export const router = express.Router();
 
 /** A client-fixable input problem: 400 with a code that says so. */
 const bad = (message) => Object.assign(new Error(message), { status: 400, code: 'VALIDATION' });
 
-const WINDOWS = new Set(['24h', '7d', '30d', '90d']);
+const WINDOWS = new Set(['24h', '7d', '30d', '90d', 'custom']);
 const CONTENT_TYPES = new Set(['shorts', 'long', 'both']);
 const GAP_MODES = new Set(['inclusive', 'strict']);
 
@@ -22,6 +23,19 @@ function validate(body) {
 
   const window = body.window ?? '7d';
   if (!WINDOWS.has(window)) throw bad(`window must be one of: ${[...WINDOWS].join(', ')}`);
+
+  // A custom range carries its own start date; everything else is a preset.
+  let customAfter;
+  if (window === 'custom') {
+    const at = new Date(body.customAfter ?? '');
+    if (Number.isNaN(at.getTime())) throw bad('A custom range needs a valid start date (ISO 8601).');
+    if (at.getTime() >= Date.now()) throw bad('The custom start date must be in the past.');
+    const daysBack = (Date.now() - at.getTime()) / 86_400_000;
+    if (daysBack > MAX_CUSTOM_WINDOW_DAYS) {
+      throw bad(`A custom range can reach back at most ${MAX_CUSTOM_WINDOW_DAYS} days.`);
+    }
+    customAfter = at.toISOString();
+  }
 
   const contentType = body.contentType ?? 'both';
   if (!CONTENT_TYPES.has(contentType)) throw bad(`contentType must be one of: ${[...CONTENT_TYPES].join(', ')}`);
@@ -36,7 +50,7 @@ function validate(body) {
   const regionCode = body.regionCode ? String(body.regionCode).toUpperCase().slice(0, 2) : undefined;
   const relevanceLanguage = body.relevanceLanguage ? String(body.relevanceLanguage).toLowerCase().slice(0, 2) : undefined;
 
-  return { niche, window, contentType, gapMode, minViews, regionCode, relevanceLanguage };
+  return { niche, window, customAfter, contentType, gapMode, minViews, regionCode, relevanceLanguage };
 }
 
 router.get('/health', (_req, res) => {

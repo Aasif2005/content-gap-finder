@@ -66,7 +66,7 @@ Rules:
 export async function clusterTopics({ niche, window, videos, onProgress }) {
   onProgress?.('clustering', `Clustering ${videos.length} videos into topics`, 55);
 
-  const user = `Niche: "${niche}". Time window: last ${window}. ${videos.length} videos.
+  const user = `Niche: "${niche}". Time window: ${window}. ${videos.length} videos.
 
 Each video is tagged with a heat tier (high/mid/low) computed from view velocity,
 views-per-subscriber, and engagement rate. Heat is relative to this result set only.
@@ -184,7 +184,7 @@ export async function mineGaps({ niche, window, videos, comments, topics, gapMod
       ? 'Only report gaps with coverage "none". Discard anything already covered, even weakly.'
       : 'Report gaps with coverage "none" or "weak".';
 
-  const user = `Niche: "${niche}". Time window: last ${window}.
+  const user = `Niche: "${niche}". Time window: ${window}.
 
 EXISTING VIDEOS (what the audience already has access to, with heat tier):
 ${videos.map((v) => `[${v.videoId}] tier=${v.tier} | ${truncate(v.title, 130)}`).join('\n')}

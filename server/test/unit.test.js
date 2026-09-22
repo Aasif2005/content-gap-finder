@@ -26,6 +26,16 @@ describe('windowToPublishedAfter', () => {
   test('rejects an unknown window', () => {
     assert.throws(() => windowToPublishedAfter('1y'), /Unknown time window/);
   });
+
+  test('uses the supplied date for a custom range', () => {
+    const iso = windowToPublishedAfter('custom', '2026-01-15T00:00:00Z');
+    assert.equal(iso, '2026-01-15T00:00:00.000Z');
+  });
+
+  test('rejects a custom range with an unparseable date', () => {
+    assert.throws(() => windowToPublishedAfter('custom', 'not-a-date'), /valid start date/);
+    assert.throws(() => windowToPublishedAfter('custom', undefined), /valid start date/);
+  });
 });
 
 describe('parseCommentIndex', () => {

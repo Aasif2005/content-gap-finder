@@ -30,6 +30,7 @@ export async function runPipeline(input, onProgress = () => {}) {
   const {
     niche,
     window = '7d',
+    customAfter,
     contentType = 'both',
     regionCode,
     relevanceLanguage,
@@ -41,10 +42,10 @@ export async function runPipeline(input, onProgress = () => {}) {
 
   // 1. Search -- the only 100-unit call in the whole run.
   onProgress('searching', `Searching YouTube for "${niche}"`, 8);
-  const hits = await yt.searchVideos({ niche, window, contentType, regionCode, relevanceLanguage });
+  const hits = await yt.searchVideos({ niche, window, customAfter, contentType, regionCode, relevanceLanguage });
   if (!hits.length) {
     throw Object.assign(
-      new Error(`No videos found for "${niche}" in the last ${window}. Try a broader niche or a longer window.`),
+      new Error(`No videos found for "${niche}" in this time range. Try a broader niche or a longer window.`),
       { status: 404, code: 'NO_RESULTS' }
     );
   }
@@ -100,8 +101,9 @@ export async function runPipeline(input, onProgress = () => {}) {
   if (!withComments) warnings.push('No comments were available on any top video, so the gap list will be empty.');
 
   // 5. LLM pass A: clustering + avoid.
+  const windowLabel = window === 'custom' ? `since ${customAfter.slice(0, 10)}` : `last ${window}`;
   const { topics: rawTopics, avoid: rawAvoid, usage: clusterUsage } = await clusterTopics({
-    niche, window, videos: ranked, onProgress,
+    niche, window: windowLabel, videos: ranked, onProgress,
   });
 
   const byId = new Map(ranked.map((v) => [v.videoId, v]));
@@ -125,7 +127,7 @@ export async function runPipeline(input, onProgress = () => {}) {
 
   // 6. LLM pass B: gap mining, grounded back to real comments.
   const { gaps: rawGaps, usage: gapUsage } = await mineGaps({
-    niche, window, videos: ranked, comments: selected, topics: rawTopics, gapMode, onProgress,
+    niche, window: windowLabel, videos: ranked, comments: selected, topics: rawTopics, gapMode, onProgress,
   });
   const gaps = groundGaps(rawGaps, selected).map((g) => ({
     ...g,
@@ -157,7 +159,7 @@ export async function runPipeline(input, onProgress = () => {}) {
   onProgress('done', 'Complete', 100);
 
   return {
-    query: { niche, window, contentType, regionCode, relevanceLanguage, minViews, gapMode },
+    query: { niche, window, customAfter, contentType, regionCode, relevanceLanguage, minViews, gapMode },
     generatedAt: new Date().toISOString(),
     stats: {
       videosFound: beforeFilter,

@@ -5,7 +5,11 @@ const WINDOWS = [
   { value: '7d', label: '7 days' },
   { value: '30d', label: '30 days' },
   { value: '90d', label: '90 days' },
+  { value: 'custom', label: 'Custom' },
 ];
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const daysAgoISO = (n) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 
 const TYPES = [
   { value: 'both', label: 'Both' },
@@ -46,13 +50,17 @@ export function SearchForm({ onSubmit, busy }) {
   const [relevanceLanguage, setRelevanceLanguage] = useState('');
   const [minViews, setMinViews] = useState('');
   const [gapMode, setGapMode] = useState('inclusive');
+  const [customAfter, setCustomAfter] = useState(daysAgoISO(14));
 
   const submit = (e) => {
     e.preventDefault();
     if (niche.trim().length < 2 || busy) return;
+    if (window === 'custom' && !customAfter) return;
     onSubmit({
       niche: niche.trim(),
       window,
+      // Sent as a UTC timestamp so the server is not guessing the user's zone.
+      customAfter: window === 'custom' ? new Date(`${customAfter}T00:00:00Z`).toISOString() : undefined,
       contentType,
       gapMode,
       minViews: Number(minViews) || 0,
@@ -91,6 +99,22 @@ export function SearchForm({ onSubmit, busy }) {
           <span className="font-medium">Format</span>
           <Pills name="Content type" options={TYPES} value={contentType} onChange={setContentType} disabled={busy} />
         </label>
+
+        {window === 'custom' && (
+          <label className="rise flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
+            <span className="font-medium">Since</span>
+            <input
+              type="date"
+              value={customAfter}
+              max={todayISO()}
+              min={daysAgoISO(365)}
+              onChange={(e) => setCustomAfter(e.target.value)}
+              disabled={busy}
+              aria-label="Custom range start date"
+              className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-ink-400 disabled:opacity-50 dark:border-ink-700 dark:bg-ink-800"
+            />
+          </label>
+        )}
 
         <button
           type="button"
