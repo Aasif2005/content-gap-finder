@@ -24,7 +24,7 @@ export function heatTier(video, ranked) {
 
 function videoDigest(videos) {
   return videos
-    .map((v, i) =>
+    .map((v) =>
       [
         `[${v.videoId}] tier=${v.tier} heat=${v.heat}`,
         `  title: ${truncate(v.title, 140)}`,
@@ -51,6 +51,9 @@ Rules:
 - Cluster by CONTENT ANGLE, not by surface keyword. "iPhone 17 camera test" and
   "Pixel 10 camera shootout" belong to one "flagship camera comparisons" topic.
 - Every video_id you emit MUST come from the provided list. Never invent ids.
+- video_ids are for the "video_ids" fields ONLY. In prose fields (why_hot, reason,
+  counter_evidence, summary) refer to videos by channel name or title -- a raw id
+  like "trvTFIDUtU8" means nothing to a creator reading the report.
 - A topic needs at least 2 videos unless a single video is a clear standalone breakout.
 - Labels are 3-6 words, specific enough that a creator knows what to film.
 - why_hot must cite concrete evidence from the data (view counts, channel size,
@@ -91,9 +94,11 @@ Return json with exactly this shape:
   ]
 }
 
-Order topics by how strongly the data supports them. Aim for 4-8 topics.`;
+Order topics by how strongly the data supports them. Return at most 8 topics,
+at most 3 suggested_angles each, and at most 4 avoid entries. Keep every string
+under 300 characters.`;
 
-  const { data, usage } = await chatJSON({ system: CLUSTER_SYSTEM, user, maxTokens: 8000 });
+  const { data, usage } = await chatJSON({ system: CLUSTER_SYSTEM, user });
   return { topics: data.topics ?? [], avoid: data.avoid ?? [], usage };
 }
 
@@ -211,7 +216,7 @@ Return json with exactly this shape:
 Order by strength of demand. Return at most 10 gaps. Quality over quantity --
 an empty list is better than a list of vague filler.`;
 
-  const { data, usage } = await chatJSON({ system: GAP_SYSTEM, user, maxTokens: 8000 });
+  const { data, usage } = await chatJSON({ system: GAP_SYSTEM, user });
   return { gaps: data.gaps ?? [], usage };
 }
 

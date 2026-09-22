@@ -8,26 +8,29 @@ import { config } from '../config.js';
 
 export const router = express.Router();
 
+/** A client-fixable input problem: 400 with a code that says so. */
+const bad = (message) => Object.assign(new Error(message), { status: 400, code: 'VALIDATION' });
+
 const WINDOWS = new Set(['24h', '7d', '30d', '90d']);
 const CONTENT_TYPES = new Set(['shorts', 'long', 'both']);
 const GAP_MODES = new Set(['inclusive', 'strict']);
 
 function validate(body) {
   const niche = String(body.niche ?? '').trim();
-  if (niche.length < 2) throw Object.assign(new Error('Niche must be at least 2 characters.'), { status: 400 });
-  if (niche.length > 100) throw Object.assign(new Error('Niche must be under 100 characters.'), { status: 400 });
+  if (niche.length < 2) throw bad('Niche must be at least 2 characters.');
+  if (niche.length > 100) throw bad('Niche must be under 100 characters.');
 
   const window = body.window ?? '7d';
-  if (!WINDOWS.has(window)) throw Object.assign(new Error(`window must be one of: ${[...WINDOWS].join(', ')}`), { status: 400 });
+  if (!WINDOWS.has(window)) throw bad(`window must be one of: ${[...WINDOWS].join(', ')}`);
 
   const contentType = body.contentType ?? 'both';
-  if (!CONTENT_TYPES.has(contentType)) throw Object.assign(new Error(`contentType must be one of: ${[...CONTENT_TYPES].join(', ')}`), { status: 400 });
+  if (!CONTENT_TYPES.has(contentType)) throw bad(`contentType must be one of: ${[...CONTENT_TYPES].join(', ')}`);
 
   const gapMode = body.gapMode ?? 'inclusive';
-  if (!GAP_MODES.has(gapMode)) throw Object.assign(new Error(`gapMode must be one of: ${[...GAP_MODES].join(', ')}`), { status: 400 });
+  if (!GAP_MODES.has(gapMode)) throw bad(`gapMode must be one of: ${[...GAP_MODES].join(', ')}`);
 
   const minViews = Number(body.minViews ?? 0);
-  if (!Number.isFinite(minViews) || minViews < 0) throw Object.assign(new Error('minViews must be a non-negative number.'), { status: 400 });
+  if (!Number.isFinite(minViews) || minViews < 0) throw bad('minViews must be a non-negative number.');
 
   // ISO 3166-1 alpha-2 / ISO 639-1 respectively; YouTube rejects anything else.
   const regionCode = body.regionCode ? String(body.regionCode).toUpperCase().slice(0, 2) : undefined;

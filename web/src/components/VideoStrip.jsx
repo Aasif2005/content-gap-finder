@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { compact, duration, ago } from '../lib/format.js';
 import { Badge } from './Bits.jsx';
 
 /** Compact evidence row: the videos backing a topic or an avoid warning. */
 export function VideoStrip({ videos, limit = 4, showEngagement = false }) {
   const shown = videos.slice(0, limit);
+  const [broken, setBroken] = useState(() => new Set());
 
   return (
     <div className="space-y-1.5">
@@ -15,15 +17,19 @@ export function VideoStrip({ videos, limit = 4, showEngagement = false }) {
           rel="noreferrer noopener"
           className="group flex items-center gap-3 rounded-lg p-1.5 transition-colors hover:bg-ink-100 dark:hover:bg-ink-800"
         >
-          {v.thumbnail ? (
+          {v.thumbnail && !broken.has(v.videoId) ? (
             <img
               src={v.thumbnail}
               alt=""
               loading="lazy"
+              // YouTube thumbnail URLs 404 for deleted or region-blocked videos.
+              onError={() => setBroken((prev) => new Set(prev).add(v.videoId))}
               className="h-10 w-[71px] shrink-0 rounded object-cover ring-1 ring-ink-200 dark:ring-ink-700"
             />
           ) : (
-            <div className="h-10 w-[71px] shrink-0 rounded bg-ink-200 dark:bg-ink-800" />
+            <div className="grid h-10 w-[71px] shrink-0 place-items-center rounded bg-ink-200 text-[9px] text-ink-400 dark:bg-ink-800">
+              no image
+            </div>
           )}
 
           <div className="min-w-0 flex-1">

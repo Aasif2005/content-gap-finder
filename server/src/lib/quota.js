@@ -46,16 +46,28 @@ export function spend(kind, times = 1) {
   return state.used;
 }
 
+/**
+ * What one full analysis costs: one search, one batched videos.list, one batched
+ * channels.list, and one commentThreads.list per video we read comments for.
+ */
+export function unitsPerAnalysis() {
+  const { cost, maxCommentVideos } = config.youtube;
+  return cost.search + cost.videos + cost.channels + cost.commentThreads * maxCommentVideos;
+}
+
 export function quotaStatus() {
   const state = read();
+  const remaining = Math.max(0, config.youtube.dailyUnitBudget - state.used);
+  const perAnalysis = unitsPerAnalysis();
   return {
     day: state.day,
     used: state.used,
     budget: config.youtube.dailyUnitBudget,
-    remaining: Math.max(0, config.youtube.dailyUnitBudget - state.used),
-    searchesLeft: Math.floor(
-      Math.max(0, config.youtube.dailyUnitBudget - state.used) / config.youtube.cost.search
-    ),
+    remaining,
+    unitsPerAnalysis: perAnalysis,
+    // The number that actually matters to a user. Counting whole searches would
+    // overstate it by ~20%, since the search is only 100 of the ~127 units.
+    analysesLeft: Math.floor(remaining / perAnalysis),
     byCall: state.calls,
   };
 }

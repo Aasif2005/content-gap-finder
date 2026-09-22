@@ -2,15 +2,19 @@ import { config } from '../config.js';
 
 const { base, apiKey, timeoutMs } = config.deepseek;
 
+// Verified accepted by the API; retries escalate up to this ceiling.
+const MAX_OUTPUT_TOKENS = 64000;
+
 /**
  * Chat completion constrained to JSON. DeepSeek's json_object mode requires the
  * word "json" to appear in the prompt, which every caller here satisfies.
  * Retries on transport errors, 5xx and unparseable bodies -- a reasoning model
  * occasionally truncates, and one retry is cheaper than failing the whole run.
  */
-export async function chatJSON({ system, user, model = config.deepseek.analysisModel, maxTokens = 8000, temperature = 0.3, attempts = 3 }) {
+export async function chatJSON({ system, user, model = config.deepseek.analysisModel, maxTokens = 16000, temperature = 0.3, attempts = 3 }) {
   let lastError;
   let activeModel = model;
+  let budget = maxTokens;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
@@ -24,7 +28,7 @@ export async function chatJSON({ system, user, model = config.deepseek.analysisM
             { role: 'user', content: user },
           ],
           response_format: { type: 'json_object' },
-          max_tokens: maxTokens,
+          max_tokens: budget,
           temperature,
         }),
         signal: AbortSignal.timeout(timeoutMs),
@@ -44,7 +48,13 @@ export async function chatJSON({ system, user, model = config.deepseek.analysisM
       const content = choice?.message?.content ?? '';
 
       if (choice?.finish_reason === 'length') {
-        throw new Error('DeepSeek response hit the token limit before closing its JSON');
+        // These models spend a large share of the budget on reasoning tokens, so
+        // a payload that fits one day can overflow the next. Mark it so the
+        // retry raises the ceiling instead of repeating the same failure.
+        throw Object.assign(
+          new Error(`DeepSeek response hit the ${budget}-token limit before closing its JSON`),
+          { truncated: true }
+        );
       }
 
       return { data: parseJSON(content), usage: data.usage ?? null, model: data.model, fellBack: activeModel !== model };
@@ -59,6 +69,10 @@ export async function chatJSON({ system, user, model = config.deepseek.analysisM
       if (timedOut && activeModel !== config.deepseek.fastModel) {
         console.warn(`[deepseek] ${activeModel} timed out; falling back to ${config.deepseek.fastModel}`);
         activeModel = config.deepseek.fastModel;
+      }
+      if (err.truncated) {
+        budget = Math.min(Math.round(budget * 2), MAX_OUTPUT_TOKENS);
+        console.warn(`[deepseek] response truncated; retrying with max_tokens=${budget}`);
       }
       await new Promise((r) => setTimeout(r, 800 * attempt)); // linear backoff
     }

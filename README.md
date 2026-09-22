@@ -54,8 +54,9 @@ niche + window + format
    └─ 7. DeepSeek pass B                  → mine comments for unmet demand
 ```
 
-A full run takes **~90 seconds**, so `POST /api/analyze` returns a job id and the client
-polls `GET /api/jobs/:id` for phase-by-phase progress rather than holding the request open.
+A full run takes **60-120 seconds** (measured 76s and 92s on a 50-video niche; DeepSeek
+latency is the variable part), so `POST /api/analyze` returns a job id and the client polls
+`GET /api/jobs/:id` for phase-by-phase progress rather than holding the request open.
 Results are cached per niche+window (3h default), and cache hits cost nothing.
 
 ### Heat is computed in code, not by the LLM
@@ -120,8 +121,8 @@ resets on YouTube's own midnight-Pacific boundary, not UTC. Cache hits bypass bo
 ## Quota, in practice
 
 `search.list` costs 100 units against a default 10,000/day quota — everything else costs 1.
-One analysis is **~127 units**, so the default budget allows roughly **70 fresh analyses
-per day**. The UI shows remaining budget in the header.
+One analysis is **127 units** (1 search + 1 videos + 1 channels + 25 commentThreads),
+so the default 9,000-unit budget allows **70 fresh analyses per day**. The UI shows remaining budget in the header.
 
 This is why there is exactly one search call per run, why `videos.list` and `channels.list`
 are batched 50 ids at a time, and why results are cached. `commentThreads.list` is the one
@@ -144,9 +145,14 @@ on messy real-world clustering payloads. Set `DEEPSEEK_MODEL_ANALYSIS=deepseek-v
 you want the reasoning model and can tolerate the latency — if it times out, the client
 automatically falls back to the fast model rather than burning another full timeout.
 
-One wrinkle worth knowing: the two models cite comments differently (`3` vs `"c3"`).
-Both forms are parsed, because a model swap silently emptying every gap's evidence is
-exactly the kind of bug that looks like "the niche has no gaps".
+Two wrinkles worth knowing:
+
+- The models cite comments differently (`3` vs `"c3"`). Both forms are parsed, because a
+  model swap silently emptying every gap's evidence is exactly the kind of bug that looks
+  like "the niche has no gaps".
+- Reasoning tokens share the output budget, so a payload that fits one day can overflow the
+  next — a real clustering run needed 10k completion tokens. `max_tokens` starts at 16k and
+  **doubles on each truncated retry** rather than repeating the same failure.
 
 ---
 
