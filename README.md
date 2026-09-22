@@ -164,6 +164,8 @@ Two wrinkles worth knowing:
 | `GET /api/jobs/:id` | Poll phase, detail, progress, and the final result. |
 | `GET /api/quota` | Units used/remaining today, cache size, rate limit. |
 | `GET /api/health` | Liveness plus the phase list. |
+| `GET /api/logs` | Recent runs with their niche-relevance summary. |
+| `GET /api/logs/:runId` | The full audit log for one run, as plain text. |
 
 ```bash
 curl -X POST localhost:8787/api/analyze -H 'Content-Type: application/json' -d '{
@@ -179,6 +181,45 @@ curl -X POST localhost:8787/api/analyze -H 'Content-Type: application/json' -d '
 ```
 
 `"force": true` bypasses the cache and spends fresh quota.
+
+---
+
+## Audit log — verifying the model stayed on the niche
+
+Every run writes a human-readable log to `server/logs/runs/<runId>.log`. Open it directly,
+`tail -f` it, or fetch it from the app itself — every report's footer has a **"view full
+audit log"** link, and `GET /api/logs` lists recent runs.
+
+The log has four sections, in the order the pipeline actually produced them:
+
+1. **Every candidate video** `search.list` returned, before any filtering — so you can see
+   whether the *search itself* stayed on-topic before the LLM ever touches it.
+2. **Every topic the model extracted**, with its evidence videos.
+3. **Every gap mined from comments**, with the resolved evidence quotes.
+4. **The avoid list**, with the same evidence.
+
+Each topic, gap and avoid entry is run through a keyword-overlap check against the niche
+(`server/src/lib/relevance.js`) and marked `⚠ NOT NICHE-RELEVANT` when no niche keyword
+appears anywhere in it — including in its evidence videos, since a topic labelled generically
+("Electrolysis tank demos") can still be genuinely on-niche through what it's evidenced by.
+The log's header prints a relevance summary (`topics: 8/8`, `gaps: 8/8`, `avoid: 2/4`) so you
+don't have to read the whole file to know something's worth checking.
+
+This is a cheap heuristic, not a semantic judge, and it does not replace reading the flagged
+entries — see it flag correctly in practice:
+
+```
+1. "Regional roastery top-10 rankings"  ⚠ NOT NICHE-RELEVANT — stats confirm: true
+   reason: TV-style ranking content pulls a big regional audience...
+```
+
+That was a real run: the avoid entry's evidence videos were non-English titles (Japanese
+local-shop content) that never used the English words "home", "coffee" or "roasting" — a
+correct flag surfacing content a human should glance at, not a false alarm to ignore. The
+header says as much: *"A low rate does not always mean the model hallucinated — search.list
+itself can pull in adjacent content."*
+
+Logs aren't committed (`server/logs/` is gitignored) since they contain full comment text.
 
 ---
 
@@ -199,6 +240,8 @@ server/
       jobs.js              in-process job registry (swap for BullMQ here)
       quota.js             daily unit ledger
       rateLimit.js         per-IP sliding window
+      relevance.js         keyword-overlap niche relevance check
+      auditLog.js          per-run human-readable log (server/logs/, gitignored)
   test/unit.test.js
 web/
   src/

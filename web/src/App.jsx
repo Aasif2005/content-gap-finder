@@ -13,6 +13,8 @@ const TABS = [
   { key: 'avoid', label: 'Avoid', hint: 'Angles with plenty of views but an audience that did not care' },
 ];
 
+const relFrac = (r) => (r ? `${r.relevant}/${r.total}` : '—');
+
 export default function App() {
   const [phase, setPhase] = useState(null);
   const [result, setResult] = useState(null);
@@ -196,6 +198,22 @@ export default function App() {
               <br />
               Heat is scored relative to this result set only — it blends view velocity, views per
               subscriber, and engagement rate, so a small channel breaking out outranks a large channel coasting.
+              {result.runId && result.stats.relevance && (
+                <>
+                  <br />
+                  Niche relevance check — topics {relFrac(result.stats.relevance.topicRelevance)}, gaps{' '}
+                  {relFrac(result.stats.relevance.gapRelevance)}, avoid {relFrac(result.stats.relevance.avoidRelevance)} ·{' '}
+                  <a
+                    href={`/api/logs/${result.runId}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="font-medium text-ink-600 underline-offset-2 hover:underline dark:text-ink-300"
+                    title="Opens the full audit log: every video the search returned, every topic/gap the model extracted, and whether it actually mentions the niche."
+                  >
+                    view full audit log ↗
+                  </a>
+                </>
+              )}
             </footer>
           </div>
         )}

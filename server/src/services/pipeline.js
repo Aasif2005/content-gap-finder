@@ -2,6 +2,8 @@ import * as yt from './youtube.js';
 import { scoreVideos, scoreTopic } from '../lib/heat.js';
 import { clusterTopics, mineGaps, selectComments, groundGaps, heatTier } from './analyze.js';
 import { config } from '../config.js';
+import { RunLogger } from '../lib/auditLog.js';
+import { checkTopicRelevance, checkGapRelevance, summarizeRelevance } from '../lib/relevance.js';
 
 /** Trims a scored video down to what the UI actually renders. */
 const publicVideo = (v) => ({
@@ -26,7 +28,7 @@ const publicVideo = (v) => ({
   url: `https://www.youtube.com/watch?v=${v.videoId}`,
 });
 
-export async function runPipeline(input, onProgress = () => {}) {
+export async function runPipeline(input, onProgress = () => {}, runId) {
   const {
     niche,
     window = '7d',
@@ -39,6 +41,17 @@ export async function runPipeline(input, onProgress = () => {}) {
   } = input;
 
   const warnings = [];
+  const log = new RunLogger(runId, input);
+
+  try {
+    return await runPhases();
+  } catch (err) {
+    log.logError(err);
+    log.finish({ status: 'error' });
+    throw err;
+  }
+
+  async function runPhases() {
 
   // 1. Search -- the only 100-unit call in the whole run.
   onProgress('searching', `Searching YouTube for "${niche}"`, 8);
@@ -79,6 +92,8 @@ export async function runPipeline(input, onProgress = () => {}) {
   // 3. Deterministic scoring. The LLM never does arithmetic.
   const ranked = scoreVideos(videos, channelMap);
   for (const v of ranked) v.tier = heatTier(v, ranked);
+
+  log.logSearch(hits, ranked);
 
   // 4. Comments for the top slice only. commentThreads.list is per-video, so
   // this is N round trips -- the cap is about latency as much as quota.
@@ -125,6 +140,13 @@ export async function runPipeline(input, onProgress = () => {}) {
     .filter(Boolean)
     .sort((a, b) => b.heatScore - a.heatScore);
 
+  // Keyword-overlap check on what the model actually returned -- catches drift
+  // that a fabrication check can't, since these topics are all grounded in real
+  // videos (the ids resolved). The question here is whether those videos are
+  // actually about the niche, not whether the model made them up.
+  const topicRelevance = topics.map((t) => checkTopicRelevance(niche, t));
+  log.logTopics(topics, topicRelevance);
+
   // 6. LLM pass B: gap mining, grounded back to real comments.
   const { gaps: rawGaps, usage: gapUsage } = await mineGaps({
     niche, window: windowLabel, videos: ranked, comments: selected, topics: rawTopics, gapMode, onProgress,
@@ -133,6 +155,9 @@ export async function runPipeline(input, onProgress = () => {}) {
     ...g,
     coveringVideos: resolve(g.coveringVideoIds).map(publicVideo),
   }));
+
+  const gapRelevance = gaps.map((g) => checkGapRelevance(niche, g));
+  log.logGaps(gaps, gapRelevance);
 
   // 7. Avoid list: the model's reasoning, enriched with the deterministic flag
   // so a creator can check the numbers rather than trust the prose.
@@ -156,11 +181,26 @@ export async function runPipeline(input, onProgress = () => {}) {
     .filter(Boolean)
     .sort((a, b) => b.flaggedCount - a.flaggedCount);
 
+  // checkTopicRelevance is generic over {label, summary, whyHot, videos}, which
+  // an avoid entry also has (reason/counterEvidence standing in for summary/whyHot).
+  const avoidRelevance = avoid.map((a) =>
+    checkTopicRelevance(niche, { label: a.label, summary: a.reason, whyHot: a.counterEvidence, videos: a.videos })
+  );
+  log.logAvoid(avoid, avoidRelevance);
+
+  const relevanceSummary = {
+    topicRelevance: summarizeRelevance(topicRelevance),
+    gapRelevance: summarizeRelevance(gapRelevance),
+    avoidRelevance: summarizeRelevance(avoidRelevance),
+  };
+  log.finish({ status: 'done', ...relevanceSummary });
+
   onProgress('done', 'Complete', 100);
 
   return {
     query: { niche, window, customAfter, contentType, regionCode, relevanceLanguage, minViews, gapMode },
     generatedAt: new Date().toISOString(),
+    runId,
     stats: {
       videosFound: beforeFilter,
       videosAnalyzed: ranked.length,
@@ -175,6 +215,7 @@ export async function runPipeline(input, onProgress = () => {}) {
         gaps: gapUsage,
         totalTokens: (clusterUsage?.total_tokens ?? 0) + (gapUsage?.total_tokens ?? 0),
       },
+      relevance: relevanceSummary,
     },
     warnings,
     topics,
@@ -182,4 +223,5 @@ export async function runPipeline(input, onProgress = () => {}) {
     avoid,
     topVideos: ranked.slice(0, 20).map(publicVideo),
   };
+  }
 }

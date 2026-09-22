@@ -6,6 +6,7 @@ import { quotaStatus } from '../lib/quota.js';
 import { runPipeline } from '../services/pipeline.js';
 import { config } from '../config.js';
 import { MAX_CUSTOM_WINDOW_DAYS } from '../services/youtube.js';
+import { listRuns, readRunLog } from '../lib/auditLog.js';
 
 export const router = express.Router();
 
@@ -91,7 +92,7 @@ router.post('/analyze', (req, res, next) => {
     const id = jobs.create(input);
     res.status(202).json({ status: 'running', jobId: id, cached: false });
 
-    runPipeline(input, jobs.reporter(id))
+    runPipeline(input, jobs.reporter(id), id)
       .then((result) => {
         cache.set(key, result);
         jobs.finish(id, result);
@@ -126,4 +127,21 @@ router.get('/quota', (_req, res) => {
     cacheTtlSeconds: config.cache.ttlSeconds,
     rateLimitPerHour: config.rateLimit.perHour,
   });
+});
+
+/**
+ * Audit trail: what each run actually extracted, and whether it stayed on the
+ * requested niche. One row per run, newest first, with the relevance summary
+ * so drift is visible without opening every log.
+ */
+router.get('/logs', (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 30, 100);
+  res.json({ runs: listRuns(limit) });
+});
+
+/** The full human-readable log for one run -- the thing to actually read. */
+router.get('/logs/:runId', (req, res) => {
+  const text = readRunLog(req.params.runId);
+  if (text === null) return res.status(404).json({ error: 'Log not found or expired.', code: 'LOG_NOT_FOUND' });
+  res.type('text/plain').send(text);
 });

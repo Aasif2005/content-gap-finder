@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps } from '../src/services/analyze.js';
+import { checkTopicRelevance, checkGapRelevance, summarizeRelevance } from '../src/lib/relevance.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 
 describe('parseDuration', () => {
@@ -175,5 +176,46 @@ describe('groundGaps', () => {
       many
     );
     assert.equal(ranked[0].question, 'wide');
+  });
+});
+
+describe('relevance', () => {
+  test('flags a topic with no niche keyword anywhere in it', () => {
+    const offTopic = {
+      label: 'Motorcycle barn finds',
+      summary: 'restoring old bikes',
+      videos: [{ title: 'vintage motorcycle restoration', channelTitle: 'BikeGuy' }],
+    };
+    const rel = checkTopicRelevance('sourdough baking', offTopic);
+    assert.equal(rel.relevant, false);
+    assert.deepEqual(rel.matched, []);
+  });
+
+  test('credits relevance found only in the evidence videos, not the topic label', () => {
+    const topic = {
+      label: 'Electrolysis tank demos',
+      summary: 'building rigs',
+      videos: [{ title: 'cast iron restoration via electrolysis', channelTitle: 'z' }],
+    };
+    const rel = checkTopicRelevance('cast iron restoration', topic);
+    assert.equal(rel.relevant, true);
+    assert.equal(rel.matchedIn, 'videos only');
+  });
+
+  test('does not false-flag a niche whose words are all short/stopwords', () => {
+    // "AI" and "ML" are both under the 3-char keyword floor -- the check should
+    // decline to judge rather than flag everything as irrelevant.
+    const rel = checkTopicRelevance('AI & ML', { label: 'anything', videos: [] });
+    assert.equal(rel.relevant, true);
+  });
+
+  test('gap relevance checks question, explanation and evidence text', () => {
+    const gap = { question: 'How do I fix a gummy sourdough crumb?', explanation: '', evidence: [{ text: 'my starter is dead' }] };
+    assert.equal(checkGapRelevance('sourdough baking', gap).relevant, true);
+  });
+
+  test('summarizeRelevance counts flagged as total minus relevant', () => {
+    const s = summarizeRelevance([{ relevant: true }, { relevant: true }, { relevant: false }]);
+    assert.deepEqual(s, { total: 3, relevant: 2, flagged: 1, rate: 67 });
   });
 });
