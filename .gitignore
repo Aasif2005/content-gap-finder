@@ -1,0 +1,30 @@
+# deps
+node_modules/
+.pnp
+.pnp.js
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+*.key
+
+# build output
+dist/
+build/
+web/dist/
+
+# runtime state (cache + quota ledger)
+server/.cache/
+server/.state/
+
+# logs
+*.log
+npm-debug.log*
+logs/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
