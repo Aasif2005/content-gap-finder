@@ -247,6 +247,19 @@ prose also omits the name. So the flag informs the model and the reader; the mod
 semantic call. After the fix the same niche returned 8 topics, all genuinely about Vijay,
 with the 12.4M-view video correctly excluded.
 
+**The same hole existed one step later, in gap mining.** Comment-fetching runs by heat
+score alone, upstream of any relevance check — so a `SOORI AS HERO #thalapathyvijay` Short
+(a *different* Tamil actor, tag-stuffed to farm the same audience) was correctly kept out of
+every topic, but its comments still reached gap mining and surfaced as a "content gap" about
+an unrelated film rivalry that has nothing to do with the niche.
+
+The fix reuses clustering's own verdict rather than re-deciding relevance a second time:
+`untrustedVideoIds()` drops comments from any `TAG-ONLY` video that clustering never used as
+evidence for a topic or an avoid entry, before gap mining ever sees them. Every returned gap
+also carries a `nicheRelevant` flag (the app shows a `⚠ check relevance` badge if anything
+still slips through) — this used to only be visible in the audit log, which is what let the
+Soori gap reach the UI unnoticed in the first place.
+
 Logs aren't committed (`server/logs/` is gitignored) since they contain full comment text.
 
 ---

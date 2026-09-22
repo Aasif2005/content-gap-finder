@@ -3,7 +3,7 @@ import { scoreVideos, scoreTopic } from '../lib/heat.js';
 import { clusterTopics, mineGaps, selectComments, groundGaps, heatTier } from './analyze.js';
 import { config } from '../config.js';
 import { RunLogger } from '../lib/auditLog.js';
-import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack } from '../lib/relevance.js';
+import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, untrustedVideoIds } from '../lib/relevance.js';
 
 /** Trims a scored video down to what the UI actually renders. */
 const publicVideo = (v) => ({
@@ -158,20 +158,10 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   const topicRelevance = topics.map((t) => checkTopicRelevance(niche, t));
   log.logTopics(topics, topicRelevance);
 
-  // 6. LLM pass B: gap mining, grounded back to real comments.
-  const { gaps: rawGaps, usage: gapUsage } = await mineGaps({
-    niche, window: windowLabel, videos: ranked, comments: selected, topics: rawTopics, gapMode, onProgress,
-  });
-  const gaps = groundGaps(rawGaps, selected).map((g) => ({
-    ...g,
-    coveringVideos: resolve(g.coveringVideoIds).map(publicVideo),
-  }));
-
-  const gapRelevance = gaps.map((g) => checkGapRelevance(niche, g));
-  log.logGaps(gaps, gapRelevance);
-
-  // 7. Avoid list: the model's reasoning, enriched with the deterministic flag
-  // so a creator can check the numbers rather than trust the prose.
+  // 6. Avoid list -- resolved here (moved up from after gap mining) because it
+  // comes from the SAME clusterTopics() call as topics, so it's already
+  // available, and the comment filter below needs it to know which tag-only
+  // videos clustering actually vouched for.
   const avoid = rawAvoid
     .map((a) => {
       const members = resolve(a.video_ids);
@@ -199,6 +189,40 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   );
   log.logAvoid(avoid, avoidRelevance);
 
+  // Drop comments from tag-hijacked videos that clustering never vouched for,
+  // before gap mining ever sees them. Real bug this fixes: a "SOORI AS HERO
+  // #thalapathyvijay" Short (a different actor, tag-stuffed) was correctly kept
+  // out of every topic, but comment-fetching runs by heat score alone -- upstream
+  // of any relevance check -- so its comments still reached gap mining and
+  // became a "gap" about a completely unrelated film rivalry.
+  const confirmedRelevantVideoIds = new Set([
+    ...topics.flatMap((t) => t.videos.map((v) => v.videoId)),
+    ...avoid.flatMap((a) => a.videos.map((v) => v.videoId)),
+  ]);
+  const untrusted = untrustedVideoIds(ranked, confirmedRelevantVideoIds);
+  const gapComments = untrusted.size ? selected.filter((c) => !untrusted.has(c.videoId)) : selected;
+  if (gapComments.length < selected.length) {
+    warnings.push(
+      `${selected.length - gapComments.length} comments excluded from gap mining -- they came from tag-hijacked videos clustering did not confirm as relevant.`
+    );
+  }
+
+  // 7. LLM pass B: gap mining, grounded back to real comments.
+  const { gaps: rawGaps, usage: gapUsage } = await mineGaps({
+    niche, window: windowLabel, videos: ranked, comments: gapComments, topics: rawTopics, gapMode, onProgress,
+  });
+  const gapsResolved = groundGaps(rawGaps, gapComments).map((g) => ({
+    ...g,
+    coveringVideos: resolve(g.coveringVideoIds).map(publicVideo),
+  }));
+
+  const gapRelevance = gapsResolved.map((g) => checkGapRelevance(niche, g));
+  log.logGaps(gapsResolved, gapRelevance);
+
+  // Attach the verdict to each gap so the UI can warn on anything that still
+  // slips through the filter above, instead of only the audit log seeing it.
+  const gaps = gapsResolved.map((g, i) => ({ ...g, nicheRelevant: gapRelevance[i].relevant }));
+
   const relevanceSummary = {
     topicRelevance: summarizeRelevance(topicRelevance),
     gapRelevance: summarizeRelevance(gapRelevance),
@@ -217,7 +241,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
       videosAnalyzed: ranked.length,
       videosWithComments: withComments,
       commentsFetched: totalFetched,
-      commentsAnalyzed: selected.length,
+      commentsAnalyzed: gapComments.length,
       topicsFound: topics.length,
       gapsFound: gaps.length,
       avoidFound: avoid.length,

@@ -35,6 +35,14 @@ export function GapCard({ gap, rank }) {
             <Badge title="Demand score: comment count, spread across videos, and how many likes those comments got">
               score {gap.demandScore}
             </Badge>
+            {gap.nicheRelevant === false && (
+              <Badge
+                tone="bad"
+                title="No niche keyword appears anywhere in this gap's question or evidence comments. Its source video may be about something else entirely -- check the evidence below before trusting it."
+              >
+                ⚠ check relevance
+              </Badge>
+            )}
           </div>
 
           {gap.explanation && (

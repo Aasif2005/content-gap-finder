@@ -118,6 +118,26 @@ export function checkGapRelevance(niche, gap) {
   };
 }
 
+/**
+ * Videos worth distrusting for gap mining: tag-hijacked AND never confirmed
+ * relevant by the clustering pass (i.e. not backing any topic or avoid entry).
+ *
+ * Real bug this fixes: a "SOORI AS HERO #thalapathyvijay" Short is about a
+ * different actor entirely, tag-stuffed to farm two audiences. Clustering
+ * correctly excluded it from every topic -- but gap mining pulled its
+ * comments anyway (comment-fetching runs by heat score alone, upstream of any
+ * relevance check) and turned "Garudan than first" / "Mandaadi vs Garudan"
+ * into a "content gap" for a niche those comments have nothing to do with.
+ *
+ * Clustering already has full-batch context and corroboration reasoning this
+ * function doesn't -- reuse its verdict rather than re-deciding relevance.
+ */
+export function untrustedVideoIds(rankedVideos, confirmedRelevantIds) {
+  return new Set(
+    rankedVideos.filter((v) => v.tagOnlyMatch && !confirmedRelevantIds.has(v.videoId)).map((v) => v.videoId)
+  );
+}
+
 /** Rolls per-item checks into one summary line for the audit log / API. */
 export function summarizeRelevance(items) {
   const total = items.length;

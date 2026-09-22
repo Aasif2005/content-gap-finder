@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps } from '../src/services/analyze.js';
-import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags } from '../src/lib/relevance.js';
+import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds } from '../src/lib/relevance.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 
 describe('parseDuration', () => {
@@ -260,5 +260,34 @@ describe('tag hijacking', () => {
   test('stripHashtags leaves the title prose behind', () => {
     assert.equal(stripHashtags('Female Version Leaked #vijay #shorts'), 'Female Version Leaked');
     assert.equal(stripHashtags('No hashtags here'), 'No hashtags here');
+  });
+});
+
+describe('untrustedVideoIds', () => {
+  // Real bug: a "SOORI AS HERO #thalapathyvijay" Short (a different actor,
+  // tag-stuffed) was correctly excluded from every topic by clustering, but
+  // comment-fetching runs by heat score alone -- upstream of any relevance
+  // check -- so its comments still reached gap mining and became a "gap"
+  // about an unrelated film rivalry that has nothing to do with the niche.
+  const videos = [
+    { videoId: 'soori', tagOnlyMatch: true },   // tag-only, never used by clustering
+    { videoId: 'tncm', tagOnlyMatch: true },    // tag-only, but clustering DID use it
+    { videoId: 'clean', tagOnlyMatch: false },  // has the niche in its own title
+  ];
+
+  test('flags a tag-only video clustering never vouched for', () => {
+    const untrusted = untrustedVideoIds(videos, new Set(['tncm']));
+    assert.deepEqual([...untrusted], ['soori']);
+  });
+
+  test('trusts a tag-only video once clustering used it as evidence', () => {
+    const untrusted = untrustedVideoIds(videos, new Set(['tncm', 'soori']));
+    assert.equal(untrusted.has('tncm'), false);
+    assert.equal(untrusted.has('soori'), false);
+  });
+
+  test('never flags a video that was not tag-only in the first place', () => {
+    const untrusted = untrustedVideoIds(videos, new Set());
+    assert.equal(untrusted.has('clean'), false);
   });
 });
