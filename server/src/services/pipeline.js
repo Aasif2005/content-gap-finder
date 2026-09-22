@@ -3,7 +3,7 @@ import { scoreVideos, scoreTopic } from '../lib/heat.js';
 import { clusterTopics, mineGaps, selectComments, groundGaps, heatTier } from './analyze.js';
 import { config } from '../config.js';
 import { RunLogger } from '../lib/auditLog.js';
-import { checkTopicRelevance, checkGapRelevance, summarizeRelevance } from '../lib/relevance.js';
+import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack } from '../lib/relevance.js';
 
 /** Trims a scored video down to what the UI actually renders. */
 const publicVideo = (v) => ({
@@ -25,6 +25,7 @@ const publicVideo = (v) => ({
   viewsPerSubscriber: Math.round(v.signals.outperformance * 100) / 100,
   engagementRate: Math.round(v.signals.engagementRate * 10000) / 10000,
   lowEngagementOutlier: v.lowEngagementOutlier,
+  tagOnlyMatch: Boolean(v.tagOnlyMatch),
   url: `https://www.youtube.com/watch?v=${v.videoId}`,
 });
 
@@ -92,6 +93,16 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   // 3. Deterministic scoring. The LLM never does arithmetic.
   const ranked = scoreVideos(videos, channelMap);
   for (const v of ranked) v.tier = heatTier(v, ranked);
+
+  // Mark videos that matched the niche only through tags/hashtags. The LLM makes
+  // the final call on these -- we just make sure it can see the signal.
+  for (const v of ranked) v.tagOnlyMatch = checkTagHijack(niche, v).suspect;
+  const tagOnlyCount = ranked.filter((v) => v.tagOnlyMatch).length;
+  if (tagOnlyCount) {
+    warnings.push(
+      `${tagOnlyCount} of ${ranked.length} videos mention "${niche}" only in tags/hashtags, not in the title. They may be tag-hijacked.`
+    );
+  }
 
   log.logSearch(hits, ranked);
 

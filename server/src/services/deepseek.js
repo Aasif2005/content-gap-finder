@@ -17,6 +17,7 @@ export async function chatJSON({ system, user, model = config.deepseek.analysisM
   let budget = maxTokens;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    const startedAt = Date.now();
     try {
       const res = await fetch(`${base}/chat/completions`, {
         method: 'POST',
@@ -57,6 +58,10 @@ export async function chatJSON({ system, user, model = config.deepseek.analysisM
         );
       }
 
+      const elapsed = Date.now() - startedAt;
+      if (elapsed > 60_000) {
+        console.warn(`[deepseek] slow call: ${activeModel} took ${(elapsed / 1000).toFixed(0)}s (attempt ${attempt})`);
+      }
       return { data: parseJSON(content), usage: data.usage ?? null, model: data.model, fellBack: activeModel !== model };
     } catch (err) {
       lastError = err;
@@ -66,9 +71,17 @@ export async function chatJSON({ system, user, model = config.deepseek.analysisM
       // request was malformed -- retrying it identically just burns another
       // full timeout, so drop to the fast model for the remaining attempts.
       const timedOut = err.name === 'TimeoutError' || /timed? ?out|aborted/i.test(err.message);
-      if (timedOut && activeModel !== config.deepseek.fastModel) {
-        console.warn(`[deepseek] ${activeModel} timed out; falling back to ${config.deepseek.fastModel}`);
-        activeModel = config.deepseek.fastModel;
+      if (timedOut) {
+        // Always report a timeout. This used to log only when falling back to a
+        // different model, which meant the default config (analysis == fast)
+        // burned attempts x timeoutMs in complete silence.
+        console.warn(
+          `[deepseek] ${activeModel} timed out after ${timeoutMs / 1000}s on attempt ${attempt}/${attempts}`
+        );
+        if (activeModel !== config.deepseek.fastModel) {
+          console.warn(`[deepseek] falling back to ${config.deepseek.fastModel}`);
+          activeModel = config.deepseek.fastModel;
+        }
       }
       if (err.truncated) {
         budget = Math.min(Math.round(budget * 2), MAX_OUTPUT_TOKENS);

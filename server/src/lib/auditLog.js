@@ -39,8 +39,11 @@ export class RunLogger {
       `videos.list resolved ${videos.length} of them to full stats`,
       '',
       ...videos.slice(0, 50).map((v, i) =>
-        `  ${String(i + 1).padStart(2)}. [${v.videoId}] ${v.isShort ? 'Short' : 'long'} ${Math.round(v.durationSeconds)}s — "${truncate(v.title, 90)}" (${v.channelTitle})`
+        `  ${String(i + 1).padStart(2)}. [${v.videoId}] ${v.isShort ? 'Short' : 'long'} ${Math.round(v.durationSeconds)}s — "${truncate(v.title, 90)}" (${v.channelTitle})` +
+        (v.tagOnlyMatch ? '\n       ⚠ TAG-ONLY: niche appears only in tags/hashtags, not in the title prose' : '')
       ),
+      '',
+      `${videos.filter((v) => v.tagOnlyMatch).length} of ${videos.length} candidates matched the niche only via tags/hashtags.`,
     ]);
   }
 
@@ -49,7 +52,11 @@ export class RunLogger {
     const lines = [`DeepSeek clustered the videos into ${topics.length} topics:`, ''];
     topics.forEach((t, i) => {
       const rel = relevanceResults[i];
-      const flag = rel.relevant ? '' : '  ⚠ NOT NICHE-RELEVANT — no niche keyword found anywhere in this topic';
+      const flag = !rel.relevant
+        ? '  ⚠ NOT NICHE-RELEVANT — no niche keyword found anywhere in this topic'
+        : rel.tagSuspect
+          ? '  ⚠ TAG-SUSPECT — every video here matched the niche only via tags/hashtags'
+          : '';
       lines.push(`  Topic ${i + 1}: "${t.label}"${flag}`);
       lines.push(`    summary: ${truncate(t.summary, 160)}`);
       lines.push(`    relevance: matched [${rel.matched.join(', ') || 'none'}] (${rel.matchedIn ?? 'n/a'}), score ${rel.score}`);

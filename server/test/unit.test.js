@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps } from '../src/services/analyze.js';
-import { checkTopicRelevance, checkGapRelevance, summarizeRelevance } from '../src/lib/relevance.js';
+import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags } from '../src/lib/relevance.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 
 describe('parseDuration', () => {
@@ -217,5 +217,48 @@ describe('relevance', () => {
   test('summarizeRelevance counts flagged as total minus relevant', () => {
     const s = summarizeRelevance([{ relevant: true }, { relevant: true }, { relevant: false }]);
     assert.deepEqual(s, { total: 3, relevant: 2, flagged: 1, rate: 67 });
+  });
+});
+
+describe('tag hijacking', () => {
+  // Verbatim from a real "thalapathy vijay" run: a Mamitha Baiju dance edit that
+  // stuffed Vijay/Thalapathy into its hashtags and tags and pulled 12.4M views
+  // into the result set, then became the #1 "trending topic".
+  const hijacked = {
+    title: 'Female Version Leaked😈 #mamithabaiju #vijay #shorts #viral #trending #shortvideo',
+    channelTitle: 'Cine 360',
+    description: 'Welcome to CINE 360 - The Ultimate Tamil Cinema Hub!',
+    tags: ['mamitha dance', 'thalapathy', 'thalapathy status', 'vijay metro scene', 'vijay songs'],
+  };
+
+  test('flags a video whose niche match is only tag decoration', () => {
+    const r = checkTagHijack('thalapathy vijay', hijacked);
+    assert.equal(r.suspect, true);
+    assert.deepEqual(r.inProse, []);
+    assert.ok(r.inTagsOnly.includes('vijay'));
+  });
+
+  test('does not flag a video that names the niche in its title prose', () => {
+    const legit = { title: "Jason Sanjay's First Reaction to Vijay Becoming CM", channelTitle: 'Film Point', tags: [] };
+    const r = checkTagHijack('thalapathy vijay', legit);
+    assert.equal(r.suspect, false);
+    assert.deepEqual(r.inProse, ['vijay']);
+  });
+
+  test('marks a topic tag-suspect when every backing video is tag-only', () => {
+    const rel = checkTopicRelevance('thalapathy vijay', {
+      label: 'Mamitha Baiju Dance Edits',
+      summary: 'Dance edits branded under the Vijay hashtag.',
+      videos: [hijacked],
+    });
+    // The literal word "vijay" is in the summary, so the keyword check still
+    // passes -- tagSuspect is what actually catches this case.
+    assert.equal(rel.relevant, true);
+    assert.equal(rel.tagSuspect, true);
+  });
+
+  test('stripHashtags leaves the title prose behind', () => {
+    assert.equal(stripHashtags('Female Version Leaked #vijay #shorts'), 'Female Version Leaked');
+    assert.equal(stripHashtags('No hashtags here'), 'No hashtags here');
   });
 });

@@ -34,6 +34,9 @@ function videoDigest(videos) {
         v.lowEngagementOutlier
           ? `  FLAG: high views but bottom-tier engagement (${(v.signals.engagementRate * 100).toFixed(2)}%) -- strong avoid candidate`
           : null,
+        v.tagOnlyMatch
+          ? `  TAG-ONLY: the niche appears only in this video's tags/hashtags, never in its title prose -- check whether it is genuinely about the niche`
+          : null,
         v.tags.length ? `  tags: ${truncate(v.tags.slice(0, 8).join(', '), 120)}` : null,
         v.description ? `  desc: ${truncate(stripNoise(v.description), 160)}` : null,
       ].filter(Boolean).join('\n')
@@ -50,6 +53,11 @@ You only ever reply with a single valid json object. No prose, no markdown fence
 Rules:
 - Cluster by CONTENT ANGLE, not by surface keyword. "iPhone 17 camera test" and
   "Pixel 10 camera shootout" belong to one "flagship camera comparisons" topic.
+- The niche subject must actually BE in the video. Creators farm views by
+  stuffing a popular name into tags on content about someone else; exclude such
+  videos entirely, even if their view count is the highest in the set. Videos
+  marked TAG-ONLY matched the niche only via tags -- a hint to check, not proof,
+  since a real video may omit the name from its title. Judge by what it is ABOUT.
 - Every video_id you emit MUST come from the provided list. Never invent ids.
 - video_ids are for the "video_ids" fields ONLY. In prose fields (why_hot, reason,
   counter_evidence, summary) refer to videos by channel name or title -- a raw id

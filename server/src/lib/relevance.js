@@ -28,6 +28,42 @@ function matchKeywords(keywords, text) {
   return keywords.filter((k) => lower.includes(k));
 }
 
+/** Strips #hashtags so what remains is the title's actual prose. */
+export function stripHashtags(text) {
+  return (text ?? '').replace(/#[\w\u00C0-\uFFFF]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Tag hijacking: a video whose niche keyword appears ONLY in its hashtags or
+ * tag list, never in the title's prose. Real example from a "thalapathy vijay"
+ * run -- a Mamitha Baiju dance edit titled "Female Version Leaked😈 #mamithabaiju
+ * #vijay #shorts #viral" that also stuffed "thalapathy"/"vijay metro" into its
+ * tags, and pulled 12.4M views into the results.
+ *
+ * This is a signal to eyeball, NOT a verdict. Legitimate videos do this too
+ * ("TN CM #vijaythalapathy Son #jasonsanjay Entry at Sigma" is genuinely about
+ * Vijay, and its prose also omits the name), which is why nothing is dropped on
+ * the strength of it -- the LLM makes the semantic call, this just flags it.
+ */
+export function checkTagHijack(niche, video) {
+  const keywords = nicheKeywords(niche);
+  if (!keywords.length) return { suspect: false, inProse: [], inTagsOnly: [] };
+
+  const prose = `${stripHashtags(video.title)} ${video.channelTitle ?? ''} ${stripHashtags(video.description ?? '')}`;
+  const tagText = `${video.title ?? ''} ${(video.tags ?? []).join(' ')}`;
+
+  const inProse = matchKeywords(keywords, prose);
+  const inTags = matchKeywords(keywords, tagText);
+  const inTagsOnly = inTags.filter((k) => !inProse.includes(k));
+
+  return {
+    // Matched the niche, but only through tag/hashtag decoration.
+    suspect: inProse.length === 0 && inTags.length > 0,
+    inProse,
+    inTagsOnly,
+  };
+}
+
 /**
  * Checks a topic's own text (label/summary/why_hot) AND its member videos'
  * titles/tags against the niche. A topic can be legitimate even if its own
@@ -48,11 +84,18 @@ export function checkTopicRelevance(niche, topic) {
   const inVideos = matchKeywords(keywords, videoText);
   const matched = [...new Set([...inOwnText, ...inVideos])];
 
+  // A topic is tag-suspect when every video backing it only matched via tags.
+  const videos = topic.videos ?? [];
+  const hijacks = videos.map((v) => checkTagHijack(niche, v));
+  const tagSuspect = videos.length > 0 && hijacks.every((h) => h.suspect);
+
   return {
     relevant: matched.length > 0,
     matchedIn: inOwnText.length ? 'label/summary' : inVideos.length ? 'videos only' : 'none',
     matched,
     score: Math.round((matched.length / keywords.length) * 100) / 100,
+    tagSuspect,
+    tagSuspectCount: hijacks.filter((h) => h.suspect).length,
   };
 }
 

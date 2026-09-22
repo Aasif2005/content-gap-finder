@@ -219,6 +219,34 @@ correct flag surfacing content a human should glance at, not a false alarm to ig
 header says as much: *"A low rate does not always mean the model hallucinated — search.list
 itself can pull in adjacent content."*
 
+### Tag hijacking
+
+The failure this was built to catch: a "thalapathy vijay" run returned a Mamitha Baiju
+dance edit as its **#1 trending topic**, at 12.4M views. The video was titled
+`Female Version Leaked😈 #mamithabaiju #vijay #shorts #viral` and stuffed `thalapathy`,
+`vijay metro scene` and `vijay songs` into its tags — deliberate keyword stuffing to farm
+two audiences at once.
+
+Nothing was hallucinated. `search.list` legitimately matched it, and the keyword relevance
+check passed it, because the word "vijay" genuinely *is* there — a spammer puts it there on
+purpose, so no pure keyword test can catch this.
+
+Two defences, neither of which drops a video on keyword evidence alone:
+
+- **`checkTagHijack()`** ([relevance.js](server/src/lib/relevance.js)) strips hashtags from
+  the title and asks whether the niche survives in the prose. If it only appears in
+  tags/hashtags, the video is marked `TAG-ONLY` in the audit log and in the digest sent to
+  the model, and a topic whose every video is tag-only is marked `TAG-SUSPECT`.
+- **The clustering prompt** instructs the model to judge what a video is *about* rather than
+  what words its metadata contains, and to exclude hijacked videos even when their view
+  count leads the set.
+
+The heuristic alone is deliberately not trusted, because it produces false positives:
+`TN CM #vijaythalapathy Son #jasonsanjay Entry at Sigma` is genuinely about Vijay and its
+prose also omits the name. So the flag informs the model and the reader; the model makes the
+semantic call. After the fix the same niche returned 8 topics, all genuinely about Vijay,
+with the 12.4M-view video correctly excluded.
+
 Logs aren't committed (`server/logs/` is gitignored) since they contain full comment text.
 
 ---
