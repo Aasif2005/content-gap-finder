@@ -221,3 +221,7 @@ web/
 - **In-process jobs and disk cache** assume a single server instance. `lib/jobs.js` and
   `lib/cache.js` are the seams to swap for Redis/BullMQ before running more than one.
 - **Comment relevance ordering** is YouTube's own; the API won't sort by like count.
+- **Search relevance can drift.** `search.list` decides what matches a niche, and it pulls
+  in adjacent content — a "cast iron restoration" run surfaced a barn-find motorcycle
+  cluster. Narrower niches drift less, and the topic's example videos make drift obvious
+  at a glance.
