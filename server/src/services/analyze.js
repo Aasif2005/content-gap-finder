@@ -54,10 +54,12 @@ Rules:
 - Cluster by CONTENT ANGLE, not by surface keyword. "iPhone 17 camera test" and
   "Pixel 10 camera shootout" belong to one "flagship camera comparisons" topic.
 - The niche subject must actually BE in the video. Creators farm views by
-  stuffing a popular name into tags on content about someone else; exclude such
-  videos entirely, even if their view count is the highest in the set. Videos
-  marked TAG-ONLY matched the niche only via tags -- a hint to check, not proof,
-  since a real video may omit the name from its title. Judge by what it is ABOUT.
+  stuffing a popular name into tags on content about someone else -- exclude
+  those entirely, even at the top view count. Videos marked TAG-ONLY matched
+  the niche only via tags, not title prose: before excluding one, check the
+  OTHER videos in this set for corroboration (a family member, associate,
+  party/brand name recurring elsewhere) -- do not exclude on the TAG-ONLY flag
+  alone if the batch itself ties the video to the niche.
 - Every video_id you emit MUST come from the provided list. Never invent ids.
 - video_ids are for the "video_ids" fields ONLY. In prose fields (why_hot, reason,
   counter_evidence, summary) refer to videos by channel name or title -- a raw id
