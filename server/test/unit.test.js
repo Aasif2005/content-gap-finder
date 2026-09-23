@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps, truncate } from '../src/services/analyze.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords } from '../src/lib/relevance.js';
-import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint } from '../src/lib/language.js';
+import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 
 describe('parseDuration', () => {
@@ -447,6 +447,67 @@ describe('languageQueryHint', () => {
       assert.equal(hasLatinHeuristic(code), true);
       assert.notEqual(languageQueryHint(code), null);
     }
+  });
+});
+
+describe('audio-language field and the combined verdict', () => {
+  // Real case: niche "ghost story", regionCode=IN, relevanceLanguage=ta
+  // returned only 1/50 Tamil matches by script alone. Checking
+  // defaultAudioLanguage on the same 50 live found 38 set to "ta" --
+  // including titles with zero Tamil script at all, like "GHOST STORIES IN
+  // TAMIL" written entirely in Latin letters. Audio language reflects what's
+  // actually SPOKEN; script/word checks can only ever read the TEXT.
+  test('matchesAudioLanguage compares BCP-47 on the primary subtag only', () => {
+    assert.equal(matchesAudioLanguage('ta', 'ta'), true);
+    assert.equal(matchesAudioLanguage('en', 'en-GB'), true);
+    assert.equal(matchesAudioLanguage('ta', 'en-GB'), false);
+  });
+
+  test('matchesAudioLanguage returns null, not false, when the field is absent', () => {
+    assert.equal(matchesAudioLanguage('ta', null), null);
+    assert.equal(matchesAudioLanguage('ta', undefined), null);
+  });
+
+  test('matchesRequestedLanguage: audio confirms even when the title has no script evidence at all', () => {
+    // The exact "GHOST STORIES IN TAMIL" case: fully Latin-letter title, Tamil
+    // audio. Script detection alone would call this unverifiable; the audio
+    // field should be enough on its own.
+    const video = { title: 'GHOST STORIES IN TAMIL #horrorstory', description: '', defaultAudioLanguage: 'ta' };
+    assert.equal(matchesRequestedLanguage('ta', video), true);
+  });
+
+  test('matchesRequestedLanguage: script evidence rescues a video from a disagreeing audio field', () => {
+    // The exact "en-GB but visibly Tamil-script title" case: a stale/wrong
+    // audio-language value shouldn't override text that unambiguously IS the
+    // requested language's script.
+    const video = { title: 'பேய் இருப்பது உண்மை என நிரூபிக்கும் சம்பவம்', description: '', defaultAudioLanguage: 'en-GB' };
+    assert.equal(matchesRequestedLanguage('ta', video), true);
+  });
+
+  test('matchesRequestedLanguage: confirmed audio mismatch with no rescue excludes', () => {
+    const video = { title: 'Plain English gym workout tips', description: '', defaultAudioLanguage: 'en' };
+    assert.equal(matchesRequestedLanguage('ta', video), false);
+  });
+
+  test('matchesRequestedLanguage: no audio field and no text evidence is undecided, not excluded', () => {
+    const video = { title: '#fitness #shorts', description: '', defaultAudioLanguage: null };
+    assert.equal(matchesRequestedLanguage('ta', video), null);
+  });
+
+  test('matchesRequestedLanguage works for a language with no script or Latin-heuristic model at all, using audio alone', () => {
+    assert.equal(hasScriptFilter('vi'), false);
+    assert.equal(hasLatinHeuristic('vi'), false);
+    const video = { title: 'Cau chuyen ma co that', description: '', defaultAudioLanguage: 'vi' };
+    assert.equal(matchesRequestedLanguage('vi', video), true);
+    const other = { title: 'Cau chuyen ma co that', description: '', defaultAudioLanguage: 'en' };
+    assert.equal(matchesRequestedLanguage('vi', other), false);
+    const unknown = { title: 'Cau chuyen ma co that', description: '', defaultAudioLanguage: null };
+    assert.equal(matchesRequestedLanguage('vi', unknown), null);
+  });
+
+  test('matchesRequestedLanguage for a Latin-heuristic language: audio can confirm even when the word heuristic can\'t judge', () => {
+    const video = { title: 'hi', description: '', defaultAudioLanguage: 'es' }; // too short for the word heuristic alone
+    assert.equal(matchesRequestedLanguage('es', video), true);
   });
 });
 

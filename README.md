@@ -176,9 +176,9 @@ curl -X POST localhost:8787/api/analyze -H 'Content-Type: application/json' -d '
   "gapMode": "inclusive",   # inclusive | strict
   "minViews": 0,
   "regionCode": "US",       # optional, ISO 3166-1 alpha-2 -- hard filter on channel country
-  "relevanceLanguage": "en" # optional, ISO 639-1 -- hard filter: script-based for languages
-                             # with a distinct script, common-word matching for a handful of
-                             # Latin-script ones (en/es/fr/de/pt/it/nl); soft hint otherwise (see below)
+  "relevanceLanguage": "en" # optional, ISO 639-1 -- hard filter, primarily by each video's own
+                             # declared/detected audio language, corroborated by script/common-word
+                             # text matching for a modeled subset of languages (see below)
 }'
 ```
 
@@ -406,6 +406,41 @@ conflating them:
   both fixes: 32 of 50 videos survived the filter (down from 1), and the audit log now
   correctly attributes the drop to the filter, not to `videos.list`.
 
+**The user then asked directly whether `videos.list`'s `snippet.defaultAudioLanguage` field
+was worth checking before relying further on script/word-based text matching — it wasn't
+something either fix above had used.** Checked it live, immediately, across the same "ghost
+story" query plus three unrelated niches: coverage was 49–50 of 50 videos in every sample,
+in sharp contrast to `channels.list`'s sparsely-set `country` field. Cross-checked against
+the script detector on the original query: of 38 videos YouTube tagged `defaultAudioLanguage:
+ta`, 7 had titles with **zero Tamil script at all** — but every one of those 7 said things
+like *"GHOST STORIES IN TAMIL"* or *"...| Tamil Horror"*, written entirely in Latin letters.
+That's not noise; it's YouTube correctly identifying Tamil audio in a video whose title
+happens to be in English — exactly the case script/word-text matching can never catch, since
+it can only read text, not audio. One clear disagreement did turn up too: a video with
+unambiguous Tamil-script text in its title was tagged `defaultAudioLanguage: en-GB`, most
+likely a stale value from a channel's first-ever upload nobody corrected — a known real-world
+quirk of this field.
+
+That evidence shaped the design in `matchesRequestedLanguage()` ([`lib/language.js`](server/src/lib/language.js)),
+which replaced the separate script/Latin-heuristic branches in the pipeline with one combined
+check per video:
+
+- **Audio language is the primary signal** — it reflects what's actually spoken, not what
+  script a title happens to use, and via `videos.list` it covers *any* language YouTube
+  recognizes, not just the ~38 with a script or word-list modeled in this app.
+- **Script/word-text evidence is a second opinion that can rescue a video from a wrong or
+  stale audio-language value** (the `en-GB`-but-visibly-Tamil case) — a title genuinely using
+  a language's own script is very hard to produce by accident, so a positive text match wins
+  even when audio disagrees.
+- **A video is excluded only when audio explicitly disagrees and text evidence didn't rescue
+  it** — the same "unknown is not no" rule as the region filter. A video with no audio-language
+  field and no text evidence either stays in, undecided, rather than guessed at.
+
+Verified live on the exact reported scenario one more time: **39 of 50 videos confirmed
+Tamil by audio language, 38 survived to analysis** after the region filter ran on top — up
+from 32/50 with the query-hint fix alone, and 1/50 in the original report. The audit log
+confirms the same numbers and correctly names the audio-language check as the reason.
+
 ---
 
 ## Layout
@@ -453,10 +488,9 @@ web/
   in adjacent content — a "cast iron restoration" run surfaced a barn-find motorcycle
   cluster. Narrower niches drift less, and the topic's example videos make drift obvious
   at a glance.
-- **Region and language filters both have real gaps.** Region relies on a self-reported
-  `channels.list` field many creators never set (treated as "unknown", not excluded).
-  Language hard-filters scripted languages by script and a modeled subset of Latin-script
-  languages (`en`/`es`/`fr`/`de`/`pt`/`it`/`nl`) by common-word matching, which is coarser
-  and needs real running text to say anything — any language outside both sets falls back
-  to YouTube's own soft ranking hint. See
-  [Region and language filters](#region-and-language-filters).
+- **The region filter still has a real gap.** It relies on a self-reported `channels.list`
+  field many creators never set (treated as "unknown", not excluded) — there's no equivalent
+  of the language filter's `defaultAudioLanguage` for a channel's country. The language
+  filter itself now works for any language YouTube recognizes (via each video's own declared
+  or detected audio language), with script/word-text matching as a secondary check for a
+  modeled subset. See [Region and language filters](#region-and-language-filters).

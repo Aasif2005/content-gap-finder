@@ -167,3 +167,80 @@ export function matchesLatinLanguage(languageCode, text) {
 
   return scores[code] === maxScore;
 }
+
+// --- Audio-language field, and combining it with the text-based checks -----
+//
+// videos.list's snippet.defaultAudioLanguage (creator-set, or YouTube's own
+// language detection) turned out to be a much stronger signal than either
+// text check above, discovered while investigating a user report: niche
+// "ghost story", regionCode=IN, relevanceLanguage=ta returned only 1 of 50
+// candidates as Tamil by script. Checked defaultAudioLanguage on the same 50
+// live: 38 had it set to "ta" -- including titles with zero Tamil script at
+// all, like "GHOST STORIES IN TAMIL" and "...| Tamil Horror" written entirely
+// in Latin letters. Script/word checks can only ever read the TEXT; this
+// field reflects the actual AUDIO, which is what a viewer -- and this app --
+// actually cares about. Coverage was ~100% across every niche tested, a sharp
+// contrast to channels.list's sparsely-set `country` field.
+//
+// It is not infallible, though: one video in that same batch had visibly
+// Tamil-script text in its title but defaultAudioLanguage="en-GB" -- likely a
+// stale value from a channel's very first upload that nobody went back to
+// correct, a known real-world quirk of this field. So it is treated as the
+// PRIMARY signal, not the ONLY one: text evidence (script or the Latin
+// word-heuristic) can still rescue a video the audio field disagrees with,
+// since a video's title visibly using a language's own script is very hard to
+// produce by accident.
+
+/**
+ * Does this video's declared/detected audio language match? BCP-47 values
+ * like "en-GB" are compared on their primary subtag only ("en"). Returns
+ * null, not false, when the field is absent -- rare, but callers must still
+ * treat that as "cannot judge from audio," not as a mismatch.
+ */
+export function matchesAudioLanguage(languageCode, defaultAudioLanguage) {
+  if (!defaultAudioLanguage) return null;
+  const primary = defaultAudioLanguage.split('-')[0].toLowerCase();
+  return primary === (languageCode ?? '').toLowerCase();
+}
+
+/**
+ * The combined verdict this app actually filters on: audio language first,
+ * text evidence (script, or the Latin common-word heuristic) as a second
+ * opinion that can either confirm what audio couldn't, or rescue a video from
+ * a wrong/stale audio-language value. Unlike the two text-only checks this
+ * builds on, it works for ANY language code YouTube recognizes, not just the
+ * ~38 with a script or word-list modeled here -- defaultAudioLanguage alone
+ * still applies when nothing else does.
+ *
+ * Returns true if either signal positively confirms the language, false only
+ * when audio explicitly disagrees and text evidence didn't rescue it, and
+ * null when there simply isn't enough evidence either way -- callers must
+ * treat null as "unknown," not "no" (matches the region filter's rule: only
+ * a CONFIRMED mismatch gets excluded).
+ */
+export function matchesRequestedLanguage(languageCode, video) {
+  const audio = matchesAudioLanguage(languageCode, video.defaultAudioLanguage);
+  const text = `${video.title ?? ''} ${video.description ?? ''}`;
+
+  if (hasScriptFilter(languageCode)) {
+    const script = matchesLanguageScript(languageCode, text);
+    if (audio === true || script === true) return true;
+    // A title with no matching script proves nothing on its own (see the
+    // "GHOST STORIES IN TAMIL" case above) -- only an explicit audio
+    // disagreement, unrescued by script, counts as a confirmed mismatch.
+    return audio === false ? false : null;
+  }
+
+  if (hasLatinHeuristic(languageCode)) {
+    const latin = matchesLatinLanguage(languageCode, text);
+    if (audio === true || latin === true) return true;
+    // matchesLatinLanguage's false is already a comparative, fairly confident
+    // signal (another modeled language scored strictly higher) -- unlike bare
+    // script absence, it can stand on its own when audio is unavailable.
+    return audio === false || latin === false ? false : null;
+  }
+
+  // No text-based model for this language at all -- audio is the only signal,
+  // but it now covers languages this app previously couldn't filter at all.
+  return audio;
+}

@@ -118,6 +118,14 @@ export async function getVideoDetails(videoIds) {
         views: Number(v.statistics?.viewCount ?? 0),
         likes: Number(v.statistics?.likeCount ?? 0),       // 0 when the channel hides likes
         comments: Number(v.statistics?.commentCount ?? 0), // 0 when comments are disabled
+        // The spoken/audio language -- creator-set or YouTube-detected, BCP-47
+        // (e.g. "ta", "en-GB"). Free: part=snippet already fetched. Near-
+        // universal coverage in practice (unlike channel country), and it's a
+        // much stronger language signal than searching title/description text,
+        // since it reflects the actual audio track rather than what script the
+        // title happens to be written in. See lib/language.js for how this
+        // gets combined with script/word-based text checks.
+        defaultAudioLanguage: v.snippet.defaultAudioLanguage ?? null,
       });
     }
   }
