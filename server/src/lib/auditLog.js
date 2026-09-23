@@ -157,9 +157,13 @@ function flagNote(rel) {
   return rel?.flagged ? `  ⚠ ${rel.flagged} flagged` : '';
 }
 
+// Code-point-safe: a raw .slice(0, n) can cut a surrogate pair (an emoji) in
+// half and leave an unpaired half in the log file. See analyze.js's truncate
+// for the live case this was found from (same bug, different call site).
 function truncate(s, n) {
   const t = (s ?? '').replace(/\s+/g, ' ').trim();
-  return t.length > n ? t.slice(0, n) + '…' : t;
+  const chars = [...t];
+  return chars.length > n ? chars.slice(0, n).join('') + '…' : t;
 }
 
 /** Most recent runs, newest first, for the log-listing endpoint. */

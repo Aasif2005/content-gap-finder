@@ -67,3 +67,74 @@ export function matchesLanguageScript(languageCode, text) {
   if (!script) return null;
   return script.test(text ?? '');
 }
+
+// Latin-script languages all share one alphabet, so script detection (above)
+// can't tell them apart at all -- that's why they had no entry in SCRIPTS.
+// This is a coarser fallback for the handful most likely to come up as a
+// niche filter: common function words (articles, pronouns, conjunctions)
+// that show up constantly in real sentences but rarely by accident. It is
+// NOT a language-ID library -- some of these words overlap across Romance
+// languages ("que" is common to es/fr/pt/it) -- so this only works
+// comparatively: which modeled language does the text's word list match best,
+// and by how much. A title with too few recognizable words to say anything
+// (a Short's hashtag-only caption, the exact failure mode that broke the
+// script filter for Tamil) is left undecided rather than guessed at.
+const LATIN_STOPWORDS = {
+  en: ['the', 'and', 'you', 'with', 'this', 'that', 'your', 'how', 'what', 'are', 'have', 'was', 'from', 'will'],
+  es: ['el', 'los', 'las', 'un', 'una', 'es', 'para', 'pero', 'qué', 'cómo', 'más', 'también', 'porque', 'está', 'esto'],
+  fr: ['le', 'les', 'des', 'un', 'une', 'est', 'pour', 'mais', 'avec', 'dans', 'qui', 'vous', 'très', 'être', 'comme'],
+  de: ['der', 'die', 'das', 'und', 'ist', 'nicht', 'mit', 'für', 'auf', 'sich', 'ein', 'wie', 'auch', 'sehr', 'wird'],
+  pt: ['o', 'os', 'as', 'um', 'uma', 'para', 'mas', 'com', 'não', 'isso', 'muito', 'também', 'está', 'você'],
+  it: ['il', 'lo', 'gli', 'un', 'una', 'per', 'ma', 'con', 'non', 'questo', 'molto', 'anche', 'sono', 'come'],
+  nl: ['de', 'het', 'een', 'en', 'niet', 'met', 'voor', 'dat', 'ook', 'zeer', 'deze', 'wordt', 'zijn'],
+};
+
+// Below this many distinct stopword hits for the TARGET language, there is
+// not enough signal to say anything -- treat as unknown, not as a mismatch.
+const MIN_LATIN_HITS = 2;
+
+/** Whether we can build a coarse common-word filter for this language code. */
+export function hasLatinHeuristic(languageCode) {
+  return Boolean(LATIN_STOPWORDS[(languageCode ?? '').toLowerCase()]);
+}
+
+function tokenize(text) {
+  // \p{L} (Unicode "any letter") keeps accented characters (é, ñ, ü) attached
+  // to their word instead of splitting on them the way a plain \w class would.
+  return (text ?? '').toLowerCase().split(/[^\p{L}]+/u).filter(Boolean);
+}
+
+function distinctStopwordHits(words, list) {
+  const set = new Set(list);
+  return new Set(words.filter((w) => set.has(w))).size;
+}
+
+/**
+ * Does this text's word choice look like the target Latin-script language,
+ * compared against every other Latin-script language modeled here?
+ * Returns null when NO modeled language clears the minimum hit count -- there
+ * just isn't enough recognizable text to judge anything (short titles,
+ * hashtag-only captions) -- callers must treat that as "cannot judge," the
+ * same as matchesLanguageScript's null.
+ *
+ * Deliberately gated on the BEST score across all modeled languages, not the
+ * target's own score: confidently-Spanish text asked about "en" scores 0 for
+ * English, and gating on the target alone would call that "too little
+ * signal" and leave it undecided, when it is exactly the opposite -- a
+ * confident mismatch. The target's own score only has to beat the field, not
+ * clear the minimum by itself.
+ */
+export function matchesLatinLanguage(languageCode, text) {
+  const code = (languageCode ?? '').toLowerCase();
+  if (!LATIN_STOPWORDS[code]) return null;
+
+  const words = tokenize(text);
+  const scores = Object.fromEntries(
+    Object.entries(LATIN_STOPWORDS).map(([c, list]) => [c, distinctStopwordHits(words, list)])
+  );
+
+  const maxScore = Math.max(...Object.values(scores));
+  if (maxScore < MIN_LATIN_HITS) return null;
+
+  return scores[code] === maxScore;
+}

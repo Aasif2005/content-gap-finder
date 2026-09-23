@@ -1,9 +1,9 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
-import { parseCommentIndex, selectComments, groundGaps } from '../src/services/analyze.js';
+import { parseCommentIndex, selectComments, groundGaps, truncate } from '../src/services/analyze.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords } from '../src/lib/relevance.js';
-import { hasScriptFilter, matchesLanguageScript } from '../src/lib/language.js';
+import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 
 describe('parseDuration', () => {
@@ -367,5 +367,87 @@ describe('language script detection', () => {
     assert.equal(hasScriptFilter('ar'), true);
     assert.equal(hasScriptFilter('es'), false);
     assert.equal(hasScriptFilter(undefined), false);
+  });
+});
+
+describe('Latin-script common-word language heuristic', () => {
+  // Latin-script languages share one alphabet, so script detection is blind
+  // between them -- this is the fallback, and it only works comparatively.
+  test('confirms a language with enough distinct common words', () => {
+    assert.equal(
+      matchesLatinLanguage('en', 'The video shows how you fix this with your friends, and what to expect'),
+      true
+    );
+    assert.equal(
+      matchesLatinLanguage('es', 'El video muestra cómo hacer esto, pero también es para principiantes'),
+      true
+    );
+  });
+
+  test('rejects confidently-different-language text even though the target itself scored zero', () => {
+    // Real risk this guards against: gating on the target's OWN score alone
+    // would call 0-hits-for-English on plainly Spanish text "not enough
+    // signal" and leave it undecided, when it is actually a confident
+    // mismatch -- the best score across the whole modeled set decides
+    // whether there's enough text to judge at all, not the target alone.
+    assert.equal(
+      matchesLatinLanguage('en', 'El video muestra cómo hacer esto, pero también es para principiantes'),
+      false
+    );
+  });
+
+  test('returns null, not false, when no modeled language has enough recognizable words to judge', () => {
+    assert.equal(matchesLatinLanguage('en', '#fitness #shorts #viral'), null);
+    assert.equal(matchesLatinLanguage('en', 'gym'), null);
+  });
+
+  test('hasLatinHeuristic is true exactly for the modeled Latin languages', () => {
+    assert.equal(hasLatinHeuristic('en'), true);
+    assert.equal(hasLatinHeuristic('es'), true);
+    assert.equal(hasLatinHeuristic('fr'), true);
+    assert.equal(hasLatinHeuristic('de'), true);
+    assert.equal(hasLatinHeuristic('pt'), true);
+    assert.equal(hasLatinHeuristic('it'), true);
+    assert.equal(hasLatinHeuristic('nl'), true);
+    assert.equal(hasLatinHeuristic('vi'), false); // Latin script, but not modeled
+    assert.equal(hasLatinHeuristic('ta'), false); // has its own script instead
+    assert.equal(hasLatinHeuristic(undefined), false);
+  });
+
+  test('script filter and common-word heuristic never both claim the same language code', () => {
+    for (const code of ['en', 'es', 'fr', 'de', 'pt', 'it', 'nl']) {
+      assert.equal(hasScriptFilter(code), false);
+    }
+  });
+});
+
+describe('truncate', () => {
+  // Real bug: a plain .slice(0, n) can cut a surrogate pair (2 UTF-16 code
+  // units representing one emoji) in half, leaving an unpaired surrogate at
+  // the end of the string. JSON.stringify emits that as a literal escape
+  // that is not valid standalone Unicode -- this crashed a real "recetas de
+  // cocina" run's gap-mining call with a DeepSeek 400 ("unexpected end of
+  // hex escape") once a comment happened to have an emoji land on the cut.
+  test('does not split a surrogate pair sitting exactly on the cut', () => {
+    const s = 'x'.repeat(9) + '😀' + 'more text after the emoji';
+    const t = truncate(s, 10); // cut lands inside the emoji's surrogate pair
+    // A lone surrogate can't round-trip through UTF-8 -- it gets silently
+    // replaced with U+FFFD, which is exactly the corruption that reached
+    // DeepSeek as a malformed escape. No replacement character means no
+    // unpaired surrogate survived the cut.
+    assert.equal(Buffer.from(t, 'utf8').toString('utf8').includes('�'), false);
+    // The emoji is one code point -- truncate should keep it whole rather
+    // than half of it, so length-by-codepoint is exactly 10, not 11.
+    assert.equal([...t].length, 10);
+    assert.equal(t.endsWith('😀'), true);
+  });
+
+  test('leaves short text untouched and long plain text cut at the limit', () => {
+    assert.equal(truncate('hello', 10), 'hello');
+    assert.equal(truncate('a'.repeat(20), 10), 'a'.repeat(10));
+  });
+
+  test('collapses whitespace before truncating', () => {
+    assert.equal(truncate('  hello   world  ', 20), 'hello world');
   });
 });

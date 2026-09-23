@@ -176,8 +176,9 @@ curl -X POST localhost:8787/api/analyze -H 'Content-Type: application/json' -d '
   "gapMode": "inclusive",   # inclusive | strict
   "minViews": 0,
   "regionCode": "US",       # optional, ISO 3166-1 alpha-2 -- hard filter on channel country
-  "relevanceLanguage": "en" # optional, ISO 639-1 -- hard filter for scripted languages,
-                             # soft ranking hint only for Latin-script ones (see below)
+  "relevanceLanguage": "en" # optional, ISO 639-1 -- hard filter: script-based for languages
+                             # with a distinct script, common-word matching for a handful of
+                             # Latin-script ones (en/es/fr/de/pt/it/nl); soft hint otherwise (see below)
 }'
 ```
 
@@ -322,8 +323,19 @@ Two different fixes, because the two params have different amounts of real signa
   with its own script (Tamil, Hindi, Arabic, Korean, Japanese, Russian, ...), a video is
   kept only if its title/description actually contain that script. This can't distinguish
   languages that share a script (Urdu/Persian both use Arabic script; Ukrainian/Bulgarian
-  both use Cyrillic) and can't do anything for Latin-script languages (English, Spanish,
-  French, ...) — those fall back to YouTube's soft hint, and the UI says so.
+  both use Cyrillic).
+- **Latin-script languages get a coarser second fallback**: script detection can't tell
+  English from Spanish from French — they share an alphabet — so for a modeled subset
+  (`en`, `es`, `fr`, `de`, `pt`, `it`, `nl`) the filter instead compares a video's own words
+  against a short, hand-picked list of common function words per language (articles,
+  pronouns, conjunctions — the words that show up in nearly every sentence but rarely by
+  accident) and keeps whichever language scores highest. It follows the same "unknown is
+  not no" rule as the region filter: a video is only *excluded* when another modeled
+  language scored clearly higher (a confident mismatch), never just because the requested
+  language didn't hit the minimum word count — a hashtag-only Short title, the exact case
+  that broke the script filter for Tamil, has too little text to say anything and is left
+  in rather than guessed at. Any language outside this set still falls back to YouTube's
+  soft hint, and the UI says so.
 
 **Both filters degrade instead of zeroing out a run.** The first live test of the script
 filter — the exact reported scenario, re-run — hit `NO_RESULTS_AFTER_FILTER`: 0 of 50 Shorts
@@ -338,6 +350,30 @@ same scenario: the run now completes (region cut 50→25, language filter skippe
 still ran on top), rather than erroring out. A positive-control run (a Tamil-script niche
 query with `relevanceLanguage=ta`) confirms the filter does hard-cut when script evidence is
 actually present, so this isn't a filter that's silently given up entirely.
+
+**Latin-script languages get a coarser second filter** for a modeled subset (`en`, `es`,
+`fr`, `de`, `pt`, `it`, `nl`): common-word matching instead of script — see
+[`matchesLatinLanguage()`](server/src/lib/language.js) — compares a video's own words
+against a short list of common function words per language and keeps whichever language
+scores highest, excluding a video only when another modeled language scored strictly
+higher (a confirmed mismatch), never merely because the requested language didn't clear a
+minimum word count. That distinction matters: gating on the target language's own score
+alone would have called confidently-Spanish text asked about `en` "too little signal" (0
+English words) and left it in, when it is actually the opposite — a confident mismatch. The
+minimum instead gates on the *best* score across the whole modeled set, so a hashtag-only
+Short (no recognizable words in *any* modeled language) is the only thing left undecided.
+Verified live on `niche="recetas de cocina"`, `relevanceLanguage=es`: 23 of 50 videos
+confirmed Spanish, 2 confirmed as a different Latin language and excluded, the rest left
+undecided and kept rather than guessed at.
+
+That same live run also surfaced an unrelated bug: gap mining failed with a DeepSeek 400
+("unexpected end of hex escape") on a comment whose truncation happened to land inside an
+emoji. `truncate()`'s `.slice(0, n)` cuts by UTF-16 code unit, and an emoji is two code
+units (a surrogate pair) — cutting between them leaves one unpaired surrogate, which
+`JSON.stringify` emits as a literal escape that isn't valid standalone Unicode. Fixed by
+slicing on `[...s]` (Unicode code points) instead in both places `truncate()` was defined
+(`services/analyze.js`, used in every LLM prompt, and `lib/auditLog.js`, used in the audit
+log). Re-ran the exact same scenario after the fix: it now completes end to end.
 
 ---
 
@@ -386,8 +422,10 @@ web/
   in adjacent content — a "cast iron restoration" run surfaced a barn-find motorcycle
   cluster. Narrower niches drift less, and the topic's example videos make drift obvious
   at a glance.
-- **Region and Latin-script language filters both have real gaps.** Region relies on a
-  self-reported `channels.list` field many creators never set (treated as "unknown", not
-  excluded). Language can only hard-filter scripted languages — Latin-script ones (English,
-  Spanish, French, ...) fall back to YouTube's own soft ranking hint. See
+- **Region and language filters both have real gaps.** Region relies on a self-reported
+  `channels.list` field many creators never set (treated as "unknown", not excluded).
+  Language hard-filters scripted languages by script and a modeled subset of Latin-script
+  languages (`en`/`es`/`fr`/`de`/`pt`/`it`/`nl`) by common-word matching, which is coarser
+  and needs real running text to say anything — any language outside both sets falls back
+  to YouTube's own soft ranking hint. See
   [Region and language filters](#region-and-language-filters).

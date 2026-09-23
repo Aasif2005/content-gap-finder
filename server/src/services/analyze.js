@@ -1,7 +1,19 @@
 import { chatJSON } from './deepseek.js';
 import { config } from '../config.js';
 
-const truncate = (s, n) => (s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+// Real bug this fixes: a plain .slice(0, n) cuts by UTF-16 code unit, not by
+// character -- an emoji (a surrogate pair, 2 code units) landing exactly on
+// the cut leaves one unpaired surrogate dangling at the end. JSON.stringify
+// happily emits that as a literal `\ud83d`-style escape, which is not valid
+// standalone Unicode -- a real "recetas de cocina" run hit this in a comment
+// truncated at 240 chars and DeepSeek's own JSON parser rejected the request
+// with "unexpected end of hex escape". [...s] iterates by code point instead,
+// so a surrogate pair always stays whole.
+export const truncate = (s, n) => {
+  const t = (s ?? '').replace(/\s+/g, ' ').trim();
+  const chars = [...t];
+  return chars.length > n ? chars.slice(0, n).join('') : t;
+};
 
 // YouTube descriptions are mostly links, timestamps, socials and affiliate spam.
 // Stripping that keeps the prompt focused on what the video is actually about.

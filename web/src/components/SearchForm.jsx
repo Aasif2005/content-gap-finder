@@ -130,7 +130,7 @@ export function SearchForm({ onSubmit, busy }) {
           <Field label="Region" hint="ISO code, e.g. US, IN, GB. Excludes only channels that report a different country — many don't set one.">
             <input value={regionCode} onChange={(e) => setRegionCode(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
           </Field>
-          <Field label="Language" hint="ISO code, e.g. ta, hi, ar, ko. Real filter for languages with their own script; a soft ranking hint only for Latin-script languages (en, es, fr, de…).">
+          <Field label="Language" hint="ISO code, e.g. ta, hi, ar, ko, en, es, fr, de, pt, it, nl. Real filter — script-based for those with a distinct script, common-word matching for Latin-script ones. Other Latin-script languages are a soft ranking hint only.">
             <input value={relevanceLanguage} onChange={(e) => setRelevanceLanguage(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
           </Field>
           <Field label="Min views" hint="Drops videos below this">

@@ -4,7 +4,7 @@ import { clusterTopics, mineGaps, selectComments, groundGaps, heatTier } from '.
 import { config } from '../config.js';
 import { RunLogger } from '../lib/auditLog.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, untrustedVideoIds } from '../lib/relevance.js';
-import { hasScriptFilter, matchesLanguageScript } from '../lib/language.js';
+import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage } from '../lib/language.js';
 
 /** Trims a scored video down to what the UI actually renders. */
 const publicVideo = (v) => ({
@@ -115,9 +115,31 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
         `Could not verify any of ${videos.length} videos as "${relevanceLanguage}" by script -- Shorts and short titles often use English/Latin hashtags for reach even when the spoken content is in another language. Results follow YouTube's own relevance ranking instead.`
       );
     }
+  } else if (relevanceLanguage && hasLatinHeuristic(relevanceLanguage)) {
+    // Latin-script languages share one alphabet, so script detection can't
+    // tell them apart -- this is a coarser common-word comparison instead.
+    // Mirrors the region filter's "unknown is not no" rule: only a CONFIRMED
+    // different-language match (matchesLatinLanguage === false) is excluded,
+    // so a hashtag-only Short title with too little text to classify stays
+    // in rather than risking the same zero-results failure the Tamil-script
+    // case hit.
+    const before = videos.length;
+    const verdicts = videos.map((v) => matchesLatinLanguage(relevanceLanguage, `${v.title} ${v.description}`));
+    const kept = videos.filter((_, i) => verdicts[i] !== false);
+    const confirmedCount = verdicts.filter((v) => v === true).length;
+    if (kept.length) {
+      videos = kept;
+      warnings.push(
+        `"${relevanceLanguage}" narrowed by common-word matching, not a distinct script -- ${confirmedCount} of ${before} videos confirmed, ${before - kept.length} excluded as a different language, the rest left undecided rather than guessed. Coarser than the script check used for Tamil, Arabic, etc.`
+      );
+    } else {
+      warnings.push(
+        `Every one of ${before} videos read as a different Latin-script language by common-word matching -- results follow YouTube's own relevance ranking instead.`
+      );
+    }
   } else if (relevanceLanguage) {
     warnings.push(
-      `"${relevanceLanguage}" has no script distinct enough to verify (e.g. English/Spanish/French/German/Vietnamese all share the Latin alphabet) -- results follow YouTube's own relevance ranking, not a guarantee.`
+      `"${relevanceLanguage}" has no script or common-word model to verify -- results follow YouTube's own relevance ranking, not a guarantee.`
     );
   }
 
