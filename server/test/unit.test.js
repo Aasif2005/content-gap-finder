@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps } from '../src/services/analyze.js';
-import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds } from '../src/lib/relevance.js';
+import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords } from '../src/lib/relevance.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 
 describe('parseDuration', () => {
@@ -203,10 +203,36 @@ describe('relevance', () => {
   });
 
   test('does not false-flag a niche whose words are all short/stopwords', () => {
-    // "AI" and "ML" are both under the 3-char keyword floor -- the check should
-    // decline to judge rather than flag everything as irrelevant.
-    const rel = checkTopicRelevance('AI & ML', { label: 'anything', videos: [] });
+    // "zz" and "qq" are under the 3-char floor, contain no digit, and are not
+    // in the short-abbreviation allowlist -- keywords end up empty, and the
+    // check should decline to judge rather than flag everything irrelevant.
+    assert.deepEqual(nicheKeywords('zz qq'), []);
+    const rel = checkTopicRelevance('zz qq', { label: 'anything', videos: [] });
     assert.equal(rel.relevant, true);
+  });
+
+  test('keeps a short pure-letter abbreviation that matters to the niche', () => {
+    // Real case: "EV charging" kept only "charging" -- "EV" itself, the more
+    // distinctive word, was silently dropped by the 3-char floor.
+    assert.deepEqual(nicheKeywords('EV charging'), ['ev', 'charging']);
+    assert.deepEqual(nicheKeywords('AR filters'), ['ar', 'filters']);
+  });
+
+  test('matches a short abbreviation only at a word boundary, never as a bare substring', () => {
+    // A raw "ev" substring check would wrongly "match" inside every, never,
+    // level, believe -- all common English words with no connection to EVs.
+    const noise = { question: 'x', evidence: [{ text: 'I never really believe every review of this' }] };
+    assert.equal(checkGapRelevance('EV charging', noise).matched.includes('ev'), false);
+
+    const real = { question: 'x', evidence: [{ text: 'how much does an EV actually cost to own?' }] };
+    assert.equal(checkGapRelevance('EV charging', real).matched.includes('ev'), true);
+  });
+
+  test('stemming still finds inflected forms of the niche word', () => {
+    // Real case: niche "3D printing" only matched literal "printing", never
+    // the "print" / "prints" / "printed" audience comments actually used.
+    const gap = { question: 'How much does it cost to print these, and can I buy one?', evidence: [{ text: 'where do you get stl files for your prints' }] };
+    assert.equal(checkGapRelevance('3D printing', gap).relevant, true);
   });
 
   test('gap relevance checks question and evidence text', () => {

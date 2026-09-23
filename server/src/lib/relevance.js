@@ -12,20 +12,51 @@ const STOPWORDS = new Set([
   'an', 'of', 'in', 'on', 'to', 'is', 'it', 'be', 'as', 'at', 'or',
 ]);
 
+// Pure-letter short abbreviations that are meaningful even under 3 characters
+// and never stopwords ("EV charging" without this kept only "charging"; "AR
+// filters" only "filters"). Unlike the digit-rule below, these can't just be
+// let through ordinary substring matching -- a bare "ev" keyword would
+// "match" inside "every", "never", "level". matchKeywords() checks these with
+// word boundaries instead.
+const SHORT_ABBREVIATIONS = new Set(['ai', 'ar', 'vr', 'ev', 'pc', 'tv', 'ui', 'ux', 'os', 'io', 'hr', 'pr']);
+
 /** Splits a niche string into the significant words worth matching on. */
 export function nicheKeywords(niche) {
   return [...new Set(
     (niche ?? '')
       .toLowerCase()
       .split(/[^a-z0-9]+/)
-      .filter((w) => w.length >= 3 && !STOPWORDS.has(w))
+      // Normally 3+ chars, but a short alphanumeric token like "3d", "4k" is
+      // never a stopword and is often the niche's most distinctive word --
+      // dropping it left "3D printing" with only "printing" as a keyword.
+      .filter((w) => w.length > 0 && (w.length >= 3 || /\d/.test(w) || SHORT_ABBREVIATIONS.has(w)) && !STOPWORDS.has(w))
   )];
 }
 
-/** Which of the niche keywords appear in a blob of text. */
+/**
+ * Crude English suffix stripping, not a real stemmer -- just enough to stop
+ * inflection mismatches from hiding a real match. Real case: niche keyword
+ * "printing" (from "3D printing") never matched real audience comments, which
+ * almost always said "print" / "prints" / "printed", because plain substring
+ * matching only looks one direction (keyword found inside text), and "print"
+ * is not a substring of "printing".
+ */
+function stem(word) {
+  const stripped = word.replace(/(ing|ers|er|ed|es|s)$/, '');
+  return stripped.length >= 3 ? stripped : word;
+}
+
+/** Which of the niche keywords appear in a blob of text, word or stem. */
 function matchKeywords(keywords, text) {
   const lower = (text ?? '').toLowerCase();
-  return keywords.filter((k) => lower.includes(k));
+  return keywords.filter((k) => {
+    // Short abbreviations need a word boundary, not raw substring inclusion --
+    // everything else (including hashtag-concatenated forms like
+    // "#thalapathyvijay", which have no boundary before "vijay") relies on
+    // plain substring matching, so this can't be the default behavior.
+    if (SHORT_ABBREVIATIONS.has(k)) return new RegExp(`\\b${k}\\b`).test(lower);
+    return lower.includes(k) || lower.includes(stem(k));
+  });
 }
 
 /** Strips #hashtags so what remains is the title's actual prose. */
