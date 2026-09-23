@@ -29,6 +29,22 @@ export function TopicCard({ topic, rank }) {
             <Badge title="Median engagement rate across the topic's videos">
               {(topic.medianEngagementRate * 100).toFixed(2)}% eng
             </Badge>
+            {topic.nicheRelevant === false && (
+              <Badge
+                tone="bad"
+                title="No niche keyword appears anywhere in this topic's label, summary, or backing videos -- search.list may have pulled in adjacent content. Check the example videos below before trusting it."
+              >
+                ⚠ check relevance
+              </Badge>
+            )}
+            {topic.nicheRelevant !== false && topic.tagSuspect && (
+              <Badge
+                tone="warm"
+                title="Every video backing this topic matched the niche only via tags/hashtags, never in the title prose. Legitimate videos can do this too -- check the example videos below."
+              >
+                ⚠ tag-suspect
+              </Badge>
+            )}
           </div>
 
           {topic.whyHot && (

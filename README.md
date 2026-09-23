@@ -261,6 +261,20 @@ also carries a `nicheRelevant` flag (the app shows a `⚠ check relevance` badge
 still slips through) — this used to only be visible in the audit log, which is what let the
 Soori gap reach the UI unnoticed in the first place.
 
+**The same flag existed for gaps only, not topics or avoid entries, until a later bug pass
+caught the inconsistency.** `checkTopicRelevance()` runs against every topic and avoid entry
+too and was already writing `⚠ NOT NICHE-RELEVANT` / `⚠ TAG-SUSPECT` into the audit log for
+them — but the verdict was never attached to the topic/avoid objects the API actually returns,
+so the UI had nothing to render. A tag-hijacked topic or an off-niche avoid entry looked just
+as trustworthy on screen as a clean one; only opening the audit log would have caught it. Same
+root cause one layer up from the `gap.explanation` bug above: a check computed server-side but
+never wired to what the reader actually sees. Fixed by attaching `nicheRelevant`/`tagSuspect`
+to topics and `nicheRelevant` to avoid entries in `pipeline.js`, and rendering the same
+`⚠ check relevance` / `⚠ tag-suspect` badges on `TopicCard`/`AvoidCard` that gaps already had.
+`VideoStrip` (the video list under every topic, avoid entry, and gap) now also shows a
+`⚠ tag-only` badge per video from the `tagOnlyMatch` flag that was already being sent to the
+client and simply never rendered.
+
 Logs aren't committed (`server/logs/` is gitignored) since they contain full comment text.
 
 ### Off-niche demand and fabricated suggestions

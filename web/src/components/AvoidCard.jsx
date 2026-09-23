@@ -23,6 +23,14 @@ export function AvoidCard({ item, rank }) {
             >
               {item.confirmedByStats ? `stats confirm (${item.flaggedCount})` : 'model signal only'}
             </Badge>
+            {item.nicheRelevant === false && (
+              <Badge
+                tone="bad"
+                title="No niche keyword appears anywhere in this avoid entry's label, reason, or its videos' titles. It may be about something else entirely -- check the videos below before trusting it."
+              >
+                ⚠ check relevance
+              </Badge>
+            )}
           </div>
 
           <p className="mt-2 text-sm text-ink-700 dark:text-ink-200">{item.reason}</p>

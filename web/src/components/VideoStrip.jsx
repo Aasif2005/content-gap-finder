@@ -43,6 +43,14 @@ export function VideoStrip({ videos, limit = 4, showEngagement = false }) {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
+            {v.tagOnlyMatch && (
+              <Badge
+                tone="warm"
+                title="The niche appears only in this video's tags/hashtags, never in its title prose. Not necessarily wrong -- just worth a second look."
+              >
+                ⚠ tag-only
+              </Badge>
+            )}
             {v.isShort && <Badge tone="cool">Short</Badge>}
             <span className="nums hidden text-xs text-ink-400 sm:inline">{duration(v.durationSeconds)}</span>
           </div>

@@ -209,6 +209,13 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   const topicRelevance = topics.map((t) => checkTopicRelevance(niche, t));
   log.logTopics(topics, topicRelevance);
 
+  // Attach the verdict to each topic so the UI can warn on it too, instead of
+  // only the audit log seeing it -- the same gap this fix closes for gaps below.
+  topics.forEach((t, i) => {
+    t.nicheRelevant = topicRelevance[i].relevant;
+    t.tagSuspect = topicRelevance[i].tagSuspect;
+  });
+
   // 6. Avoid list -- resolved here (moved up from after gap mining) because it
   // comes from the SAME clusterTopics() call as topics, so it's already
   // available, and the comment filter below needs it to know which tag-only
@@ -239,6 +246,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     checkTopicRelevance(niche, { label: a.label, summary: a.reason, whyHot: a.counterEvidence, videos: a.videos })
   );
   log.logAvoid(avoid, avoidRelevance);
+  avoid.forEach((a, i) => { a.nicheRelevant = avoidRelevance[i].relevant; });
 
   // Drop comments from tag-hijacked videos that clustering never vouched for,
   // before gap mining ever sees them. Real bug this fixes: a "SOORI AS HERO
