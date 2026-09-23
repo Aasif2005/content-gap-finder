@@ -127,10 +127,10 @@ export function SearchForm({ onSubmit, busy }) {
 
       {advanced && (
         <div className="rise grid gap-4 rounded-xl border border-ink-200 bg-white p-4 sm:grid-cols-4 dark:border-ink-800 dark:bg-ink-900">
-          <Field label="Region" hint="ISO code, e.g. US, IN, GB">
+          <Field label="Region" hint="ISO code, e.g. US, IN, GB. Excludes only channels that report a different country — many don't set one.">
             <input value={regionCode} onChange={(e) => setRegionCode(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
           </Field>
-          <Field label="Language" hint="ISO code, e.g. en, es, hi">
+          <Field label="Language" hint="ISO code, e.g. ta, hi, ar, ko. Real filter for languages with their own script; a soft ranking hint only for Latin-script languages (en, es, fr, de…).">
             <input value={relevanceLanguage} onChange={(e) => setRelevanceLanguage(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
           </Field>
           <Field label="Min views" hint="Drops videos below this">

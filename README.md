@@ -175,8 +175,9 @@ curl -X POST localhost:8787/api/analyze -H 'Content-Type: application/json' -d '
   "contentType": "both",    # shorts | long | both
   "gapMode": "inclusive",   # inclusive | strict
   "minViews": 0,
-  "regionCode": "US",       # optional, ISO 3166-1 alpha-2
-  "relevanceLanguage": "en" # optional, ISO 639-1
+  "regionCode": "US",       # optional, ISO 3166-1 alpha-2 -- hard filter on channel country
+  "relevanceLanguage": "en" # optional, ISO 639-1 -- hard filter for scripted languages,
+                             # soft ranking hint only for Latin-script ones (see below)
 }'
 ```
 
@@ -287,6 +288,43 @@ Two fixes:
 Verified on the same run: the geopolitics gap no longer appears at all (the model now
 declines to generate it, rather than the relevance check catching it after the fact).
 
+### Region and language filters
+
+A "gym fitness" run with `regionCode=IN` and `relevanceLanguage=ta` (Tamil) still returned
+videos from other countries and in other languages. Root cause: both params are documented
+by YouTube as ranking *hints* to `search.list`, not filters — "results in other languages
+will still be returned if they are highly relevant to the query term." Verified empirically:
+`relevanceLanguage=ta` against "gym fitness" returned nearly the same channel set as no
+language param at all, and none of them were actually in Tamil.
+
+Two different fixes, because the two params have different amounts of real signal behind them:
+
+- **Region now hard-filters for real**, on `channels.list`'s self-reported `country` field
+  (free — `part=snippet` was already being fetched). A video is kept only if its channel's
+  country is unset (unknown, not excluded) or matches. On the reported run this correctly
+  cut 50 videos to 25.
+- **Language hard-filters using Unicode script detection**
+  ([`lib/language.js`](server/src/lib/language.js)), not YouTube's hint: for a language
+  with its own script (Tamil, Hindi, Arabic, Korean, Japanese, Russian, ...), a video is
+  kept only if its title/description actually contain that script. This can't distinguish
+  languages that share a script (Urdu/Persian both use Arabic script; Ukrainian/Bulgarian
+  both use Cyrillic) and can't do anything for Latin-script languages (English, Spanish,
+  French, ...) — those fall back to YouTube's soft hint, and the UI says so.
+
+**Both filters degrade instead of zeroing out a run.** The first live test of the script
+filter — the exact reported scenario, re-run — hit `NO_RESULTS_AFTER_FILTER`: 0 of 50 Shorts
+verified as Tamil by script, because Shorts titles overwhelmingly use English/Latin hashtags
+for algorithmic reach even when the creator and spoken content are genuinely Tamil — written
+metadata doesn't reflect spoken language. A filter that can turn a real analysis into a hard
+error on its own uncertainty is worse than one that's occasionally too soft, so each filter
+only takes effect if it leaves at least one video; otherwise it's skipped with a warning
+explaining why, and the run proceeds on YouTube's own ranking instead. Re-verified on the
+same scenario: the run now completes (region cut 50→25, language filter skipped itself with
+`Could not verify any of 50 videos as "ta" by script...`, tag-hijack and gap-mining filters
+still ran on top), rather than erroring out. A positive-control run (a Tamil-script niche
+query with `relevanceLanguage=ta`) confirms the filter does hard-cut when script evidence is
+actually present, so this isn't a filter that's silently given up entirely.
+
 ---
 
 ## Layout
@@ -334,3 +372,8 @@ web/
   in adjacent content — a "cast iron restoration" run surfaced a barn-find motorcycle
   cluster. Narrower niches drift less, and the topic's example videos make drift obvious
   at a glance.
+- **Region and Latin-script language filters both have real gaps.** Region relies on a
+  self-reported `channels.list` field many creators never set (treated as "unknown", not
+  excluded). Language can only hard-filter scripted languages — Latin-script ones (English,
+  Spanish, French, ...) fall back to YouTube's own soft ranking hint. See
+  [Region and language filters](#region-and-language-filters).

@@ -4,6 +4,7 @@ import { clusterTopics, mineGaps, selectComments, groundGaps, heatTier } from '.
 import { config } from '../config.js';
 import { RunLogger } from '../lib/auditLog.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, untrustedVideoIds } from '../lib/relevance.js';
+import { hasScriptFilter, matchesLanguageScript } from '../lib/language.js';
 
 /** Trims a scored video down to what the UI actually renders. */
 const publicVideo = (v) => ({
@@ -89,6 +90,56 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
 
   onProgress('stats', 'Fetching channel sizes', 30);
   const channelMap = await yt.getChannels(videos.map((v) => v.channelId));
+
+  // regionCode/relevanceLanguage on search.list are YouTube's own ranking
+  // hints, not filters -- verified empirically: relevanceLanguage=ta against
+  // "gym fitness" returned nearly the same channels as no language param at
+  // all, none actually in Tamil. Where we can build a real filter, we do --
+  // but only when it actually leaves something to narrow to. Real finding
+  // while testing this exact case: script detection found ZERO Tamil-script
+  // titles among 50 genuine gym/fitness Shorts, because Shorts overwhelmingly
+  // use English hashtags for algorithmic reach even from creators who speak
+  // Tamil -- the WRITTEN metadata doesn't reflect the SPOKEN language.
+  // Hard-failing the whole analysis on that basis would be worse than the
+  // soft-hint behavior it's meant to replace, so each filter only takes
+  // effect if it leaves at least one video; otherwise it's skipped with a
+  // warning explaining why, rather than erroring the run out to zero.
+  const beforeRegionLang = videos.length;
+
+  if (relevanceLanguage && hasScriptFilter(relevanceLanguage)) {
+    const scriptMatched = videos.filter((v) => matchesLanguageScript(relevanceLanguage, `${v.title} ${v.description}`));
+    if (scriptMatched.length) {
+      videos = scriptMatched;
+    } else {
+      warnings.push(
+        `Could not verify any of ${videos.length} videos as "${relevanceLanguage}" by script -- Shorts and short titles often use English/Latin hashtags for reach even when the spoken content is in another language. Results follow YouTube's own relevance ranking instead.`
+      );
+    }
+  } else if (relevanceLanguage) {
+    warnings.push(
+      `"${relevanceLanguage}" has no script distinct enough to verify (e.g. English/Spanish/French/German/Vietnamese all share the Latin alphabet) -- results follow YouTube's own relevance ranking, not a guarantee.`
+    );
+  }
+
+  if (regionCode) {
+    // Exclude only a confirmed mismatch. A channel's country is self-reported
+    // and many creators never set it -- unset is "unknown," not "no."
+    const regionMatched = videos.filter((v) => {
+      const country = channelMap.get(v.channelId)?.country;
+      return !country || country === regionCode;
+    });
+    if (regionMatched.length) {
+      videos = regionMatched;
+    } else {
+      warnings.push(
+        `None of ${videos.length} videos' channels report "${regionCode}" as their country -- most creators never set this field. Results follow YouTube's own relevance ranking instead.`
+      );
+    }
+  }
+
+  if (beforeRegionLang - videos.length > 0) {
+    warnings.push(`${beforeRegionLang - videos.length} of ${beforeRegionLang} videos dropped by the region/language filter.`);
+  }
 
   // 3. Deterministic scoring. The LLM never does arithmetic.
   const ranked = scoreVideos(videos, channelMap);

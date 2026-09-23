@@ -125,6 +125,9 @@ export async function getChannels(channelIds) {
       map.set(c.id, {
         channelId: c.id,
         title: c.snippet?.title ?? '',
+        // Self-reported by the creator, spotty coverage -- many leave it
+        // unset. Real, but only when present; null means "unknown", not "no".
+        country: c.snippet?.country ?? null,
         subscribers: Number(c.statistics?.subscriberCount ?? 0),
         hiddenSubscribers: Boolean(c.statistics?.hiddenSubscriberCount),
         totalViews: Number(c.statistics?.viewCount ?? 0),

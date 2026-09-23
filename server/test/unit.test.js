@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps } from '../src/services/analyze.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords } from '../src/lib/relevance.js';
+import { hasScriptFilter, matchesLanguageScript } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 
 describe('parseDuration', () => {
@@ -335,5 +336,36 @@ describe('untrustedVideoIds', () => {
   test('never flags a video that was not tag-only in the first place', () => {
     const untrusted = untrustedVideoIds(videos, new Set());
     assert.equal(untrusted.has('clean'), false);
+  });
+});
+
+describe('language script detection', () => {
+  // Real case: regionCode=IN & relevanceLanguage=ta on a "gym fitness" search
+  // returned nearly the same channel set as no language param at all -- none
+  // of them actually in Tamil. YouTube's relevanceLanguage is a ranking hint,
+  // not a filter (its own docs say so); this is what makes it a real one.
+  test('detects Tamil script and rejects plain English', () => {
+    assert.equal(matchesLanguageScript('ta', 'இத பண்ணுங்க போதும்'), true);
+    assert.equal(matchesLanguageScript('ta', 'Beginners gym workout tips'), false);
+  });
+
+  test('detects script inside mixed-script text', () => {
+    assert.equal(matchesLanguageScript('ta', 'BigleeTamil - 2g Protein + 6 Days Gym ஏன் உங்கள்'), true);
+  });
+
+  test('returns null, not false, for a language with no distinctive script', () => {
+    // English/Spanish/French/German all share the Latin alphabet -- script
+    // detection cannot tell them apart, and must say so rather than silently
+    // rejecting everything.
+    assert.equal(matchesLanguageScript('en', 'anything at all'), null);
+    assert.equal(hasScriptFilter('en'), false);
+  });
+
+  test('hasScriptFilter is true exactly for languages with a mapping', () => {
+    assert.equal(hasScriptFilter('ta'), true);
+    assert.equal(hasScriptFilter('hi'), true);
+    assert.equal(hasScriptFilter('ar'), true);
+    assert.equal(hasScriptFilter('es'), false);
+    assert.equal(hasScriptFilter(undefined), false);
   });
 });
