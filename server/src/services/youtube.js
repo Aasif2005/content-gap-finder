@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { spend } from '../lib/quota.js';
+import { languageQueryHint } from '../lib/language.js';
 
 const { base, apiKey } = config.youtube;
 
@@ -61,9 +62,22 @@ export async function searchVideos({ niche, window, customAfter, contentType, re
   // <=3m, so "short" is a superset we refine after videos.list returns durations.
   const videoDuration = contentType === 'shorts' ? 'short' : contentType === 'long' ? 'medium' : 'any';
 
+  // relevanceLanguage as a search.list PARAMETER barely moves the ranking (see
+  // lib/language.js) -- folding the language's name into the QUERY TEXT itself
+  // does much more, because search.list is a full-text relevance search and
+  // creators overwhelmingly write their audience language into an otherwise
+  // English/romanized title or tags for reach. Confirmed live: niche "ghost
+  // story" + regionCode=IN + relevanceLanguage=ta returned 1/50 verified-Tamil
+  // candidates; "ghost story Tamil" returned 32/50. This doesn't replace the
+  // relevanceLanguage param (still sent below) or the post-fetch hard filter --
+  // it fixes the step before either of them gets a chance to work: too few
+  // genuinely on-language candidates being fetched in the first place.
+  const languageHint = languageQueryHint(relevanceLanguage);
+  const q = languageHint ? `${niche} ${languageHint}` : niche;
+
   const data = await call('search', {
     part: 'snippet',
-    q: niche,
+    q,
     type: 'video',
     order,
     maxResults: 50,

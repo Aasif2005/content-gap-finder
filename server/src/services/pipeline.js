@@ -177,7 +177,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     );
   }
 
-  log.logSearch(hits, ranked);
+  log.logSearch(hits, beforeFilter, ranked, warnings);
 
   // 4. Comments for the top slice only. commentThreads.list is per-video, so
   // this is N round trips -- the cap is about latency as much as quota.

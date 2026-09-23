@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps, truncate } from '../src/services/analyze.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords } from '../src/lib/relevance.js';
-import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage } from '../src/lib/language.js';
+import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 
 describe('parseDuration', () => {
@@ -417,6 +417,35 @@ describe('Latin-script common-word language heuristic', () => {
   test('script filter and common-word heuristic never both claim the same language code', () => {
     for (const code of ['en', 'es', 'fr', 'de', 'pt', 'it', 'nl']) {
       assert.equal(hasScriptFilter(code), false);
+    }
+  });
+});
+
+describe('languageQueryHint', () => {
+  // Real case: niche "ghost story", regionCode=IN, relevanceLanguage=ta
+  // returned 1/50 verified-Tamil candidates because the search.list QUERY
+  // TEXT was still just "ghost story" in English -- relevanceLanguage barely
+  // moves the ranking on its own. Folding the language's name into the query
+  // moved that to 32/50, confirmed live.
+  test('returns the English name for a language this module can verify', () => {
+    assert.equal(languageQueryHint('ta'), 'Tamil');
+    assert.equal(languageQueryHint('TA'), 'Tamil'); // case-insensitive, matches the other language.js exports
+    assert.equal(languageQueryHint('es'), 'Spanish');
+  });
+
+  test('returns null for a language code with no name mapping, not an empty string', () => {
+    assert.equal(languageQueryHint('zu'), null);
+    assert.equal(languageQueryHint(undefined), null);
+  });
+
+  test('every script-filter and Latin-heuristic language has a query hint, so the query-augmentation and the post-fetch filter never disagree on coverage', () => {
+    for (const code of ['ta', 'hi', 'ar', 'ja', 'ko', 'ru', 'th', 'he']) {
+      assert.equal(hasScriptFilter(code), true);
+      assert.notEqual(languageQueryHint(code), null);
+    }
+    for (const code of ['en', 'es', 'fr', 'de', 'pt', 'it', 'nl']) {
+      assert.equal(hasLatinHeuristic(code), true);
+      assert.notEqual(languageQueryHint(code), null);
     }
   });
 });

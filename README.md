@@ -375,6 +375,37 @@ slicing on `[...s]` (Unicode code points) instead in both places `truncate()` wa
 (`services/analyze.js`, used in every LLM prompt, and `lib/auditLog.js`, used in the audit
 log). Re-ran the exact same scenario after the fix: it now completes end to end.
 
+**A user report on `niche="ghost story"`, `regionCode=IN`, `relevanceLanguage=ta` surfaced a
+deeper problem with the language filter than just its accuracy: the audit log said
+`videos.list resolved 1 of them to full stats`, reading as if YouTube itself had only found
+1 Tamil video for the niche.** Two separate things were actually true, and the log was
+conflating them:
+
+- **The audit log had a labeling bug.** `logSearch()` was called with the region/language
+  filter's *output* (`ranked`, already narrowed) but its own text described that number as
+  what `videos.list` resolved. Verified live: `videos.list` actually resolved all 50 — the
+  region/language filter is what cut it to 1, and the log never said so. Fixed by passing
+  the true pre-filter count separately from the post-filter list, and printing the filter's
+  own warnings inline in the log section instead of leaving them only in the API's JSON
+  response.
+- **The filter's small yield was also a real, separate problem**, and the log bug had been
+  hiding it. `search.list`'s query TEXT was still just "ghost story" in English —
+  `relevanceLanguage=ta` on its own barely moves YouTube's ranking (established earlier in
+  this section) — so of the 50 candidates fetched, only 1 was genuinely Tamil; the filter
+  correctly rejected the other 49, but 49 rejections out of a pool that should never have
+  been 98% off-language in the first place is a fetch problem, not a filter problem. The fix
+  the user found manually — typing "ghost story tamil" into YouTube's own search box — is
+  now applied automatically: `searchVideos()` folds the target language's English name into
+  the query text itself (`languageQueryHint()` in `lib/language.js`) for any language this
+  module can verify, on top of (not instead of) the existing `relevanceLanguage` parameter
+  and the post-fetch hard filter. Verified live, same niche and region: 1/50 verified-Tamil
+  candidates without the query hint, **32/50 with it** — most Tamil-audience creators
+  write "Tamil" into an otherwise English/romanized title or tags for reach, the same
+  pattern already visible in the one video that matched even before this fix (titled
+  `"...Experience in Tamil | ..."`). Re-ran the exact reported scenario end to end after
+  both fixes: 32 of 50 videos survived the filter (down from 1), and the audit log now
+  correctly attributes the drop to the filter, not to `videos.list`.
+
 ---
 
 ## Layout

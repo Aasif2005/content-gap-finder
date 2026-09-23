@@ -32,11 +32,26 @@ export class RunLogger {
     this.sections.push({ title: `${n}. ${title}`, lines: Array.isArray(lines) ? lines : [lines] });
   }
 
-  /** Logs every candidate video the search returned, before any filtering. */
-  logSearch(hits, videos) {
+  /**
+   * Logs the search results. `videos` here is what SURVIVES every filter
+   * (format/views/region/language) -- `resolvedCount` is the true, unfiltered
+   * videos.list number, logged separately so the two are never conflated.
+   * Real bug this fixes: this method used to log `videos.length` (the
+   * post-filter count) under the label "videos.list resolved N of them to
+   * full stats", which is what's actually reported by videos.list -- a run
+   * that fetched and resolved 50 videos then had the region/language filter
+   * cut it to 1 logged "videos.list resolved 1 of them", reading as if the
+   * YouTube API call itself only found 1 video, when it found all 50.
+   */
+  logSearch(hits, resolvedCount, videos, warnings = []) {
+    const filterLine =
+      resolvedCount !== videos.length
+        ? [`format/min-views/region/language filters then narrowed that down to the ${videos.length} shown below:`, ...warnings.map((w) => `  ⚠ ${w}`)]
+        : [];
     this.section('SEARCH — raw candidates from YouTube', [
-      `search.list matched ${hits.length} videos for "${this.input.niche}" (window: ${this.input.window}, type: ${this.input.contentType})`,
-      `videos.list resolved ${videos.length} of them to full stats`,
+      `search.list matched ${hits.length} videos for "${this.input.niche}" (window: ${this.input.window}, type: ${this.input.contentType}, region: ${this.input.regionCode ?? 'any'}, language: ${this.input.relevanceLanguage ?? 'any'})`,
+      `videos.list resolved ${resolvedCount} of them to full stats`,
+      ...filterLine,
       '',
       ...videos.slice(0, 50).map((v, i) =>
         `  ${String(i + 1).padStart(2)}. [${v.videoId}] ${v.isShort ? 'Short' : 'long'} ${Math.round(v.durationSeconds)}s — "${truncate(v.title, 90)}" (${v.channelTitle})` +

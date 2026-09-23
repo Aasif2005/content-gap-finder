@@ -57,6 +57,35 @@ export function hasScriptFilter(languageCode) {
   return Boolean(SCRIPTS[(languageCode ?? '').toLowerCase()]);
 }
 
+// English names for the languages this module can verify (SCRIPTS + the
+// Latin-heuristic set below), used to strengthen the search.list QUERY
+// itself, not just filter what comes back. Real case that motivated this:
+// niche "ghost story", regionCode=IN, relevanceLanguage=ta returned 50
+// candidates of which only 1 was verifiably Tamil -- because the query text
+// was still just "ghost story" in English, and relevanceLanguage barely
+// nudges search.list's ranking (see the module comment above). Appending
+// "Tamil" to the query text moved that from 1/50 to 32/50 verified Tamil,
+// confirmed live -- Tamil-audience creators overwhelmingly write "Tamil" into
+// an otherwise-English/romanized title or tags for discoverability (the one
+// video that DID match unaugmented was literally titled "...Experience in
+// Tamil | ..."), so the query itself, not just the post-filter, was the
+// bottleneck. Scoped to languages we can also verify afterward, matching the
+// project's "don't add a capability without a real signal behind it" rule.
+const LANGUAGE_NAMES = {
+  ta: 'Tamil', hi: 'Hindi', mr: 'Marathi', ne: 'Nepali', te: 'Telugu', kn: 'Kannada',
+  ml: 'Malayalam', bn: 'Bengali', gu: 'Gujarati', pa: 'Punjabi', or: 'Odia', si: 'Sinhala',
+  th: 'Thai', lo: 'Lao', my: 'Burmese', km: 'Khmer', ka: 'Georgian', hy: 'Armenian',
+  am: 'Amharic', he: 'Hebrew', el: 'Greek', ja: 'Japanese', ko: 'Korean', zh: 'Chinese',
+  ar: 'Arabic', ur: 'Urdu', fa: 'Persian', ru: 'Russian', uk: 'Ukrainian', bg: 'Bulgarian',
+  sr: 'Serbian',
+  en: 'English', es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', it: 'Italian', nl: 'Dutch',
+};
+
+/** English name to fold into the search query, or null if we don't model this language at all. */
+export function languageQueryHint(languageCode) {
+  return LANGUAGE_NAMES[(languageCode ?? '').toLowerCase()] ?? null;
+}
+
 /**
  * Does this text contain the target language's script?
  * Returns null (not false) for a language we have no script mapping for --
