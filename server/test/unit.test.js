@@ -209,9 +209,29 @@ describe('relevance', () => {
     assert.equal(rel.relevant, true);
   });
 
-  test('gap relevance checks question, explanation and evidence text', () => {
+  test('gap relevance checks question and evidence text', () => {
     const gap = { question: 'How do I fix a gummy sourdough crumb?', explanation: '', evidence: [{ text: 'my starter is dead' }] };
     assert.equal(checkGapRelevance('sourdough baking', gap).relevant, true);
+  });
+
+  test('does not credit the niche keyword when it only appears in the model\'s own explanation', () => {
+    // Real case: 3 comments on a "thalapathy vijay" run asked the channel to
+    // stop covering Vijay/Bigg Boss and cover unrelated geopolitics instead.
+    // None of the comments -- or the gap's own question -- mention Vijay. The
+    // model's explanation said "the Vijay-VJS controversy video" (describing
+    // which video the comments sit under), which let the gap pass as relevant
+    // even though the actual demand has nothing to do with the niche.
+    const gap = {
+      question: 'Anna, geopolitics cheyyandi, UK and Europe video cheyandi',
+      explanation: 'Comments on the Vijay-VJS controversy video ask for unrelated world-affairs content.',
+      evidence: [
+        { text: 'UK and Europe video cheyandi please, war between Europe and Russia antunnaru' },
+        { text: 'Anna Geopolitics cheyyandi, e bigboss gurinchi vadhuu time waste' },
+      ],
+    };
+    const rel = checkGapRelevance('thalapathy vijay', gap);
+    assert.equal(rel.relevant, false);
+    assert.deepEqual(rel.matched, []);
   });
 
   test('summarizeRelevance counts flagged as total minus relevant', () => {

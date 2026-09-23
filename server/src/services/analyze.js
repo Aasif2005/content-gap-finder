@@ -179,6 +179,13 @@ Rules:
   Do NOT report a gap that a high-heat video already answers well.
 - Reject generic filler ("more content please", "great video"). A gap must be a
   specific, filmable subject.
+- A gap is demand for MORE content about the niche, not a request to abandon
+  it. Comments telling the channel to stop covering the niche and cover an
+  unrelated subject instead (world news, a different person, an unrelated
+  topic) are audience fatigue, not a content gap -- reject them.
+- explanation and suggested_title must follow ONLY from what the cited
+  comments actually say. Never invent a premise or connect two separate
+  comments into a claim neither one makes.
 - demand_strength: "high" only when many independent comments converge on it.`;
 
 export async function mineGaps({ niche, window, videos, comments, topics, gapMode, onProgress }) {

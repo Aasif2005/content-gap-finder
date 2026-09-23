@@ -262,6 +262,31 @@ Soori gap reach the UI unnoticed in the first place.
 
 Logs aren't committed (`server/logs/` is gitignored) since they contain full comment text.
 
+### Off-niche demand and fabricated suggestions
+
+A third-order version of the same problem: three comments on a legitimately on-niche
+"thalapathy vijay" video (a Bigg Boss/VJS controversy clip) asked the channel to **stop**
+covering Vijay and cover unrelated geopolitics instead — "Anna Geopolitics cheyyandi, e
+bigboss gurinchi vadhuu time waste", "UK and Europe video cheyandi". None of the three
+comments, or the gap's own `question`, mentioned Vijay at all. The relevance check still
+passed it, because `gap.explanation` — the model's own framing prose ("the Vijay-VJS
+controversy video") — happened to name the niche while describing which video the comments
+sat under. With no relevance guardrail catching it, the model then had to invent a
+`suggested_title` to bridge two unrelated requests, producing a premise no comment
+states: *"CM Vijay's UK trip vs the Europe-Russia War"*.
+
+Two fixes:
+
+- **`checkGapRelevance()` no longer reads `gap.explanation`.** Only `question` and the
+  actual evidence comments count — what real viewers said, not the model's summary of them.
+- **The gap-mining prompt** now explicitly rejects "stop covering the niche, cover something
+  unrelated instead" comments as audience fatigue rather than a content gap, and requires
+  `explanation`/`suggested_title` to follow only from what the cited comments say — never a
+  connection between two separate comments that neither one makes.
+
+Verified on the same run: the geopolitics gap no longer appears at all (the model now
+declines to generate it, rather than the relevance check catching it after the fact).
+
 ---
 
 ## Layout

@@ -104,11 +104,15 @@ export function checkGapRelevance(niche, gap) {
   const keywords = nicheKeywords(niche);
   if (!keywords.length) return { relevant: true, matched: [], score: 1 };
 
-  const text = [
-    gap.question,
-    gap.explanation,
-    ...(gap.evidence ?? []).map((e) => e.text),
-  ].join(' ');
+  // gap.explanation is deliberately excluded. It's the model's own framing
+  // prose, not grounded audience demand, and it can name the niche while
+  // describing which video the comments sit under even when the comments
+  // themselves have nothing to do with it. Real case: 3 comments asking a
+  // Vijay channel to stop covering Vijay and do geopolitics instead --
+  // explanation said "the Vijay-VJS controversy video", which let a gap with
+  // zero actual niche content pass as relevant. question and evidence are
+  // what real viewers actually said; only those count as evidence here.
+  const text = [gap.question, ...(gap.evidence ?? []).map((e) => e.text)].join(' ');
 
   const matched = matchKeywords(keywords, text);
   return {
