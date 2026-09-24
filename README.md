@@ -548,6 +548,28 @@ Tamil by audio language, 38 survived to analysis** after the region filter ran o
 from 32/50 with the query-hint fix alone, and 1/50 in the original report. The audit log
 confirms the same numbers and correctly names the audio-language check as the reason.
 
+**A fourth signal: does the title itself name a *different* language?** A user-reported
+"thalapathy vijay" / `relevanceLanguage=ta` run still surfaced Hindi-language comments under a
+Tamil filter. The evidence videos — titles like *"GALAXY Full Movie Hindi Dubbed 2026 |
+Thalapathy Vijay..."* — had `defaultAudioLanguage: null` (verified live: uploaders on these
+channels never set it) and a pure-Latin title (no Tamil script to check), so every signal above
+landed on "undecided, kept" even though the title says outright, in English, that the audio is
+Hindi. Comment fetching has no language awareness of its own — it just reads whatever survives
+the filter — so those Hindi comments leaked straight into gap mining.
+
+`namedLanguages()` closes that gap: it looks for a language's English name sitting within a few
+words of a dub/version/subtitle/audio label ("Hindi Dubbed", "Tamil Dub", "English Subtitles").
+Scoped narrowly on purpose — a language's name shows up constantly in phrases that say nothing
+about a video's own audio ("French toast", "Dutch oven", "Greek yogurt", "Chinese checkers"),
+and a bare name match would misfire on all of those; requiring the dub/version/subtitle context
+word nearby avoids it (verified against exactly those phrases). It is the *weakest* signal in
+the combinator — checked last, and only converts a remaining "undecided" into "excluded" when
+audio and script/word evidence had nothing to say; it never overrides a positive confirmation,
+and a bilingual claim that also names the *requested* language ("Hindi & Tamil Dubbed") is left
+undecided rather than excluded. Verified live on all seven Hindi-dubbed videos from the
+reported run: `matchesRequestedLanguage('ta', video)` went from `null` (kept) to `false`
+(excluded), while the genuinely Tamil-script videos in the same batch were unaffected.
+
 ---
 
 ## Layout

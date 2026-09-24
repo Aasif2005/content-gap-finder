@@ -6,7 +6,7 @@ import path from 'node:path';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps, groundObjections, truncate } from '../src/services/analyze.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords } from '../src/lib/relevance.js';
-import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage } from '../src/lib/language.js';
+import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage, namedLanguages } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
 import { withLock } from '../src/lib/fileLock.js';
@@ -519,6 +519,88 @@ describe('audio-language field and the combined verdict', () => {
   test('matchesRequestedLanguage for a Latin-heuristic language: audio can confirm even when the word heuristic can\'t judge', () => {
     const video = { title: 'hi', description: '', defaultAudioLanguage: 'es' }; // too short for the word heuristic alone
     assert.equal(matchesRequestedLanguage('es', video), true);
+  });
+
+  describe('namedLanguages', () => {
+    test('finds a language name sitting next to a dub/version/subtitle label', () => {
+      // The exact real case: defaultAudioLanguage unset, pure-Latin title, no
+      // Tamil script to check -- every other signal landed on "undecided" even
+      // though the title says outright, in English, that the audio is Hindi.
+      assert.deepEqual(namedLanguages('GALAXY Full Movie Hindi Dubbed 2026 | Thalapathy Vijay'), ['hi']);
+      assert.deepEqual(namedLanguages('Tamil Dub | Action Movie'), ['ta']);
+      assert.deepEqual(namedLanguages('Full movie with English Subtitles'), ['en']);
+    });
+
+    test('a bare language name with no dub/version/audio context nearby is not a claim', () => {
+      // The false-positive risk this whole check exists to avoid: a language's
+      // English name shows up constantly in phrases that say nothing about a
+      // video's own audio.
+      assert.deepEqual(namedLanguages('Easy French Toast Recipe for Beginners'), []);
+      assert.deepEqual(namedLanguages('Best Dutch Oven Bread -- No Knead Method'), []);
+      assert.deepEqual(namedLanguages('Authentic Greek Yogurt Parfait'), []);
+      assert.deepEqual(namedLanguages('Chinese Checkers Strategy Guide'), []);
+      assert.deepEqual(namedLanguages('German Shepherd Puppy Training Tips'), []);
+    });
+
+    test('finds every language claimed when a description lists multiple dubs', () => {
+      assert.deepEqual(
+        new Set(namedLanguages('varisu full movie kannada dubbed\nvarisu full movie hindi explained')),
+        new Set(['kn', 'hi'])
+      );
+    });
+
+    test('a language with no English-name mapping never matches', () => {
+      assert.deepEqual(namedLanguages('Turkish Delight Recipe'), []);
+    });
+  });
+
+  describe('matchesRequestedLanguage: named-language text claims', () => {
+    test('excludes an undecided video whose title names a different language next to a dub label', () => {
+      // The exact bug report: "thalapathy vijay" + relevanceLanguage=ta kept
+      // several Hindi-dubbed movies because defaultAudioLanguage was unset and
+      // the title had no Tamil script to check -- their Hindi-language comments
+      // then leaked into gap mining under a "language: ta" filter.
+      const video = {
+        title: 'ROBBERY (2026) Vijay Thalapathy Hindi Dubbed Action Movie | South Indian Hindi Dubbed Movie',
+        description: '',
+        defaultAudioLanguage: null,
+      };
+      assert.equal(matchesRequestedLanguage('ta', video), false);
+    });
+
+    test('never overrides a positive audio confirmation', () => {
+      // The named-language check is the weakest signal and must never contradict
+      // the strongest one -- a creator who mislabels their own title shouldn't
+      // get a genuinely Tamil-audio video excluded.
+      const video = { title: 'Hindi Dubbed but actually Tamil audio', description: '', defaultAudioLanguage: 'ta' };
+      assert.equal(matchesRequestedLanguage('ta', video), true);
+    });
+
+    test('never overrides a positive script confirmation', () => {
+      const video = {
+        title: 'ROBBERY Hindi Dubbed | பேய் கதை உண்மை சம்பவம்',
+        description: '',
+        defaultAudioLanguage: null,
+      };
+      assert.equal(matchesRequestedLanguage('ta', video), true);
+    });
+
+    test('a bilingual claim that includes the requested language is not excluded', () => {
+      // "Hindi & Tamil Dubbed" names the target language too -- excluding it
+      // anyway would contradict the video's own claim about itself.
+      const video = { title: 'Hindi & Tamil Dubbed Full Movie', description: '', defaultAudioLanguage: null };
+      assert.equal(matchesRequestedLanguage('ta', video), null);
+    });
+
+    test('food/cultural phrases naming a language do not trigger exclusion', () => {
+      const video = { title: 'Easy French Toast Recipe', description: '', defaultAudioLanguage: null };
+      assert.equal(matchesRequestedLanguage('ta', video), null);
+    });
+
+    test('also applies to languages with no script or Latin-heuristic model', () => {
+      const video = { title: 'Cau chuyen ma co that Hindi Dubbed', description: '', defaultAudioLanguage: null };
+      assert.equal(matchesRequestedLanguage('vi', video), false);
+    });
   });
 });
 

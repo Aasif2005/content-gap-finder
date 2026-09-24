@@ -178,7 +178,7 @@ export function SearchForm({ onSubmit, busy, initial = {} }) {
               <Field label="Region" hint="ISO code, e.g. US, IN, GB. Excludes only channels that report a different country — many don't set one.">
                 <input value={regionCode} onChange={(e) => setRegionCode(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
               </Field>
-              <Field label="Language" hint="ISO code, e.g. ta, hi, ar, ko, en, es. Real filter using each video's own declared/detected audio language, backed by script or common-word matching as a second check for common languages.">
+              <Field label="Language" hint="ISO code, e.g. ta, hi, ar, ko, en, es. Real filter using each video's own declared/detected audio language, backed by script/common-word matching and a title dub-label check (e.g. 'Hindi Dubbed') as further evidence.">
                 <input value={relevanceLanguage} onChange={(e) => setRelevanceLanguage(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
               </Field>
             </>

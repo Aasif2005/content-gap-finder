@@ -168,6 +168,50 @@ export function matchesLatinLanguage(languageCode, text) {
   return scores[code] === maxScore;
 }
 
+// --- Named-language text claims -------------------------------------------
+//
+// Real case that motivated this: several "GALAXY Full Movie Hindi Dubbed
+// 2026 | Thalapathy Vijay..." videos had defaultAudioLanguage unset AND a
+// pure-Latin title (no Tamil script to check against a "ta" request), so
+// every signal above landed on null (undecided, kept) -- even though the
+// title says outright, in English, that the audio is Hindi. Verified live:
+// videos.list confirmed defaultAudioLanguage: null on the exact videos from
+// a real "thalapathy vijay" / relevanceLanguage=ta run, and their Hindi
+// comments then leaked into gap mining under a "language: ta" filter.
+//
+// Scoped narrowly on purpose: a language's English name also shows up
+// constantly in phrases that say nothing about a video's own audio --
+// "French toast", "Dutch oven", "Greek yogurt", "Chinese checkers", "Turkish
+// delight". A bare name match would misfire on all of those. Real dubbing/
+// subtitle labels put the language name next to a small, predictable set of
+// context words instead ("Hindi Dubbed", "Tamil Dub", "English Subtitles",
+// "Telugu Version", "Malayalam Audio") -- this only fires in that window.
+const DUB_CONTEXT_RE = /\b(dub(?:bed|s)?|version|subtitle[sd]?|voice[- ]?over|audio|explained|translat(?:ed|ion))\b/i;
+
+const LANGUAGE_NAME_TO_CODE = new Map(
+  Object.entries(LANGUAGE_NAMES).map(([code, name]) => [name.toLowerCase(), code])
+);
+
+/**
+ * Language codes the title/description explicitly CLAIM the video is in, via
+ * the language's own English name sitting within a few words of a dub/
+ * version/subtitle/audio context word. A title can claim more than one code
+ * ("Hindi & Telugu Dubbed"), so this returns an array, not a single verdict --
+ * the caller decides what a claim that includes or excludes the requested
+ * language means.
+ */
+export function namedLanguages(text) {
+  const words = tokenize(text);
+  const found = new Set();
+  for (let i = 0; i < words.length; i++) {
+    const code = LANGUAGE_NAME_TO_CODE.get(words[i]);
+    if (!code) continue;
+    const window = words.slice(Math.max(0, i - 3), i + 4).join(' ');
+    if (DUB_CONTEXT_RE.test(window)) found.add(code);
+  }
+  return [...found];
+}
+
 // --- Audio-language field, and combining it with the text-based checks -----
 //
 // videos.list's snippet.defaultAudioLanguage (creator-set, or YouTube's own
@@ -219,28 +263,45 @@ export function matchesAudioLanguage(languageCode, defaultAudioLanguage) {
  * a CONFIRMED mismatch gets excluded).
  */
 export function matchesRequestedLanguage(languageCode, video) {
-  const audio = matchesAudioLanguage(languageCode, video.defaultAudioLanguage);
+  const code = (languageCode ?? '').toLowerCase();
+  const audio = matchesAudioLanguage(code, video.defaultAudioLanguage);
   const text = `${video.title ?? ''} ${video.description ?? ''}`;
 
-  if (hasScriptFilter(languageCode)) {
-    const script = matchesLanguageScript(languageCode, text);
+  // The weakest signal, checked once up front: does the title/description
+  // explicitly claim a DIFFERENT language via a dub/version/subtitle/audio
+  // label (namedLanguages() above)? Excludes only when the requested
+  // language's own name is absent from that same claim, so a bilingual label
+  // ("Hindi & Tamil Dubbed") never gets excluded on this alone. Used strictly
+  // as a last-resort tiebreaker below -- never overrides a positive audio,
+  // script or Latin-heuristic confirmation, only converts a remaining
+  // "undecided" into an excluded when nothing stronger settled it.
+  const named = namedLanguages(text);
+  const namesOtherLanguage = named.length > 0 && !named.includes(code);
+
+  if (hasScriptFilter(code)) {
+    const script = matchesLanguageScript(code, text);
     if (audio === true || script === true) return true;
     // A title with no matching script proves nothing on its own (see the
     // "GHOST STORIES IN TAMIL" case above) -- only an explicit audio
     // disagreement, unrescued by script, counts as a confirmed mismatch.
-    return audio === false ? false : null;
+    if (audio === false) return false;
+    return namesOtherLanguage ? false : null;
   }
 
-  if (hasLatinHeuristic(languageCode)) {
-    const latin = matchesLatinLanguage(languageCode, text);
+  if (hasLatinHeuristic(code)) {
+    const latin = matchesLatinLanguage(code, text);
     if (audio === true || latin === true) return true;
     // matchesLatinLanguage's false is already a comparative, fairly confident
     // signal (another modeled language scored strictly higher) -- unlike bare
     // script absence, it can stand on its own when audio is unavailable.
-    return audio === false || latin === false ? false : null;
+    if (audio === false || latin === false) return false;
+    return namesOtherLanguage ? false : null;
   }
 
-  // No text-based model for this language at all -- audio is the only signal,
-  // but it now covers languages this app previously couldn't filter at all.
-  return audio;
+  // No text-based model for this language at all -- audio is the only strong
+  // signal, but it now covers languages this app previously couldn't filter
+  // at all. Named-language text still gets the last word when audio itself
+  // has nothing to say.
+  if (audio === true || audio === false) return audio;
+  return namesOtherLanguage ? false : null;
 }
