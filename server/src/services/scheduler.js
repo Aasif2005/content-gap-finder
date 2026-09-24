@@ -83,7 +83,10 @@ export function start() {
   if (timer || !config.scheduler.enabled) return;
   timer = setInterval(tick, config.scheduler.checkIntervalMs);
   timer.unref(); // never hold the process open just for the scheduler
-  console.log(`  scheduler: checking saved watches every ${Math.round(config.scheduler.checkIntervalMs / 60000)}m`);
+  const ms = config.scheduler.checkIntervalMs;
+  // Sub-minute intervals (used when testing) rounded to a bare-faced "every 0m".
+  const every = ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`;
+  console.log(`  scheduler: checking saved watches every ${every}`);
 }
 
 export function stop() {
