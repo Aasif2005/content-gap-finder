@@ -41,17 +41,22 @@ function Pills({ options, value, onChange, name, disabled }) {
   );
 }
 
-export function SearchForm({ onSubmit, busy }) {
-  const [niche, setNiche] = useState('');
-  const [window, setWindow] = useState('7d');
-  const [contentType, setContentType] = useState('both');
-  const [advanced, setAdvanced] = useState(false);
-  const [regionCode, setRegionCode] = useState('');
-  const [relevanceLanguage, setRelevanceLanguage] = useState('');
-  const [minViews, setMinViews] = useState('');
-  const [gapMode, setGapMode] = useState('inclusive');
-  const [deepScan, setDeepScan] = useState(false);
-  const [customAfter, setCustomAfter] = useState(daysAgoISO(14));
+export function SearchForm({ onSubmit, busy, initial = {} }) {
+  const [niche, setNiche] = useState(initial.niche ?? '');
+  const [window, setWindow] = useState(initial.window ?? '7d');
+  const [contentType, setContentType] = useState(initial.contentType ?? 'both');
+  // Opened with filters in the URL? Show them, or they look like they were ignored.
+  const [advanced, setAdvanced] = useState(
+    Boolean(initial.regionCode || initial.relevanceLanguage || initial.minViews || initial.deepScan || (initial.gapMode && initial.gapMode !== 'inclusive'))
+  );
+  const [regionCode, setRegionCode] = useState(initial.regionCode ?? '');
+  const [relevanceLanguage, setRelevanceLanguage] = useState(initial.relevanceLanguage ?? '');
+  const [minViews, setMinViews] = useState(initial.minViews ? String(initial.minViews) : '');
+  const [gapMode, setGapMode] = useState(initial.gapMode ?? 'inclusive');
+  const [deepScan, setDeepScan] = useState(Boolean(initial.deepScan));
+  const [customAfter, setCustomAfter] = useState(
+    initial.customAfter ? initial.customAfter.slice(0, 10) : daysAgoISO(14)
+  );
 
   const submit = (e) => {
     e.preventDefault();

@@ -10,6 +10,11 @@ import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatin
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
 import { withLock } from '../src/lib/fileLock.js';
+import { nicheKey } from '../src/lib/store.js';
+// Reaching across the workspace on purpose: these are pure serializers with no
+// DOM dependency at module scope, and CSV quoting is exactly the kind of thing
+// that silently corrupts an export until someone opens it in a spreadsheet.
+import { gapsToCsv, reportToMarkdown, exportStem } from '../../web/src/lib/export.js';
 
 describe('parseDuration', () => {
   test('parses the ISO-8601 forms YouTube actually returns', () => {
@@ -613,5 +618,84 @@ describe('withLock', () => {
     withLock(target, () => { ran = true; });
     assert.equal(ran, true, 'a stale lock must be reclaimed, not block forever');
     assert.equal(fs.existsSync(`${target}.lock`), false);
+  });
+});
+
+describe('nicheKey', () => {
+  test('normalizes case and whitespace so one niche has one history file', () => {
+    // If these diverged, recurrence detection would silently never match:
+    // every re-run would look like a brand new niche with no history.
+    assert.equal(nicheKey('Sourdough Baking'), nicheKey('sourdough baking'));
+    assert.equal(nicheKey('  sourdough   baking  '), nicheKey('sourdough baking'));
+  });
+  test('keeps genuinely different niches apart', () => {
+    assert.notEqual(nicheKey('sourdough baking'), nicheKey('sourdough starter'));
+  });
+  test('survives non-Latin niches, which is why it hashes instead of slugifying', () => {
+    const key = nicheKey('தமிழ் பேய் கதை');
+    assert.match(key, /^[0-9a-f]{16}$/);
+    assert.equal(key, nicheKey('தமிழ் பேய் கதை '));
+  });
+});
+
+describe('export serializers', () => {
+  const result = {
+    runId: 'r1',
+    generatedAt: '2026-09-24T10:00:00.000Z',
+    query: { niche: 'sourdough baking', window: '30d', contentType: 'both', gapMode: 'inclusive', minViews: 0 },
+    stats: { videosAnalyzed: 50, commentsAnalyzed: 265 },
+    topics: [],
+    avoid: [],
+    gaps: [
+      {
+        question: 'How do I fix a "gummy, under-baked crumb"?',
+        explanation: 'Several bakers report it, nobody covers it well.',
+        coverage: 'none',
+        demandStrength: 'high',
+        demandScore: 12.5,
+        evidenceCount: 3,
+        distinctVideos: 2,
+        suggestedTitle: 'Why your crumb is gummy',
+        suggestedFormat: 'long-form',
+        evidence: [
+          { text: 'Mine came out gummy, help?', likes: 40 },
+          { text: 'Same here, line two\nof the comment', likes: 12 },
+        ],
+      },
+    ],
+  };
+
+  test('quotes CSV cells containing commas, quotes and newlines', () => {
+    const rows = gapsToCsv(result).split('\r\n');
+    // The question has an embedded comma AND embedded double quotes -- both have
+    // to survive, or every following column shifts by one.
+    assert.ok(rows[1].includes('"How do I fix a ""gummy, under-baked crumb""?"'));
+    // A newline inside an evidence quote must stay inside its quoted cell rather
+    // than terminating the record early.
+    assert.equal(rows.length, 2, 'an embedded newline must not split the row');
+  });
+
+  test('CSV header and row column counts line up', () => {
+    const [header] = gapsToCsv(result).split('\r\n');
+    assert.equal(header.split(',').length, 13);
+  });
+
+  test('markdown keeps the evidence quotes, not just the model conclusion', () => {
+    const md = reportToMarkdown(result);
+    assert.match(md, /# Content gaps — sourdough baking/);
+    assert.match(md, /Why your crumb is gummy/);
+    // A gap's credibility lives in what viewers literally said.
+    assert.match(md, /Mine came out gummy, help\?/);
+  });
+
+  test('markdown leads with the weak-evidence warning when the pool was thin', () => {
+    const thin = { ...result, thinPool: { videos: 3, threshold: 12 } };
+    assert.match(reportToMarkdown(thin), /Weak evidence.*only 3 videos/is);
+  });
+
+  test('export filenames are filesystem-safe even for non-Latin niches', () => {
+    assert.equal(exportStem(result), 'sourdough-baking-2026-09-24');
+    const tamil = { ...result, query: { ...result.query, niche: 'தமிழ் பேய் கதை' } };
+    assert.match(exportStem(tamil), /^report-2026-09-24$/);
   });
 });

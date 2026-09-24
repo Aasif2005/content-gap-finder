@@ -6,7 +6,10 @@ import { GapCard } from './components/GapCard.jsx';
 import { AvoidCard } from './components/AvoidCard.jsx';
 import { EmptyState, StatRow, Badge } from './components/Bits.jsx';
 import { ThinPoolNotice } from './components/ThinPoolNotice.jsx';
-import { startAnalysis, pollJob, getQuota } from './lib/api.js';
+import { ExportMenu } from './components/ExportMenu.jsx';
+import { HistoryPanel } from './components/HistoryPanel.jsx';
+import { startAnalysis, pollJob, getQuota, getRun } from './lib/api.js';
+import { runIdFromPath, queryFromUrl, pushReportUrl, pushQueryUrl } from './lib/urlState.js';
 
 const TABS = [
   { key: 'topics', label: 'Trending now', hint: 'What is working in this niche right now' },
@@ -23,6 +26,10 @@ export default function App() {
   const [tab, setTab] = useState('topics');
   const [quota, setQuota] = useState(null);
   const [cacheInfo, setCacheInfo] = useState(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  // A query in the URL prefills the form but deliberately does not auto-run --
+  // a run spends real quota, and a link that bills whoever opens it is a trap.
+  const [initialQuery] = useState(() => queryFromUrl());
   const lastInput = useRef(null);
 
   const refreshQuota = useCallback(() => {
@@ -30,8 +37,41 @@ export default function App() {
   }, []);
   useEffect(refreshQuota, [refreshQuota]);
 
+  /** Opens a persisted report by id. Free -- a disk read of an already-paid run. */
+  const openRun = useCallback(async (runId, { push = true } = {}) => {
+    setError(null);
+    setResult(null);
+    setCacheInfo(null);
+    setPhase({ phase: 'searching', detail: 'Loading saved report…', progress: 50, elapsedMs: 0 });
+    try {
+      const { result: saved } = await getRun(runId);
+      setResult(saved);
+      lastInput.current = saved.query;
+      setPhase(null);
+      if (push) pushReportUrl(runId);
+    } catch (err) {
+      setError(`Could not load that report: ${err.message}`);
+      setPhase(null);
+    }
+  }, []);
+
+  // A /r/<runId> URL, on first load and on back/forward.
+  useEffect(() => {
+    const fromPath = runIdFromPath();
+    if (fromPath) openRun(fromPath, { push: false });
+
+    const onPop = () => {
+      const id = runIdFromPath();
+      if (id) openRun(id, { push: false });
+      else { setResult(null); setError(null); }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [openRun]);
+
   const run = useCallback(async (input, { force = false } = {}) => {
     lastInput.current = input;
+    pushQueryUrl(input); // so a reload or a shared link reopens the same search
     setError(null);
     setResult(null);
     setCacheInfo(null);
@@ -45,6 +85,7 @@ export default function App() {
         setCacheInfo({ cached: true, ageSeconds: started.cacheAgeSeconds });
         setResult(started.result);
         setPhase(null);
+        if (started.result?.runId) pushReportUrl(started.result.runId);
         return;
       }
 
@@ -53,6 +94,8 @@ export default function App() {
       );
       setResult(final);
       setPhase(null);
+      // Now the report has an id, so give it a URL worth sharing.
+      pushReportUrl(final.runId);
       refreshQuota();
     } catch (err) {
       setError(err.message);
@@ -96,7 +139,9 @@ export default function App() {
         </div>
       </header>
 
-      <SearchForm onSubmit={run} busy={busy} />
+      <SearchForm onSubmit={run} busy={busy} initial={initialQuery} />
+
+      <HistoryPanel onOpen={openRun} currentRunId={result?.runId} />
 
       <div className="mt-8">
         {busy && <ProgressRail {...phase} />}
@@ -118,6 +163,21 @@ export default function App() {
                     cached {Math.round(cacheInfo.ageSeconds / 60)}m ago
                   </Badge>
                 )}
+                {result.runId && (
+                  <button
+                    onClick={async () => {
+                      const url = `${window.location.origin}/r/${result.runId}`;
+                      try { await navigator.clipboard.writeText(url); } catch { /* insecure context -- the URL bar still has it */ }
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 1600);
+                    }}
+                    className="rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium text-ink-600 transition-colors hover:bg-ink-100 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+                    title="Copies a link to this saved report. Opening it costs no quota."
+                  >
+                    {copiedLink ? 'Link copied' : 'Share'}
+                  </button>
+                )}
+                <ExportMenu result={result} />
                 <button
                   onClick={() => run(lastInput.current, { force: true })}
                   className="rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium text-ink-600 transition-colors hover:bg-ink-100 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"

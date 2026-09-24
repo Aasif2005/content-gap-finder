@@ -40,3 +40,13 @@ export function pollJob(jobId, onTick, { intervalMs = 1500, timeoutMs = 300_000 
     tick();
   });
 }
+
+/** A persisted report by run id. Costs no quota -- a disk read of a paid-for run. */
+export const getRun = (runId) => fetch(`/api/runs/${runId}`).then(json);
+
+/** Report history, newest first. `niche` narrows to one niche's runs. */
+export const getRuns = ({ limit = 30, niche } = {}) => {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (niche) qs.set('niche', niche);
+  return fetch(`/api/runs?${qs}`).then(json);
+};

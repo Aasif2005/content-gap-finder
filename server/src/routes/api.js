@@ -6,7 +6,8 @@ import { quotaStatus } from '../lib/quota.js';
 import { runPipeline } from '../services/pipeline.js';
 import { config } from '../config.js';
 import { MAX_CUSTOM_WINDOW_DAYS } from '../services/youtube.js';
-import { listRuns, readRunLog } from '../lib/auditLog.js';
+import { listRuns as listAuditRuns, readRunLog } from '../lib/auditLog.js';
+import * as store from '../lib/store.js';
 
 export const router = express.Router();
 
@@ -59,7 +60,7 @@ function validate(body) {
 }
 
 router.get('/health', (_req, res) => {
-  res.json({ ok: true, quota: quotaStatus(), cache: cache.stats(), phases: jobs.PHASES });
+  res.json({ ok: true, quota: quotaStatus(), cache: cache.stats(), store: store.stats(), phases: jobs.PHASES });
 });
 
 /**
@@ -99,6 +100,16 @@ router.post('/analyze', (req, res, next) => {
     runPipeline(input, jobs.reporter(id), id)
       .then((result) => {
         cache.set(key, result);
+        // Durable, runId-addressed copy. The cache above is keyed by query hash
+        // and expires in hours; this is what makes /r/<runId> keep working, and
+        // what the history list reads.
+        try {
+          store.saveRun(result);
+        } catch (err) {
+          // A storage failure must not lose the user the report they just paid
+          // quota for -- the in-memory job still has it.
+          console.error(`[job ${id}] could not persist report:`, err.message);
+        }
         jobs.finish(id, result);
       })
       .catch((err) => {
@@ -138,13 +149,39 @@ router.get('/quota', (req, res) => {
 });
 
 /**
+ * Report history, newest first. One row per persisted run with the counts and
+ * relevance summary, so the list is useful without opening any of them.
+ */
+router.get('/runs', (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 30, 200);
+  res.json({
+    runs: store.listRuns({
+      limit,
+      nicheKey: req.query.niche ? store.nicheKey(String(req.query.niche)) : undefined,
+    }),
+  });
+});
+
+/**
+ * A finished report, by run id. This is what makes a report shareable and
+ * bookmarkable: before it existed a report lived only in React state plus a
+ * 3-hour query-hash cache, so a page reload lost it and there was no URL to
+ * send anyone. Costs no quota -- it is a disk read of an already-paid-for run.
+ */
+router.get('/runs/:runId', (req, res) => {
+  const result = store.readRun(req.params.runId);
+  if (!result) return res.status(404).json({ error: 'Report not found or pruned.', code: 'RUN_NOT_FOUND' });
+  res.json({ status: 'done', persisted: true, result });
+});
+
+/**
  * Audit trail: what each run actually extracted, and whether it stayed on the
  * requested niche. One row per run, newest first, with the relevance summary
  * so drift is visible without opening every log.
  */
 router.get('/logs', (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 30, 100);
-  res.json({ runs: listRuns(limit) });
+  res.json({ runs: listAuditRuns(limit) });
 });
 
 /** The full human-readable log for one run -- the thing to actually read. */

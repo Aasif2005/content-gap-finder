@@ -33,6 +33,12 @@ export const config = {
   },
 
   cache: { ttlSeconds: num(process.env.CACHE_TTL_SECONDS, 3 * 60 * 60) },
+
+  // Durable report + gap-history storage (lib/store.js). Reports are what make
+  // a run linkable after the 3h cache expires; the per-niche gap history is what
+  // recurrence detection compares against, and is kept far longer because a long
+  // baseline is the entire point of it.
+  store: { maxRuns: num(process.env.STORE_MAX_RUNS, 500) },
   rateLimit: { perHour: num(process.env.RATE_LIMIT_PER_HOUR, 10) },
 
   // --- Heat score weights (open design decision #1) ----------------------
