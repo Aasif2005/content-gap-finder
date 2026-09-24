@@ -46,17 +46,28 @@ function writeAtomic(file, text) {
 
 // ---------------------------------------------------------------- reports ---
 
+/**
+ * The history key for a run's subject. Channel-mode runs have no niche text at
+ * all, so hashing `query.niche` would collide every channel on the hash of the
+ * empty string. Mirrors the key the pipeline hands to appendGapHistory(), so
+ * "previous runs of this subject" means the same thing in both places.
+ */
+export const subjectKey = (query) =>
+  query.channelId ? nicheKey(`channel:${query.channelId}`) : nicheKey(query.niche);
+
 /** One compact index line per run, so listing history never opens every report. */
 const summarize = (result) => ({
   runId: result.runId,
   niche: result.query.niche,
-  nicheKey: nicheKey(result.query.niche),
+  nicheKey: subjectKey(result.query),
   window: result.query.window,
   contentType: result.query.contentType,
   regionCode: result.query.regionCode ?? null,
   relevanceLanguage: result.query.relevanceLanguage ?? null,
   deepScan: Boolean(result.query.deepScan),
   channelMode: Boolean(result.query.channelId),
+  // listRuns() can filter on this; without it that filter silently matched nothing.
+  channelId: result.query.channelId ?? null,
   channelTitle: result.channel?.title ?? null,
   generatedAt: result.generatedAt,
   videosAnalyzed: result.stats.videosAnalyzed,

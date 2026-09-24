@@ -10,7 +10,7 @@ import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatin
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
 import { withLock } from '../src/lib/fileLock.js';
-import { nicheKey } from '../src/lib/store.js';
+import { nicheKey, subjectKey } from '../src/lib/store.js';
 import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurrence.js';
 // Reaching across the workspace on purpose: these are pure serializers with no
 // DOM dependency at module scope, and CSV quoting is exactly the kind of thing
@@ -652,6 +652,22 @@ describe('nicheKey', () => {
   test('keeps genuinely different niches apart', () => {
     assert.notEqual(nicheKey('sourdough baking'), nicheKey('sourdough starter'));
   });
+  test('channel runs key off the channel, not the empty niche string', () => {
+    // Channel mode sends no niche at all, so keying history on query.niche would
+    // land every channel that has ever been analysed on the hash of '' -- one
+    // shared history file, and recurrence comparing each channel against all the
+    // others. Must also match what the pipeline hands appendGapHistory().
+    const a = subjectKey({ niche: '', channelId: 'UCBJycsmduvYEL83R_U4JriQ' });
+    const b = subjectKey({ niche: '', channelId: 'UCXuqSBlHAE6Xw-yeJA0Tunw' });
+    assert.notEqual(a, b, 'two channels must not share a history');
+    assert.equal(a, nicheKey('channel:UCBJycsmduvYEL83R_U4JriQ'), 'must match the pipeline\'s history key');
+    assert.notEqual(a, subjectKey({ niche: '' }), 'a channel run must not collide with a blank niche');
+  });
+
+  test('niche runs still key off the niche text', () => {
+    assert.equal(subjectKey({ niche: 'Sourdough Baking' }), nicheKey('sourdough baking'));
+  });
+
   test('survives non-Latin niches, which is why it hashes instead of slugifying', () => {
     const key = nicheKey('தமிழ் பேய் கதை');
     assert.match(key, /^[0-9a-f]{16}$/);

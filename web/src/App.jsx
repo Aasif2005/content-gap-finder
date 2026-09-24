@@ -14,13 +14,36 @@ import { startAnalysis, pollJob, getQuota, getRun } from './lib/api.js';
 import { compact } from './lib/format.js';
 import { runIdFromPath, queryFromUrl, pushReportUrl, pushQueryUrl } from './lib/urlState.js';
 
+// Channel mode reports on one creator's own catalogue and own audience, so the
+// niche wording is simply wrong there ("what is working in this niche" on a
+// report about a single channel). Hints take the mode rather than papering over
+// it with subject-neutral phrasing that says less in both cases.
 const TABS = [
-  { key: 'topics', label: 'Trending now', hint: 'What is working in this niche right now' },
-  { key: 'gaps', label: 'Content gaps', hint: 'What the audience keeps asking for and nobody has answered well' },
-  // Gaps are a production decision ("film this"); objections are an execution
+  {
+    key: 'topics',
+    label: 'Trending now',
+    hint: (ch) => (ch ? 'Which of this channel\u2019s angles are working right now' : 'What is working in this niche right now'),
+  },
+  {
+    key: 'gaps',
+    label: 'Content gaps',
+    hint: (ch) =>
+      ch
+        ? 'What this channel\u2019s own viewers keep asking for and have not been given'
+        : 'What the audience keeps asking for and nobody has answered well',
+  },
+  // Gaps are a production decision ("film this"); complaints are an execution
   // note ("stop doing this"). Same comments, different action, so a separate tab.
-  { key: 'objections', label: 'Complaints', hint: 'What viewers dislike about the videos that already exist' },
-  { key: 'avoid', label: 'Avoid', hint: 'Angles with plenty of views but an audience that did not care' },
+  {
+    key: 'objections',
+    label: 'Complaints',
+    hint: (ch) => (ch ? 'What this channel\u2019s viewers dislike about its existing videos' : 'What viewers dislike about the videos that already exist'),
+  },
+  {
+    key: 'avoid',
+    label: 'Avoid',
+    hint: (ch) => (ch ? 'This channel\u2019s angles with plenty of views but an audience that did not care' : 'Angles with plenty of views but an audience that did not care'),
+  },
 ];
 
 const relFrac = (r) => (r ? `${r.relevant}/${r.total}` : '—');
@@ -152,9 +175,10 @@ export default function App() {
 
       <SearchForm onSubmit={run} busy={busy} initial={initialQuery} />
 
-      <HistoryPanel onOpen={openRun} currentRunId={result?.runId} />
-
-      <WatchPanel currentQuery={result?.query ?? lastInput.current} onOpenRun={openRun} />
+      <div className="mt-4 flex flex-wrap items-start gap-x-6">
+        <HistoryPanel onOpen={openRun} currentRunId={result?.runId} />
+        <WatchPanel currentQuery={result?.query ?? lastInput.current} onOpenRun={openRun} />
+      </div>
 
       <div className="mt-8">
         {busy && <ProgressRail {...phase} />}
@@ -234,13 +258,20 @@ export default function App() {
               />
             )}
 
-            {result.warnings?.length > 0 && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
-                {result.warnings.map((w, i) => (
-                  <p key={i} className="text-sm text-amber-800 dark:text-amber-300">{w}</p>
-                ))}
-              </div>
-            )}
+            {/* The thin-pool warning is already the callout above, verbatim.
+                Filtered by identity against the value the server sent, not by
+                matching on its wording. */}
+            {(() => {
+              const warnings = (result.warnings ?? []).filter((w) => w !== result.thinPool?.warning);
+              if (!warnings.length) return null;
+              return (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
+                  {warnings.map((w, i) => (
+                    <p key={i} className="text-sm text-amber-800 dark:text-amber-300">{w}</p>
+                  ))}
+                </div>
+              );
+            })()}
 
             <div>
               <div className="flex gap-1 border-b border-ink-200 dark:border-ink-800">
@@ -248,7 +279,7 @@ export default function App() {
                   <button
                     key={t.key}
                     onClick={() => setTab(t.key)}
-                    title={t.hint}
+                    title={t.hint(Boolean(result?.channelMode))}
                     className={`-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
                       tab === t.key
                         ? 'border-ink-900 text-ink-900 dark:border-white dark:text-white'
@@ -262,7 +293,7 @@ export default function App() {
               </div>
 
               <p className="mt-3 text-sm text-ink-500 dark:text-ink-400">
-                {TABS.find((t) => t.key === tab).hint}
+                {TABS.find((t) => t.key === tab).hint(Boolean(result.channelMode))}
               </p>
 
               <div className="mt-4 space-y-3">

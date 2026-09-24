@@ -151,7 +151,11 @@ router.get('/runs', (req, res) => {
   res.json({
     runs: store.listRuns({
       limit,
-      nicheKey: req.query.niche ? store.nicheKey(String(req.query.niche)) : undefined,
+      // Same key derivation the pipeline and the store use, so "runs of this
+      // subject" means one thing everywhere.
+      nicheKey: req.query.niche || req.query.channelId
+        ? store.subjectKey({ niche: req.query.niche, channelId: req.query.channelId })
+        : undefined,
     }),
   });
 });

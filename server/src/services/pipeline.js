@@ -245,9 +245,13 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
         'try a broader niche phrase',
       ].filter(Boolean),
     };
-    warnings.push(
-      `Only ${ranked.length} videos made it to scoring (under ${config.youtube.thinPoolThreshold}). Heat scores are relative to this set, so with a set this small they mostly just re-state view order -- treat the ranking below as weak evidence. Try: ${thinPool.suggestions.join(', ')}.`
-    );
+    // Kept in `warnings` as well as in `thinPool`, because the audit log and any
+    // non-UI consumer only read the warnings list. The UI filters this exact
+    // string back out (by identity, not by matching on its text) so the
+    // dedicated callout doesn't say the same thing twice on the same screen.
+    thinPool.warning =
+      `Only ${ranked.length} videos made it to scoring (under ${config.youtube.thinPoolThreshold}). Heat scores are relative to this set, so with a set this small they mostly just re-state view order -- treat the ranking below as weak evidence. Try: ${thinPool.suggestions.join(', ')}.`;
+    warnings.push(thinPool.warning);
   }
 
   if (channelMode) {

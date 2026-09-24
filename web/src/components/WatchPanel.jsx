@@ -75,7 +75,7 @@ export function WatchPanel({ currentQuery, onOpenRun }) {
   const full = state && watches.length >= state.maxWatches;
 
   return (
-    <div className="mt-2">
+    <div className="min-w-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

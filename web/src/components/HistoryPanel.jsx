@@ -31,7 +31,7 @@ export function HistoryPanel({ onOpen, currentRunId }) {
   }, [open, currentRunId]);
 
   return (
-    <div className="mt-4">
+    <div className="min-w-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
