@@ -17,6 +17,11 @@ const TYPES = [
   { value: 'long', label: 'Long-form' },
 ];
 
+const MODES = [
+  { value: 'niche', label: 'Niche' },
+  { value: 'channel', label: 'Channel' },
+];
+
 function Pills({ options, value, onChange, name, disabled }) {
   return (
     <div role="radiogroup" aria-label={name} className="inline-flex rounded-lg bg-ink-100 p-0.5 dark:bg-ink-800">
@@ -54,49 +59,79 @@ export function SearchForm({ onSubmit, busy, initial = {} }) {
   const [minViews, setMinViews] = useState(initial.minViews ? String(initial.minViews) : '');
   const [gapMode, setGapMode] = useState(initial.gapMode ?? 'inclusive');
   const [deepScan, setDeepScan] = useState(Boolean(initial.deepScan));
+  const [mode, setMode] = useState(initial.channelId ? 'channel' : 'niche');
+  const [channelId, setChannelId] = useState(initial.channelId ?? '');
   const [customAfter, setCustomAfter] = useState(
     initial.customAfter ? initial.customAfter.slice(0, 10) : daysAgoISO(14)
   );
 
+  const channelMode = mode === 'channel';
+  const ready = channelMode ? channelId.trim().length > 1 : niche.trim().length >= 2;
+
   const submit = (e) => {
     e.preventDefault();
-    if (niche.trim().length < 2 || busy) return;
+    if (!ready || busy) return;
     if (window === 'custom' && !customAfter) return;
     onSubmit({
-      niche: niche.trim(),
+      niche: channelMode ? '' : niche.trim(),
+      channelId: channelMode ? channelId.trim() : undefined,
       window,
       // Sent as a UTC timestamp so the server is not guessing the user's zone.
       customAfter: window === 'custom' ? new Date(`${customAfter}T00:00:00Z`).toISOString() : undefined,
       contentType,
       gapMode,
       minViews: Number(minViews) || 0,
-      regionCode: regionCode.trim() || undefined,
-      relevanceLanguage: relevanceLanguage.trim() || undefined,
-      deepScan,
+      // A channel's own uploads are already unambiguous, so region/language
+      // narrowing has nothing to disambiguate and is left off entirely.
+      regionCode: channelMode ? undefined : regionCode.trim() || undefined,
+      relevanceLanguage: channelMode ? undefined : relevanceLanguage.trim() || undefined,
+      deepScan: channelMode ? false : deepScan,
     });
   };
 
   return (
     <form onSubmit={submit} className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row">
-        <input
-          value={niche}
-          onChange={(e) => setNiche(e.target.value)}
-          placeholder="Enter a niche — e.g. sourdough baking, home lab, watercolour portraits"
-          aria-label="Niche or keyword"
-          disabled={busy}
-          className="flex-1 rounded-xl border border-ink-200 bg-white px-4 py-3 text-base shadow-sm outline-none transition-shadow placeholder:text-ink-400 focus:border-ink-400 focus:ring-4 focus:ring-ink-900/5 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-900 dark:focus:border-ink-500"
-        />
+        {channelMode ? (
+          <input
+            value={channelId}
+            onChange={(e) => setChannelId(e.target.value)}
+            placeholder="Paste a channel URL, @handle, or UC… id"
+            aria-label="YouTube channel URL, handle or id"
+            disabled={busy}
+            className={mainInputCls}
+          />
+        ) : (
+          <input
+            value={niche}
+            onChange={(e) => setNiche(e.target.value)}
+            placeholder="Enter a niche — e.g. sourdough baking, home lab, watercolour portraits"
+            aria-label="Niche or keyword"
+            disabled={busy}
+            className={mainInputCls}
+          />
+        )}
         <button
           type="submit"
-          disabled={busy || niche.trim().length < 2}
+          disabled={busy || !ready}
           className="rounded-xl bg-ink-900 px-6 py-3 text-base font-semibold text-white shadow-sm transition-all hover:bg-ink-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-ink-900 dark:hover:bg-ink-200"
         >
           {busy ? 'Analyzing…' : 'Find gaps'}
         </button>
       </div>
 
+      <p className="text-xs text-ink-400">
+        {channelMode
+          ? 'Analyses that channel\u2019s own recent uploads and its own viewers\u2019 comments — what your audience keeps asking for and you have not made. Cheaper and more precise than a niche search, because there is no question what the videos are about.'
+          : 'Searches YouTube for the niche, then mines the comments on what it finds.'}
+      </p>
+
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+        <label className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
+          <span className="font-medium">Analyse</span>
+          <Pills name="Analysis mode" options={MODES} value={mode} onChange={setMode} disabled={busy} />
+        </label>
+
         <label className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
           <span className="font-medium">Published</span>
           <Pills name="Time window" options={WINDOWS} value={window} onChange={setWindow} disabled={busy} />
@@ -134,12 +169,20 @@ export function SearchForm({ onSubmit, busy, initial = {} }) {
 
       {advanced && (
         <div className="rise grid gap-4 rounded-xl border border-ink-200 bg-white p-4 sm:grid-cols-4 dark:border-ink-800 dark:bg-ink-900">
-          <Field label="Region" hint="ISO code, e.g. US, IN, GB. Excludes only channels that report a different country — many don't set one.">
-            <input value={regionCode} onChange={(e) => setRegionCode(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
-          </Field>
-          <Field label="Language" hint="ISO code, e.g. ta, hi, ar, ko, en, es. Real filter using each video's own declared/detected audio language, backed by script or common-word matching as a second check for common languages.">
-            <input value={relevanceLanguage} onChange={(e) => setRelevanceLanguage(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
-          </Field>
+          {/* Region and language narrow WHICH videos a niche search returns. A
+              channel's own uploads are already exactly the right videos, so
+              these have nothing to narrow and are hidden rather than shown
+              looking applicable. */}
+          {!channelMode && (
+            <>
+              <Field label="Region" hint="ISO code, e.g. US, IN, GB. Excludes only channels that report a different country — many don't set one.">
+                <input value={regionCode} onChange={(e) => setRegionCode(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
+              </Field>
+              <Field label="Language" hint="ISO code, e.g. ta, hi, ar, ko, en, es. Real filter using each video's own declared/detected audio language, backed by script or common-word matching as a second check for common languages.">
+                <input value={relevanceLanguage} onChange={(e) => setRelevanceLanguage(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
+              </Field>
+            </>
+          )}
           <Field label="Min views" hint="Drops videos below this">
             <input value={minViews} onChange={(e) => setMinViews(e.target.value.replace(/\D/g, ''))} placeholder="0" inputMode="numeric" className={inputCls} />
           </Field>
@@ -150,8 +193,9 @@ export function SearchForm({ onSubmit, busy, initial = {} }) {
             </select>
           </Field>
 
-          {/* Deep scan spans the row: it changes what a run COSTS, so it gets
-              room to say so rather than hiding behind a terse hint. */}
+          {/* Deep scan widens a SEARCH pool. Channel mode has no search to widen
+              -- it already reads every upload in the window. */}
+          {!channelMode && (
           <label className="flex cursor-pointer items-start gap-2.5 sm:col-span-4">
             <input
               type="checkbox"
@@ -171,6 +215,7 @@ export function SearchForm({ onSubmit, busy, initial = {} }) {
               </span>
             </span>
           </label>
+          )}
         </div>
       )}
     </form>
@@ -179,6 +224,9 @@ export function SearchForm({ onSubmit, busy, initial = {} }) {
 
 const inputCls =
   'w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm outline-none focus:border-ink-400 dark:border-ink-700 dark:bg-ink-800';
+
+const mainInputCls =
+  'flex-1 rounded-xl border border-ink-200 bg-white px-4 py-3 text-base shadow-sm outline-none transition-shadow placeholder:text-ink-400 focus:border-ink-400 focus:ring-4 focus:ring-ink-900/5 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-900 dark:focus:border-ink-500';
 
 function Field({ label, hint, children }) {
   return (

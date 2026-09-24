@@ -4,13 +4,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
-import { parseCommentIndex, selectComments, groundGaps, truncate } from '../src/services/analyze.js';
+import { parseCommentIndex, selectComments, groundGaps, groundObjections, truncate } from '../src/services/analyze.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords } from '../src/lib/relevance.js';
 import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
 import { withLock } from '../src/lib/fileLock.js';
 import { nicheKey } from '../src/lib/store.js';
+import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurrence.js';
 // Reaching across the workspace on purpose: these are pure serializers with no
 // DOM dependency at module scope, and CSV quoting is exactly the kind of thing
 // that silently corrupts an export until someone opens it in a spreadsheet.
@@ -607,6 +608,26 @@ describe('withLock', () => {
     assert.equal(fs.existsSync(`${target}.lock`), false, 'a throw inside the lock must not wedge every later call');
   });
 
+  test('creates the lock directory if it does not exist yet', () => {
+    // Real bug this covers: the lock file sits next to the file it guards, and
+    // callers legitimately create that directory INSIDE the locked section --
+    // that write is the thing being serialized. On the very first gap-history
+    // append for a niche, .state/niches/ did not exist, openSync(lock,'wx')
+    // threw ENOENT, and tryAcquire only handled EEXIST. The pipeline caught it
+    // and reported "could not compare against earlier runs", which looked
+    // exactly like recurrence being broken on every fresh install.
+    const nested = path.join(tmpBase + '-fresh', 'nested', 'deep', 'ledger.jsonl');
+    assert.equal(fs.existsSync(path.dirname(nested)), false, 'precondition: directory must not exist');
+    const out = withLock(nested, () => {
+      fs.mkdirSync(path.dirname(nested), { recursive: true });
+      fs.writeFileSync(nested, 'row\n');
+      return 'wrote';
+    });
+    assert.equal(out, 'wrote');
+    assert.equal(fs.existsSync(nested), true);
+    assert.equal(fs.existsSync(`${nested}.lock`), false, 'lock must still be cleaned up');
+  });
+
   test('serializes against a lock already held, rather than running straight through', () => {
     const target = `${tmpBase}-c`;
     // Simulate another process holding the lock, but backdate it past the stale
@@ -697,5 +718,197 @@ describe('export serializers', () => {
     assert.equal(exportStem(result), 'sourdough-baking-2026-09-24');
     const tamil = { ...result, query: { ...result.query, niche: 'தமிழ் பேய் கதை' } };
     assert.match(exportStem(tamil), /^report-2026-09-24$/);
+  });
+});
+
+describe('gap recurrence matching', () => {
+  test('two phrasings of the same question match', () => {
+    // This is the whole feature. The model rewrites every gap from scratch each
+    // run, so if fuzzy matching fails here, every gap is reported as new forever
+    // -- which is indistinguishable from recurrence being broken entirely.
+    const a = gapTokens('Why is my sourdough crumb gummy and dense?');
+    const b = gapTokens('How do I fix a gummy, dense crumb in sourdough?');
+    const { score, shared } = gapSimilarity(a, b);
+    assert.ok(shared >= 2, `expected >=2 shared tokens, got ${shared}`);
+    assert.ok(score >= 0.4, `expected similarity >=0.4, got ${score}`);
+  });
+
+  test('matches a real pair Jaccard scored too low, found on live data', () => {
+    // These two are the same question, from consecutive live "cast iron
+    // restoration" runs. Under Jaccard they scored 0.31 and did not match, so
+    // the run reported the same demand as BOTH "new this run" and "closed since
+    // last run" -- two contradictory claims about one gap on the same screen.
+    // Each question carries different incidental detail, which inflates the
+    // union and punishes overlap for the more verbose phrasing.
+    const a = gapTokens('Can you fix a warped cast iron pan, or one that spins and wobbles on a flat stove?');
+    const b = gapTokens('Can you fix a warped or spinning cast iron skillet, and does it matter on a glass-top stove?');
+    const { score, shared } = gapSimilarity(a, b);
+    assert.ok(shared >= 2, `expected >=2 shared tokens, got ${shared}`);
+    assert.ok(score >= 0.4, `expected Dice >=0.4, got ${score}`);
+  });
+
+  test('stemming collapses doubled consonants so spins/spinning share a token', () => {
+    // relevance.js's stem() yields "spin" for "spins" but "spinn" for
+    // "spinning" -- fine for its own substring matching, silently lossy for set
+    // overlap. Recurrence normalizes on top rather than changing that stemmer,
+    // which backs niche keyword matching and is tuned for a different job.
+    assert.ok(gapTokens('spins').has([...gapTokens('spinning')][0]), 'spins and spinning must normalize alike');
+  });
+
+  test('a short question subsumed by a longer one is rejected by the shared-token floor', () => {
+    // Dice is more permissive than Jaccard, which is the point -- but it rates
+    // this pair at 0.5, above the ratio threshold. Only the shared-token floor
+    // rejects it, so that floor is load-bearing and not belt-and-braces.
+    const { score, shared } = gapSimilarity(gapTokens('sourdough hydration'), gapTokens('sourdough oven'));
+    assert.ok(score >= 0.4, 'precondition: Dice alone would accept this pair');
+    assert.ok(shared < 2, 'the shared-token floor is what must reject it');
+  });
+
+  test('a gap is never reported as both recurring and resolved', () => {
+    // The invariant the Jaccard bug violated in production. Both verdicts run
+    // off the same matcher, so this holds by construction -- but it is the
+    // user-visible contract worth pinning down, since a regression here puts two
+    // contradictory statements about one gap on screen.
+    const history = [
+      { runId: 'r1', generatedAt: '2026-09-01T00:00:00Z', question: 'Can you fix a warped or spinning cast iron skillet, and does it matter on a glass-top stove?', demandScore: 16.8, coverage: 'none' },
+    ];
+    const { gaps, resolved } = classifyRecurrence(
+      [{ question: 'Can you fix a warped cast iron pan, or one that spins and wobbles on a flat stove?', demandScore: 13.7 }],
+      history
+    );
+    assert.equal(gaps[0].recurrence.status, 'recurring');
+    assert.equal(resolved.length, 0, 'a gap matched as recurring must not also appear as resolved');
+  });
+
+  test('genuinely different questions in the same niche do NOT match', () => {
+    const a = gapTokens('How do I score sourdough before baking?');
+    const b = gapTokens('Which flour is best for sourdough starter?');
+    const { score } = gapSimilarity(a, b);
+    assert.ok(score < 0.4, `expected similarity <0.4, got ${score}`);
+  });
+
+  test('one coincidentally shared word is not a match', () => {
+    // Both mention "sourdough" and nothing else in common. A ratio threshold
+    // alone can clear on a single word when both questions are short, which is
+    // why a minimum shared-token count exists alongside it.
+    const { shared } = gapSimilarity(gapTokens('sourdough hydration'), gapTokens('sourdough oven'));
+    assert.ok(shared < 2, `expected <2 shared tokens, got ${shared}`);
+  });
+
+  test('with no history at all, nothing is called new or recurring', () => {
+    const { gaps, resolved, runsCompared } = classifyRecurrence(
+      [{ question: 'How do I fix a gummy crumb?', demandScore: 10 }],
+      []
+    );
+    assert.equal(runsCompared, 0);
+    assert.equal(resolved.length, 0);
+    // "unknown", not "new": with nothing to compare against, calling it new
+    // would assert something the data cannot support.
+    assert.equal(gaps[0].recurrence.status, 'unknown');
+  });
+
+  test('a gap seen in two earlier runs is recurring, and counts runs not rows', () => {
+    const history = [
+      { runId: 'r1', generatedAt: '2026-09-01T00:00:00Z', question: 'Why is my crumb gummy and dense?', demandScore: 6, coverage: 'none' },
+      // Same run, near-duplicate row: must not inflate the streak to 3.
+      { runId: 'r1', generatedAt: '2026-09-01T00:00:00Z', question: 'How to fix gummy dense crumb', demandScore: 5, coverage: 'none' },
+      { runId: 'r2', generatedAt: '2026-09-08T00:00:00Z', question: 'How do I fix a gummy, dense crumb?', demandScore: 8, coverage: 'weak' },
+    ];
+    const { gaps, runsCompared } = classifyRecurrence(
+      [{ question: 'Fixing a dense gummy crumb in sourdough', demandScore: 12 }],
+      history
+    );
+    assert.equal(runsCompared, 2);
+    assert.equal(gaps[0].recurrence.status, 'recurring');
+    assert.equal(gaps[0].recurrence.timesSeen, 3, 'two prior runs plus this one');
+    assert.equal(gaps[0].recurrence.firstSeen, '2026-09-01T00:00:00Z');
+  });
+
+  test('demand climbing across runs is reported as rising', () => {
+    const history = [{ runId: 'r1', generatedAt: '2026-09-01T00:00:00Z', question: 'How do I fix a gummy crumb?', demandScore: 5, coverage: 'none' }];
+    const { gaps } = classifyRecurrence([{ question: 'Fixing a gummy crumb', demandScore: 20 }], history);
+    assert.equal(gaps[0].recurrence.trend, 'rising');
+    assert.equal(gaps[0].recurrence.previousDemandScore, 5);
+  });
+
+  test('a gap open last run but absent now is reported as resolved', () => {
+    const history = [
+      { runId: 'r1', generatedAt: '2026-09-08T00:00:00Z', question: 'Can you cover oven spring troubleshooting?', demandScore: 9, coverage: 'none' },
+    ];
+    const { gaps, resolved } = classifyRecurrence(
+      [{ question: 'Which flour for a beginner starter?', demandScore: 7 }],
+      history
+    );
+    assert.equal(gaps[0].recurrence.status, 'new');
+    assert.equal(resolved.length, 1);
+    assert.match(resolved[0].question, /oven spring/);
+    assert.equal(resolved[0].previousDemandScore, 9);
+  });
+
+  test('only the most recent prior run contributes resolved gaps', () => {
+    // Something absent for several runs is old news; reporting it forever would
+    // bury the signal under every gap the niche has ever had.
+    const history = [
+      { runId: 'r1', generatedAt: '2026-08-01T00:00:00Z', question: 'Ancient forgotten question about levain', demandScore: 4, coverage: 'none' },
+      { runId: 'r2', generatedAt: '2026-09-08T00:00:00Z', question: 'Recent question about oven spring', demandScore: 9, coverage: 'none' },
+    ];
+    const { resolved } = classifyRecurrence([{ question: 'Totally unrelated flour query', demandScore: 3 }], history);
+    assert.equal(resolved.length, 1);
+    assert.match(resolved[0].question, /oven spring/);
+  });
+});
+
+describe('groundObjections', () => {
+  const comments = [
+    { index: 0, videoId: 'v1', text: 'The sponsor segment is way too long', likes: 40, replyCount: 2 },
+    { index: 1, videoId: 'v2', text: 'Please add timestamps, 20 minutes with no chapters', likes: 25, replyCount: 0 },
+    { index: 2, videoId: 'v1', text: 'Audio is so quiet I had to max the volume', likes: 5, replyCount: 0 },
+  ];
+
+  test('resolves cited comments and counts distinct videos', () => {
+    const [o] = groundObjections(
+      [{ label: 'Sponsor segments too long', detail: 'd', severity: 'high', fix: 'Cut to 20s', evidence_comment_indexes: [0, 1] }],
+      comments
+    );
+    assert.equal(o.evidenceCount, 2);
+    assert.equal(o.distinctVideos, 2);
+    assert.equal(o.fix, 'Cut to 20s');
+  });
+
+  test('drops an objection with fewer than 2 resolvable comments', () => {
+    // One viewer's opinion is not a pattern, and a creator changing how they
+    // edit on the strength of it is a worse outcome than showing nothing.
+    const out = groundObjections(
+      [{ label: 'Too quiet', severity: 'low', evidence_comment_indexes: [2] }],
+      comments
+    );
+    assert.equal(out.length, 0);
+  });
+
+  test('drops fabricated citations rather than inventing evidence', () => {
+    const out = groundObjections(
+      [{ label: 'Made up', severity: 'high', evidence_comment_indexes: [99, 100] }],
+      comments
+    );
+    assert.equal(out.length, 0);
+  });
+
+  test('parses the "c3" citation form the same way groundGaps does', () => {
+    const [o] = groundObjections(
+      [{ label: 'Needs chapters', severity: 'medium', evidence_comment_indexes: ['c0', 'c1'] }],
+      comments
+    );
+    assert.equal(o.evidenceCount, 2);
+  });
+
+  test('sorts high severity first', () => {
+    const out = groundObjections(
+      [
+        { label: 'Low thing', severity: 'low', evidence_comment_indexes: [0, 1] },
+        { label: 'High thing', severity: 'high', evidence_comment_indexes: [0, 1] },
+      ],
+      comments
+    );
+    assert.equal(out[0].label, 'High thing');
   });
 });

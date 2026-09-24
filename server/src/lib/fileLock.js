@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 /**
  * A tiny cross-process mutex for a state file guarded by a sibling `.lock`
@@ -24,6 +25,20 @@ function tryAcquire(lockPath) {
     fs.closeSync(fd);
     return true;
   } catch (err) {
+    // The lock lives next to the file it guards, so on a first run the directory
+    // may not exist yet -- and callers legitimately create it inside the locked
+    // section (that write IS the thing being serialized). Create it here and
+    // retry, rather than making every caller pre-create it and silently breaking
+    // the one that forgets. Real bug this fixes: the very first gap-history
+    // append for a niche threw ENOENT on .state/niches/<key>.jsonl.lock, which
+    // the pipeline caught and reported as "could not compare against earlier
+    // runs" -- making recurrence look broken on a fresh install.
+    if (err.code === 'ENOENT') {
+      try {
+        fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+      } catch { /* a racing process just made it -- the retry will find out */ }
+      return false;
+    }
     if (err.code !== 'EEXIST') throw err;
     try {
       if (Date.now() - fs.statSync(lockPath).mtimeMs > STALE_MS) {

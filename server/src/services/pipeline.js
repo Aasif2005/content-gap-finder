@@ -1,10 +1,12 @@
 import * as yt from './youtube.js';
 import { scoreVideos, scoreTopic } from '../lib/heat.js';
-import { clusterTopics, mineGaps, selectComments, groundGaps, heatTier } from './analyze.js';
+import { clusterTopics, mineGaps, selectComments, groundGaps, groundObjections, heatTier } from './analyze.js';
 import { config } from '../config.js';
 import { RunLogger } from '../lib/auditLog.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, untrustedVideoIds } from '../lib/relevance.js';
 import { matchesRequestedLanguage } from '../lib/language.js';
+import { classifyRecurrence } from '../lib/recurrence.js';
+import * as store from '../lib/store.js';
 
 /** Trims a scored video down to what the UI actually renders. */
 const publicVideo = (v) => ({
@@ -41,10 +43,30 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     minViews = 0,
     gapMode = 'inclusive',
     deepScan = false,
+    channelId,
   } = input;
+
+  // Channel mode analyses one channel's own recent uploads and its own
+  // audience's comments, instead of searching a niche. Two consequences shape
+  // everything below:
+  //
+  // 1. Discovery is playlistItems (1 unit/page) instead of search.list (100),
+  //    which is why a channel run costs ~29 units against 127+.
+  // 2. There is no ambiguity about what the videos are about. The entire
+  //    relevance subsystem -- niche keyword matching, tag-hijack detection,
+  //    the nicheRelevant flags -- exists to compensate for search.list pulling
+  //    in adjacent content. Applied here it would be worse than useless: an
+  //    audience asking "how do you edit these" on a camera channel doesn't
+  //    mention the channel's name, so keyword matching would flag nearly every
+  //    real gap. So it is switched off, and the UI says so rather than showing
+  //    a relevance score that means nothing.
+  const channelMode = Boolean(channelId);
 
   const warnings = [];
   let thinPool = null; // set below if the scored set is too small for relative scoring to mean much
+  // What the report is ABOUT, for prompts and messages: the niche in niche mode,
+  // the channel's title in channel mode.
+  let subject = niche;
   const log = new RunLogger(runId, input);
 
   try {
@@ -57,20 +79,50 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
 
   async function runPhases() {
 
-  // 1. Search -- the 100-unit-per-slice call, and the whole cost story of a run.
-  // How many slices a request needs is lib/searchPlan.js's decision; deep scan
-  // widens the pool with a second date-ordered pass so a breakout small channel
-  // can actually enter it (order=viewCount alone pre-selects for absolute views,
-  // which is exactly what views-per-subscriber scoring is supposed to see past).
-  onProgress('searching', `Searching YouTube for "${niche}"${deepScan ? ' (deep scan)' : ''}`, 8);
-  const { hits, slices } = await yt.searchVideos({
-    niche, window, customAfter, contentType, regionCode, relevanceLanguage, deepScan,
-  });
-  if (!hits.length) {
-    throw Object.assign(
-      new Error(`No videos found for "${niche}" in this time range. Try a broader niche or a longer window.`),
-      { status: 404, code: 'NO_RESULTS' }
-    );
+  // 1. Discovery. In niche mode this is the 100-unit-per-slice search.list call
+  // and the whole cost story of a run; how many slices a request needs is
+  // lib/searchPlan.js's decision, and deep scan widens the pool with a second
+  // date-ordered pass so a breakout small channel can actually enter it
+  // (order=viewCount alone pre-selects for absolute views, which is exactly what
+  // views-per-subscriber scoring is supposed to see past). In channel mode it is
+  // a walk of the uploads playlist at 1 unit per page of 50.
+  let hits;
+  let slices = [];
+  let channel = null;
+
+  if (channelMode) {
+    onProgress('searching', 'Resolving channel', 5);
+    channel = await yt.resolveChannel(yt.parseChannelInput(channelId) ?? { kind: 'id', value: channelId });
+    subject = channel.title || subject;
+
+    onProgress('searching', `Reading ${channel.title}'s recent uploads`, 10);
+    const uploads = await yt.getChannelUploads({
+      uploadsPlaylistId: channel.uploadsPlaylistId,
+      publishedAfter: yt.windowToPublishedAfter(window, customAfter),
+    });
+    hits = uploads.hits;
+    if (uploads.truncated) {
+      warnings.push(`${channel.title} uploaded more than ${hits.length} videos in this window; only the most recent ${hits.length} were analysed.`);
+    }
+    if (!hits.length) {
+      throw Object.assign(
+        new Error(`${channel.title} published no videos in this time range. Try a longer window.`),
+        { status: 404, code: 'NO_RESULTS' }
+      );
+    }
+  } else {
+    onProgress('searching', `Searching YouTube for "${niche}"${deepScan ? ' (deep scan)' : ''}`, 8);
+    const searched = await yt.searchVideos({
+      niche, window, customAfter, contentType, regionCode, relevanceLanguage, deepScan,
+    });
+    hits = searched.hits;
+    slices = searched.slices;
+    if (!hits.length) {
+      throw Object.assign(
+        new Error(`No videos found for "${niche}" in this time range. Try a broader niche or a longer window.`),
+        { status: 404, code: 'NO_RESULTS' }
+      );
+    }
   }
 
   // 2. Stats + channels, both batched at 50 ids per call.
@@ -161,13 +213,17 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   for (const v of ranked) v.tier = heatTier(v, ranked);
 
   // Mark videos that matched the niche only through tags/hashtags. The LLM makes
-  // the final call on these -- we just make sure it can see the signal.
-  for (const v of ranked) v.tagOnlyMatch = checkTagHijack(niche, v).suspect;
-  const tagOnlyCount = ranked.filter((v) => v.tagOnlyMatch).length;
-  if (tagOnlyCount) {
-    warnings.push(
-      `${tagOnlyCount} of ${ranked.length} videos mention "${niche}" only in tags/hashtags, not in the title. They may be tag-hijacked.`
-    );
+  // the final call on these -- we just make sure it can see the signal. Skipped
+  // in channel mode: every video demonstrably belongs to the channel being
+  // analysed, so there is no hijack question to answer.
+  if (!channelMode) {
+    for (const v of ranked) v.tagOnlyMatch = checkTagHijack(niche, v).suspect;
+    const tagOnlyCount = ranked.filter((v) => v.tagOnlyMatch).length;
+    if (tagOnlyCount) {
+      warnings.push(
+        `${tagOnlyCount} of ${ranked.length} videos mention "${niche}" only in tags/hashtags, not in the title. They may be tag-hijacked.`
+      );
+    }
   }
 
   // Relative scoring needs a population to be relative to. Below the threshold,
@@ -191,6 +247,12 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     };
     warnings.push(
       `Only ${ranked.length} videos made it to scoring (under ${config.youtube.thinPoolThreshold}). Heat scores are relative to this set, so with a set this small they mostly just re-state view order -- treat the ranking below as weak evidence. Try: ${thinPool.suggestions.join(', ')}.`
+    );
+  }
+
+  if (channelMode) {
+    warnings.push(
+      `Channel mode: every video here is ${channel.title}'s own, so niche-relevance and tag-hijack checks are switched off (there is nothing ambiguous to check), and a topic's "channels" breadth count is always 1.`
     );
   }
 
@@ -219,7 +281,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   // 5. LLM pass A: clustering + avoid.
   const windowLabel = window === 'custom' ? `since ${customAfter.slice(0, 10)}` : `last ${window}`;
   const { topics: rawTopics, avoid: rawAvoid, usage: clusterUsage } = await clusterTopics({
-    niche, window: windowLabel, videos: ranked, onProgress,
+    niche: subject, window: windowLabel, videos: ranked, channelMode, onProgress,
   });
 
   const byId = new Map(ranked.map((v) => [v.videoId, v]));
@@ -245,7 +307,11 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   // that a fabrication check can't, since these topics are all grounded in real
   // videos (the ids resolved). The question here is whether those videos are
   // actually about the niche, not whether the model made them up.
-  const topicRelevance = topics.map((t) => checkTopicRelevance(niche, t));
+  // In channel mode these are off (see channelMode above): a neutral verdict
+  // keeps the audit log, the summary and the UI badges all working unchanged
+  // rather than making every consumer handle a missing check.
+  const neutral = { relevant: true, matched: [], matchedIn: 'n/a', score: 1, tagSuspect: false, skipped: true };
+  const topicRelevance = channelMode ? topics.map(() => neutral) : topics.map((t) => checkTopicRelevance(niche, t));
   log.logTopics(topics, topicRelevance);
 
   // Attach the verdict to each topic so the UI can warn on it too, instead of
@@ -281,9 +347,11 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
 
   // checkTopicRelevance is generic over {label, summary, whyHot, videos}, which
   // an avoid entry also has (reason/counterEvidence standing in for summary/whyHot).
-  const avoidRelevance = avoid.map((a) =>
-    checkTopicRelevance(niche, { label: a.label, summary: a.reason, whyHot: a.counterEvidence, videos: a.videos })
-  );
+  const avoidRelevance = channelMode
+    ? avoid.map(() => neutral)
+    : avoid.map((a) =>
+        checkTopicRelevance(niche, { label: a.label, summary: a.reason, whyHot: a.counterEvidence, videos: a.videos })
+      );
   log.logAvoid(avoid, avoidRelevance);
   avoid.forEach((a, i) => { a.nicheRelevant = avoidRelevance[i].relevant; });
 
@@ -297,7 +365,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     ...topics.flatMap((t) => t.videos.map((v) => v.videoId)),
     ...avoid.flatMap((a) => a.videos.map((v) => v.videoId)),
   ]);
-  const untrusted = untrustedVideoIds(ranked, confirmedRelevantVideoIds);
+  const untrusted = channelMode ? new Set() : untrustedVideoIds(ranked, confirmedRelevantVideoIds);
   const gapComments = untrusted.size ? selected.filter((c) => !untrusted.has(c.videoId)) : selected;
   if (gapComments.length < selected.length) {
     warnings.push(
@@ -306,20 +374,54 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   }
 
   // 7. LLM pass B: gap mining, grounded back to real comments.
-  const { gaps: rawGaps, usage: gapUsage } = await mineGaps({
-    niche, window: windowLabel, videos: ranked, comments: gapComments, topics: rawTopics, gapMode, onProgress,
+  const { gaps: rawGaps, objections: rawObjections, usage: gapUsage } = await mineGaps({
+    niche: subject, window: windowLabel, videos: ranked, comments: gapComments, topics: rawTopics, gapMode, channelMode, onProgress,
   });
   const gapsResolved = groundGaps(rawGaps, gapComments).map((g) => ({
     ...g,
     coveringVideos: resolve(g.coveringVideoIds).map(publicVideo),
   }));
 
-  const gapRelevance = gapsResolved.map((g) => checkGapRelevance(niche, g));
+  const gapRelevance = channelMode ? gapsResolved.map(() => neutral) : gapsResolved.map((g) => checkGapRelevance(niche, g));
   log.logGaps(gapsResolved, gapRelevance);
+
+  // Objections: recurring complaints about the EXISTING videos rather than
+  // requests for new ones. Same comments, same LLM call, same citation
+  // grounding -- a distinct and directly actionable output for almost no extra
+  // cost, since the comment payload was already in the prompt.
+  const objections = groundObjections(rawObjections, gapComments);
+  log.logObjections(objections);
 
   // Attach the verdict to each gap so the UI can warn on anything that still
   // slips through the filter above, instead of only the audit log seeing it.
-  const gaps = gapsResolved.map((g, i) => ({ ...g, nicheRelevant: gapRelevance[i].relevant }));
+  const flaggedGaps = gapsResolved.map((g, i) => ({ ...g, nicheRelevant: gapRelevance[i].relevant }));
+
+  // 8. Recurrence. Compare this run's gaps against every earlier run of the
+  // same subject, so a gap that has been asked for four weeks running is
+  // distinguishable from one that surfaced once. Failing to read history is not
+  // worth failing a run over -- the report is still useful without it.
+  let gaps = flaggedGaps;
+  let resolvedGaps = [];
+  let runsCompared = 0;
+  const historyKey = channelMode ? `channel:${channel.channelId}` : niche;
+  try {
+    const history = store.readGapHistory(historyKey, { excludeRunId: runId });
+    const classified = classifyRecurrence(flaggedGaps, history);
+    gaps = classified.gaps;
+    resolvedGaps = classified.resolved;
+    runsCompared = classified.runsCompared;
+    if (runsCompared > 0) {
+      const recurring = gaps.filter((g) => g.recurrence.status === 'recurring').length;
+      warnings.push(
+        `Compared against ${runsCompared} earlier run${runsCompared === 1 ? '' : 's'} of this ${channelMode ? 'channel' : 'niche'}: ${recurring} of ${gaps.length} gaps have been asked for before${resolvedGaps.length ? `, and ${resolvedGaps.length} previously-open gap${resolvedGaps.length === 1 ? ' is' : 's are'} no longer showing up` : ''}.`
+      );
+    }
+    store.appendGapHistory(historyKey, runId, new Date().toISOString(), flaggedGaps);
+  } catch (err) {
+    console.error(`[pipeline] recurrence comparison failed:`, err.message);
+    warnings.push('Could not compare against earlier runs of this subject, so gaps are not marked new or recurring.');
+  }
+  log.logRecurrence(gaps, resolvedGaps, runsCompared);
 
   const relevanceSummary = {
     topicRelevance: summarizeRelevance(topicRelevance),
@@ -331,7 +433,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   onProgress('done', 'Complete', 100);
 
   return {
-    query: { niche, window, customAfter, contentType, regionCode, relevanceLanguage, minViews, gapMode, deepScan },
+    query: { niche, window, customAfter, contentType, regionCode, relevanceLanguage, minViews, gapMode, deepScan, channelId: channel?.channelId },
     generatedAt: new Date().toISOString(),
     runId,
     stats: {
@@ -343,6 +445,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
       topicsFound: topics.length,
       gapsFound: gaps.length,
       avoidFound: avoid.length,
+      objectionsFound: objections.length,
       llmUsage: {
         clustering: clusterUsage,
         gaps: gapUsage,
@@ -350,11 +453,25 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
       },
       relevance: relevanceSummary,
       searchSlices: slices,
+      runsCompared,
+      recurringGaps: gaps.filter((g) => g.recurrence?.status === 'recurring').length,
+      resolvedGaps: resolvedGaps.length,
     },
     warnings,
     thinPool,
+    channelMode,
+    channel: channel && {
+      channelId: channel.channelId,
+      title: channel.title,
+      subscribers: channel.subscribers,
+      totalViews: channel.totalViews,
+      videoCount: channel.videoCount,
+      url: `https://www.youtube.com/channel/${channel.channelId}`,
+    },
     topics,
     gaps,
+    resolvedGaps,
+    objections,
     avoid,
     topVideos: ranked.slice(0, 20).map(publicVideo),
   };

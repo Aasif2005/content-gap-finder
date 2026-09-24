@@ -43,6 +43,41 @@ export function GapCard({ gap, rank }) {
                 ⚠ check relevance
               </Badge>
             )}
+            {/* Recurrence is the strongest single signal on this card. A gap
+                asked for four runs running is proven, durable demand; one that
+                surfaced once may just be which videos got sampled this time. */}
+            {gap.recurrence?.status === 'recurring' && (
+              <Badge
+                tone="good"
+                title={`Asked for in ${gap.recurrence.timesSeen} separate runs of this subject, first on ${(gap.recurrence.firstSeen ?? '').slice(0, 10)}. Demand voiced repeatedly over time is far more reliable than demand seen once.`}
+              >
+                ↻ recurring · {gap.recurrence.timesSeen} runs
+              </Badge>
+            )}
+            {gap.recurrence?.status === 'new' && (
+              <Badge
+                tone="cool"
+                title={`Did not appear in the ${gap.recurrence.runsCompared} earlier run(s) of this subject. Either genuinely emerging demand, or a one-off from this run's comment sample -- re-run later to tell which.`}
+              >
+                new
+              </Badge>
+            )}
+            {gap.recurrence?.trend === 'rising' && (
+              <Badge
+                tone="hot"
+                title={`Demand score ${gap.demandScore} now, against ${gap.recurrence.previousDemandScore} last run. More people are asking than before.`}
+              >
+                ↑ rising
+              </Badge>
+            )}
+            {gap.recurrence?.trend === 'falling' && (
+              <Badge
+                tone="neutral"
+                title={`Demand score ${gap.demandScore} now, against ${gap.recurrence.previousDemandScore} last run. Fewer people are asking than before.`}
+              >
+                ↓ cooling
+              </Badge>
+            )}
           </div>
 
           {gap.explanation && (

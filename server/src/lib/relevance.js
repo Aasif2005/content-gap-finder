@@ -5,7 +5,7 @@
 // cause (pulling in adjacent content, e.g. a "cast iron restoration" search that
 // also surfaces barn-find motorcycle restorations).
 
-const STOPWORDS = new Set([
+export const STOPWORDS = new Set([
   'the', 'and', 'for', 'with', 'from', 'this', 'that', 'your', 'you', 'how',
   'what', 'why', 'are', 'was', 'were', 'has', 'have', 'had', 'not', 'but',
   'all', 'any', 'can', 'will', 'just', 'about', 'into', 'out', 'over', 'a',
@@ -41,7 +41,7 @@ export function nicheKeywords(niche) {
  * matching only looks one direction (keyword found inside text), and "print"
  * is not a substring of "printing".
  */
-function stem(word) {
+export function stem(word) {
   const stripped = word.replace(/(ing|ers|er|ed|es|s)$/, '');
   return stripped.length >= 3 ? stripped : word;
 }

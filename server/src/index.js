@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { config, assertConfig } from './config.js';
 import { router } from './routes/api.js';
+import * as scheduler from './services/scheduler.js';
 
 assertConfig();
 
@@ -28,6 +29,10 @@ app.use((err, _req, res, _next) => {
   if (status >= 500) console.error('[error]', err);
   res.status(status).json({ error: err.message || 'Internal error', code: err.code ?? 'INTERNAL' });
 });
+
+// Saved watches re-run themselves; see services/scheduler.js for why it is
+// deliberately conservative about quota and concurrency.
+scheduler.start();
 
 app.listen(config.port, () => {
   console.log(`  Content Gap Finder API  http://localhost:${config.port}`);

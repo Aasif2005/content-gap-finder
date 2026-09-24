@@ -4,16 +4,22 @@ import { ProgressRail } from './components/ProgressRail.jsx';
 import { TopicCard } from './components/TopicCard.jsx';
 import { GapCard } from './components/GapCard.jsx';
 import { AvoidCard } from './components/AvoidCard.jsx';
+import { ObjectionCard } from './components/ObjectionCard.jsx';
 import { EmptyState, StatRow, Badge } from './components/Bits.jsx';
 import { ThinPoolNotice } from './components/ThinPoolNotice.jsx';
 import { ExportMenu } from './components/ExportMenu.jsx';
 import { HistoryPanel } from './components/HistoryPanel.jsx';
+import { WatchPanel } from './components/WatchPanel.jsx';
 import { startAnalysis, pollJob, getQuota, getRun } from './lib/api.js';
+import { compact } from './lib/format.js';
 import { runIdFromPath, queryFromUrl, pushReportUrl, pushQueryUrl } from './lib/urlState.js';
 
 const TABS = [
   { key: 'topics', label: 'Trending now', hint: 'What is working in this niche right now' },
   { key: 'gaps', label: 'Content gaps', hint: 'What the audience keeps asking for and nobody has answered well' },
+  // Gaps are a production decision ("film this"); objections are an execution
+  // note ("stop doing this"). Same comments, different action, so a separate tab.
+  { key: 'objections', label: 'Complaints', hint: 'What viewers dislike about the videos that already exist' },
   { key: 'avoid', label: 'Avoid', hint: 'Angles with plenty of views but an audience that did not care' },
 ];
 
@@ -106,7 +112,12 @@ export default function App() {
 
   const busy = Boolean(phase);
   const counts = result
-    ? { topics: result.topics.length, gaps: result.gaps.length, avoid: result.avoid.length }
+    ? {
+        topics: result.topics.length,
+        gaps: result.gaps.length,
+        objections: result.objections?.length ?? 0,
+        avoid: result.avoid.length,
+      }
     : {};
 
   return (
@@ -143,6 +154,8 @@ export default function App() {
 
       <HistoryPanel onOpen={openRun} currentRunId={result?.runId} />
 
+      <WatchPanel currentQuery={result?.query ?? lastInput.current} onOpenRun={openRun} />
+
       <div className="mt-8">
         {busy && <ProgressRail {...phase} />}
 
@@ -155,6 +168,27 @@ export default function App() {
 
         {result && (
           <div className="rise space-y-6">
+            {/* Channel mode reports on a specific channel, so name it -- otherwise
+                the report reads as if it were about a niche. */}
+            {result.channel && (
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3 dark:border-sky-500/30 dark:bg-sky-500/10">
+                <a
+                  href={result.channel.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="font-semibold text-sky-900 underline-offset-2 hover:underline dark:text-sky-200"
+                >
+                  {result.channel.title}
+                </a>
+                <span className="nums text-xs text-sky-800 dark:text-sky-300">
+                  {compact(result.channel.subscribers)} subscribers · {compact(result.channel.videoCount)} videos total
+                </span>
+                <span className="text-xs text-sky-700 dark:text-sky-400">
+                  its own uploads and its own viewers' comments
+                </span>
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
               <StatRow stats={result.stats} />
               <div className="flex items-center gap-2">
@@ -252,6 +286,41 @@ export default function App() {
                     </EmptyState>
                   ))}
 
+                {tab === 'gaps' && result.resolvedGaps?.length > 0 && (
+                  <details className="rounded-xl border border-dashed border-ink-300 p-4 dark:border-ink-700">
+                    <summary className="cursor-pointer list-none text-sm font-medium text-ink-600 dark:text-ink-300">
+                      {result.resolvedGaps.length} gap{result.resolvedGaps.length === 1 ? '' : 's'} closed since the last run ▾
+                    </summary>
+                    <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">
+                      These were open the last time this subject was analysed and no longer show up.
+                      Usually that means somebody made the video — the window has closed.
+                    </p>
+                    <ul className="mt-2 space-y-1.5">
+                      {result.resolvedGaps.map((r, i) => (
+                        <li key={i} className="text-sm text-ink-600 line-through decoration-ink-400 dark:text-ink-400">
+                          {r.question}
+                          <span className="nums ml-2 text-xs no-underline">
+                            (score was {r.previousDemandScore}, last seen {(r.lastSeen ?? '').slice(0, 10)})
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+
+                {tab === 'objections' &&
+                  (result.objections?.length ? (
+                    result.objections.map((o, i) => (
+                      <ObjectionCard key={o.label + i} objection={o} rank={i + 1} />
+                    ))
+                  ) : (
+                    <EmptyState title="No recurring complaints">
+                      No criticism of the existing videos was raised by at least two separate
+                      commenters. Either the execution is landing, or the comments here are mostly
+                      praise and requests rather than critique.
+                    </EmptyState>
+                  ))}
+
                 {tab === 'avoid' &&
                   (result.avoid.length ? (
                     result.avoid.map((a, i) => <AvoidCard key={a.label + i} item={a} rank={i + 1} />)
@@ -271,6 +340,17 @@ export default function App() {
               <br />
               Heat is scored relative to this result set only — it blends view velocity, views per
               subscriber, and engagement rate, so a small channel breaking out outranks a large channel coasting.
+              {result.stats.runsCompared > 0 ? (
+                <>
+                  {' '}Gaps are compared against {result.stats.runsCompared} earlier run
+                  {result.stats.runsCompared === 1 ? '' : 's'} of this subject to mark them recurring or new.
+                </>
+              ) : (
+                <>
+                  {' '}This is the first stored run of this subject, so no gap can be marked recurring yet —
+                  run it again later and repeat demand becomes visible.
+                </>
+              )}
               {result.runId && result.stats.relevance && (
                 <>
                   <br />

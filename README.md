@@ -41,23 +41,90 @@ Tests: `npm test --workspace server`
 
 ## How it works
 
+There are two ways in. **Niche mode** searches YouTube for a subject; **channel mode**
+analyses one channel's own uploads and its own audience.
+
 ```
-niche + window + format
-   │
-   ├─ 1. search.list          100 units   → up to 50 candidate video ids
-   ├─ 2. videos.list            1 unit    → stats + duration, batched 50/call
+niche + window + format                    channel URL / @handle / UC… id
+   │                                          │
+   ├─ 1. search.list      100 units × slices  ├─ 1. channels.list     1 unit  → resolve + uploads playlist
+   │      (see lib/searchPlan.js)             └─ 1b. playlistItems    1 unit  → recent uploads, 50/page
+   │                                          │
+   ├─ 2. videos.list            1 unit    → stats + duration + audio language, batched 50/call
    ├─ 3. channels.list          1 unit    → subscriber counts, batched 50/call
    ├─ 4. commentThreads.list    1 unit ×N → top comments, one call per video
    │
    ├─ 5. score in code                    → heat, per video and per topic
    ├─ 6. DeepSeek pass A                  → cluster into topics + avoid list
-   └─ 7. DeepSeek pass B                  → mine comments for unmet demand
+   ├─ 7. DeepSeek pass B                  → unmet demand + complaints, from the same comments
+   └─ 8. compare in code                  → which gaps are recurring, new, or closed
 ```
 
 A full run takes **60-120 seconds** (measured 76s and 92s on a 50-video niche; DeepSeek
 latency is the variable part), so `POST /api/analyze` returns a job id and the client polls
 `GET /api/jobs/:id` for phase-by-phase progress rather than holding the request open.
-Results are cached per niche+window (3h default), and cache hits cost nothing.
+Results are cached per query (3h default) and **persisted by run id indefinitely**, so a
+report stays openable at `/r/<runId>` long after its cache entry expires. Cache hits and
+stored reports both cost nothing.
+
+### Channel mode: what *your* audience is asking for
+
+Paste a channel instead of a niche and the pipeline reads that channel's recent uploads and
+the comments on them. It is the cheaper and more accurate path, for two structural reasons:
+
+- **Discovery is 1 unit per 50 videos, not 100.** `playlistItems.list` on the uploads
+  playlist replaces `search.list`, which takes a run from ~127 units to **~29** — roughly
+  310 analyses a day instead of 70.
+- **There is no ambiguity about what the videos are about.** The entire relevance
+  subsystem below — niche keyword matching, tag-hijack detection, the `⚠ check relevance`
+  badges — exists to compensate for `search.list` pulling in adjacent content. In channel
+  mode it is switched off, because applied here it would be actively wrong: a viewer asking
+  *"how do you make the clone skits"* never mentions the channel's name, so keyword matching
+  would flag nearly every genuine gap.
+
+One prompt rule inverts, and it matters. In niche mode, a comment asking the channel to
+cover something unrelated is audience fatigue and explicitly **not** a gap (see
+[Off-niche demand](#off-niche-demand-and-fabricated-suggestions)). On a creator's *own*
+channel that same comment is the most valuable thing in the dataset — it is their own
+subscribers saying what to make next. Verified on a live `@mkbhd`/90d run: the top gaps were
+*"make a longer video dedicated to the Beni robot"* and *"a video that is just the clone
+skits, and how are those shots made"* — both of which the niche prompt would have discarded.
+
+### Gaps are marked recurring, new, or closed
+
+Every run used to be amnesiac. A comment cluster that surfaced once because of which 25
+videos happened to get scraped looked exactly as solid as demand voiced every week for a
+month — and those deserve opposite decisions. [`lib/recurrence.js`](server/src/lib/recurrence.js)
+compares each run's gaps against every earlier run of the same subject:
+
+- **recurring ×N** — asked for across N runs. Proven, durable demand.
+- **new** — absent from earlier runs. Either emerging, or this run's sampling noise.
+- **↑ rising / ↓ cooling** — demand score against last run's, so direction of travel is visible.
+- **closed** — open last run, gone now. Usually someone finally made the video.
+
+Matching has to be fuzzy: the model rewrites every gap from scratch each run, so the same
+demand returns phrased differently ("why is my crumb gummy" / "how do I fix a dense, gummy
+crumb"). It uses stemmed-token Jaccard overlap with a floor on shared tokens, because on
+short questions a single coincidental word can clear a ratio threshold on its own. Exact
+string matching would report everything as new forever — indistinguishable from the feature
+being broken.
+
+Recurrence needs a baseline, which means something has to re-run the analysis. That is what
+**watches** are for: save a query, pick daily/weekly/fortnightly, and
+[`services/scheduler.js`](server/src/services/scheduler.js) re-runs it. The scheduler never
+starts a run it cannot afford (a deferred watch is better than burning quota someone was
+saving), runs one at a time, and always forces a fresh run — serving a watch from cache
+would append a duplicate of the previous run to the gap history and inflate every streak
+with the same run counted twice.
+
+### Complaints, not just gaps
+
+A gap is a production decision ("film this"). A **complaint** is an execution note ("stop
+doing this") — pacing, audio, sponsor length, a title the video doesn't deliver on, missing
+timestamps. Both come out of the same comments and the same DeepSeek call, so the second
+output costs almost nothing, and it gets the identical citation grounding: at least two
+distinct real comments, or it is dropped. A creator changing how they edit because of a
+complaint nobody actually made is a worse outcome than showing no complaints at all.
 
 ### Heat is computed in code, not by the LLM
 
@@ -121,13 +188,35 @@ resets on YouTube's own midnight-Pacific boundary, not UTC. Cache hits bypass bo
 ## Quota, in practice
 
 `search.list` costs 100 units against a default 10,000/day quota — everything else costs 1.
-One analysis is **127 units** (1 search + 1 videos + 1 channels + 25 commentThreads),
-so the default 9,000-unit budget allows **70 fresh analyses per day**. The UI shows remaining budget in the header.
+A run's cost therefore depends on how many search slices it needs
+([`lib/searchPlan.js`](server/src/lib/searchPlan.js)), which is why `unitsPerAnalysis()`
+takes the run shape instead of returning a constant:
 
-This is why there is exactly one search call per run, why `videos.list` and `channels.list`
-are batched 50 ids at a time, and why results are cached. `commentThreads.list` is the one
-call that can't be batched — it takes a single `videoId` — so it runs per-video against the
-top `MAX_COMMENT_VIDEOS` (default 25) and is capped for latency as much as for quota.
+| Run shape | Units | Analyses/day on a 9,000 budget |
+|---|---|---|
+| Channel mode | **29** | ~310 |
+| Niche, both/shorts | 127 | 70 |
+| Niche, long-form | 227 | 39 |
+| Niche + deep scan | 227 | 39 |
+| Niche, long-form + deep scan | 427 | 21 |
+
+`GET /api/quota` returns that whole table, so the UI can price a toggle *before* someone
+flips it rather than halving their day's budget by surprise.
+
+This is why a run spends as few search calls as the request allows, why `videos.list` and
+`channels.list` are batched 50 ids at a time, and why results are both cached and persisted.
+`commentThreads.list` is the one call that can't be batched — it takes a single `videoId` —
+so it runs per-video against the top `MAX_COMMENT_VIDEOS` (default 25) and is capped for
+latency as much as for quota.
+
+The daily ledger (`server/.state/quota.json`) is written under a cross-process lock
+([`lib/fileLock.js`](server/src/lib/fileLock.js)) with a tmp+rename swap. Within one process
+the read-check-write was always atomic — there is no `await` between the read and the write,
+and Node doesn't interleave JS across synchronous statements — so the real exposure was two
+server processes losing each other's increments. The more dangerous half was the write
+itself: a torn ledger parsed as `used: 0`, which would have the app believe it had a full
+budget and keep hammering YouTube until YouTube started returning `quotaExceeded`. That path
+now logs loudly instead of failing silently.
 
 ---
 
@@ -162,8 +251,15 @@ Two wrinkles worth knowing:
 |---|---|
 | `POST /api/analyze` | Start a run. Returns a cached result (`200`) or a job id (`202`). |
 | `GET /api/jobs/:id` | Poll phase, detail, progress, and the final result. |
-| `GET /api/quota` | Units used/remaining today, cache size, rate limit. |
-| `GET /api/health` | Liveness plus the phase list. |
+| `GET /api/runs` | Report history, newest first. Free. `?niche=` narrows to one subject. |
+| `GET /api/runs/:runId` | A persisted report. What makes `/r/<runId>` shareable. Free. |
+| `GET /api/watches` | Saved watches, plus the interval floor and limit. |
+| `POST /api/watches` | Save a query to re-run on a schedule (`intervalHours`). |
+| `PATCH /api/watches/:id` | Pause, resume, relabel, or re-interval a watch. |
+| `DELETE /api/watches/:id` | Remove a watch. |
+| `GET /api/watches/:id/digest` | What the newest run found that the previous one didn't. Free. |
+| `GET /api/quota` | Units used/remaining today plus the per-shape cost table. |
+| `GET /api/health` | Liveness, quota, cache and store sizes, phase list. |
 | `GET /api/logs` | Recent runs with their niche-relevance summary. |
 | `GET /api/logs/:runId` | The full audit log for one run, as plain text. |
 
@@ -176,9 +272,20 @@ curl -X POST localhost:8787/api/analyze -H 'Content-Type: application/json' -d '
   "gapMode": "inclusive",   # inclusive | strict
   "minViews": 0,
   "regionCode": "US",       # optional, ISO 3166-1 alpha-2 -- hard filter on channel country
-  "relevanceLanguage": "en" # optional, ISO 639-1 -- hard filter, primarily by each video's own
-                             # declared/detected audio language, corroborated by script/common-word
-                             # text matching for a modeled subset of languages (see below)
+  "relevanceLanguage": "en",# optional, ISO 639-1 -- hard filter, primarily by each video's own
+                            #   declared/detected audio language, corroborated by script/common-word
+                            #   text matching for a modeled subset of languages (see below)
+  "deepScan": false         # optional -- doubles the search slices to widen the candidate pool
+}'
+```
+
+Channel mode takes a channel reference in place of a niche — a URL, an `@handle`, or a
+`UC…` id:
+
+```bash
+curl -X POST localhost:8787/api/analyze -H 'Content-Type: application/json' -d '{
+  "channelId": "https://www.youtube.com/@mkbhd",
+  "window": "90d"
 }'
 ```
 
@@ -450,24 +557,32 @@ server/
   src/
     config.js              env + tunable heat weights
     services/
-      youtube.js           search/videos/channels/comments, quota-aware
+      youtube.js           search/videos/channels/comments/uploads, quota-aware
       deepseek.js          JSON chat client, retry + model fallback
-      analyze.js           prompts, comment selection, citation grounding
+      analyze.js           prompts (niche + channel), comment selection, citation grounding
       pipeline.js          phase orchestration
+      runner.js            shared run orchestration for the route and the scheduler
+      scheduler.js         re-runs saved watches, conservatively
     lib/
       heat.js              the scoring formula
-      cache.js             disk cache (swap for Redis at this seam)
+      searchPlan.js        which search.list slices a request needs = the cost model
+      cache.js             disk cache, keyed by query hash (swap for Redis at this seam)
+      store.js             persisted reports + per-niche gap history (the recurrence baseline)
+      recurrence.js        fuzzy gap matching across runs: recurring / new / closed
+      watches.js           saved-watch list
       jobs.js              in-process job registry (swap for BullMQ here)
-      quota.js             daily unit ledger
+      quota.js             daily unit ledger, locked
+      fileLock.js          cross-process mutex for the state files
       rateLimit.js         per-IP sliding window
-      relevance.js         keyword-overlap niche relevance check
+      relevance.js         keyword-overlap niche relevance check (off in channel mode)
       auditLog.js          per-run human-readable log (server/logs/, gitignored)
   test/unit.test.js
 web/
   src/
-    App.jsx                tabs, polling, state
-    components/            SearchForm, ProgressRail, Topic/Gap/Avoid cards
-    lib/                   API client, formatters
+    App.jsx                tabs, polling, URL state
+    components/            SearchForm, ProgressRail, Topic/Gap/Objection/Avoid cards,
+                           ThinPoolNotice, HistoryPanel, WatchPanel, ExportMenu
+    lib/                   API client, formatters, URL state, export serializers
 ```
 
 ## Known limits
@@ -477,8 +592,19 @@ web/
   video that wasn't published as a Short still counts as one.
 - **Hidden stats.** Channels can hide like counts and subscriber counts, and comments can
   be disabled. Those videos score on the signals that remain rather than being dropped.
-- **Single search page.** One `search.list` call caps a run at 50 videos. Paginating costs
-  another 100 units per page.
+- **Pool size is bounded by slices.** Each `search.list` slice returns 50 videos for 100
+  units, so a niche run sees 50 (or 100 with deep scan or long-form, 200 with both). Channel
+  mode pages the uploads playlist at 1 unit per 50 instead, capped at 6 pages for latency.
+- **Thin pools are reported, not fixed.** Heat, topic breadth and the ranking are all
+  relative to the result set, so under ~12 videos they mostly restate view order. The run
+  says so prominently and offers one-click ways to widen, but it cannot manufacture videos
+  that don't exist in the window.
+- **Recurrence needs a baseline.** Nothing can be marked recurring on a subject's first
+  stored run — the signal only appears from the second run onward, which is what watches
+  exist to produce. Fuzzy question matching is stemmed-token overlap, not semantic: a gap
+  re-worded with entirely different vocabulary will read as new.
+- **The scheduler is single-instance**, like `lib/jobs.js`. Two servers sharing a state
+  directory would fire every watch twice. Set `SCHEDULER_ENABLED=false` on replicas.
 - **Custom ranges reach back 365 days.** `search.list` will go further, but older windows
   make view-velocity scoring meaningless — everything looks slow.
 - **In-process jobs and disk cache** assume a single server instance. `lib/jobs.js` and
@@ -488,6 +614,24 @@ web/
   in adjacent content — a "cast iron restoration" run surfaced a barn-find motorcycle
   cluster. Narrower niches drift less, and the topic's example videos make drift obvious
   at a glance.
+- **Long-form used to stop at 20 minutes.** `search.list`'s `videoDuration` buckets are
+  `short` (<4m), `medium` (4-20m) and `long` (>20m), and one call takes exactly one of them —
+  but "long-form" here means "not a Short", i.e. everything over 180s, which spans *two*
+  buckets. The code asked for `medium` alone, so the >20min bucket was never requested at
+  all. Verified live on `"home lab server tutorial"`/90d: `contentType=long` returned **0**
+  videos over 20 minutes (longest: exactly 20:00) while the same query under `any` surfaced
+  11, up to 45 minutes. For tutorial, podcast and review niches that silently removed the
+  deepest half of the corpus. Requesting `any` instead would restore the range but dilute the
+  pool with Shorts the post-filter then discards — and since Shorts carry outsized view
+  counts, an `order=viewCount` pool could come back almost entirely Shorts. So long-form now
+  spends two slices: re-verified on the same query, **100 candidates, all non-Short, 50 of
+  them over 20 minutes, longest 208 minutes**.
+- **The candidate pool was biased against exactly what the scoring rewards.**
+  `order=viewCount` makes the pool the top N by *absolute* views, while
+  `config.heat.wOutperformance` (0.35, a third of the score) exists to surface a small
+  channel breaking out. A channel doing 8k views in a niche whose ceiling is 2M was never in
+  the pool to be scored. **Deep scan** adds a second `order=date` pass over the same buckets
+  so those videos can enter at all. Opt-in, because it costs another 100 units per format.
 - **The region filter still has a real gap.** It relies on a self-reported `channels.list`
   field many creators never set (treated as "unknown", not excluded) — there's no equivalent
   of the language filter's `defaultAudioLanguage` for a channel's country. The language

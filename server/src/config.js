@@ -39,7 +39,29 @@ export const config = {
   // recurrence detection compares against, and is kept far longer because a long
   // baseline is the entire point of it.
   store: { maxRuns: num(process.env.STORE_MAX_RUNS, 500) },
+
+  // Fuzzy matching for gap recurrence (lib/recurrence.js). Gaps are re-phrased
+  // by the model every run, so the same demand never comes back as the same
+  // string -- exact matching would report everything as new forever, which is
+  // indistinguishable from the feature being broken.
+  recurrence: {
+    minSimilarity: Number(process.env.RECURRENCE_MIN_SIMILARITY) || 0.4,
+    // One coincidentally shared word ("shorts", "beginner") is not evidence
+    // that two questions are the same question, however short they are.
+    minSharedTokens: num(process.env.RECURRENCE_MIN_SHARED_TOKENS, 2),
+  },
   rateLimit: { perHour: num(process.env.RATE_LIMIT_PER_HOUR, 10) },
+
+  // Saved-watch scheduler (services/scheduler.js). Single-instance, like
+  // lib/jobs.js -- two servers running it would double every watch.
+  scheduler: {
+    enabled: process.env.SCHEDULER_ENABLED !== 'false',
+    checkIntervalMs: num(process.env.SCHEDULER_CHECK_INTERVAL_MS, 5 * 60 * 1000),
+    // A floor on how often a watch may re-run. Below this, watches become a way
+    // to drain the day's YouTube quota by accident.
+    minIntervalHours: num(process.env.SCHEDULER_MIN_INTERVAL_HOURS, 6),
+    maxWatches: num(process.env.SCHEDULER_MAX_WATCHES, 20),
+  },
 
   // --- Heat score weights (open design decision #1) ----------------------
   // Tunable without touching scoring logic. See lib/heat.js for the formula.

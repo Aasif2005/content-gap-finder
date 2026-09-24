@@ -50,3 +50,30 @@ export const getRuns = ({ limit = 30, niche } = {}) => {
   if (niche) qs.set('niche', niche);
   return fetch(`/api/runs?${qs}`).then(json);
 };
+
+// --- saved watches ---------------------------------------------------------
+
+export const getWatches = () => fetch('/api/watches').then(json);
+
+export const createWatch = (input, intervalHours, label) =>
+  fetch('/api/watches', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...input, intervalHours, label }),
+  }).then(json);
+
+export const updateWatch = (id, patch) =>
+  fetch(`/api/watches/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  }).then(json);
+
+export const deleteWatch = (id) =>
+  fetch(`/api/watches/${id}`, { method: 'DELETE' }).then((res) => {
+    if (!res.ok && res.status !== 204) throw new Error('Could not delete that watch.');
+    return true;
+  });
+
+/** What a watch's newest run found that the previous one did not. Costs nothing. */
+export const getDigest = (id) => fetch(`/api/watches/${id}/digest`).then(json);

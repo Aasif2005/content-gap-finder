@@ -73,6 +73,70 @@ export class RunLogger {
     ]);
   }
 
+  /**
+   * Logs what recurrence comparison concluded. Worth its own section because
+   * "this gap has been asked for four runs running" is a different kind of claim
+   * from anything else in the log -- it depends on stored history rather than on
+   * this run's data, so if it looks wrong this is where to check whether the
+   * history was found at all.
+   */
+  logRecurrence(gaps, resolved, runsCompared) {
+    if (!runsCompared) {
+      this.section('RECURRENCE — comparison against earlier runs', [
+        'No earlier runs of this subject are stored, so every gap is first-time-seen.',
+        'Recurrence becomes meaningful from the second run of the same niche or channel onward.',
+      ]);
+      return;
+    }
+
+    const lines = [`Compared against ${runsCompared} earlier run(s) of this subject.`, ''];
+    gaps.forEach((g, i) => {
+      const r = g.recurrence ?? {};
+      const label =
+        r.status === 'recurring'
+          ? `RECURRING — seen in ${r.timesSeen} runs, first on ${(r.firstSeen ?? '').slice(0, 10)}${r.trend ? `, demand ${r.trend}` : ''}`
+          : 'NEW this run';
+      lines.push(`  Gap ${i + 1}: ${label}`);
+      lines.push(`    "${truncate(g.question, 110)}"`);
+      if (r.previousDemandScore != null) {
+        lines.push(`    demand score ${g.demandScore} now vs ${r.previousDemandScore} last time`);
+      }
+    });
+
+    if (resolved.length) {
+      lines.push('', `${resolved.length} gap(s) open in the previous run but absent now -- usually someone finally made the video:`);
+      resolved.forEach((r) => lines.push(`  - "${truncate(r.question, 110)}" (last seen ${(r.lastSeen ?? '').slice(0, 10)}, score ${r.previousDemandScore})`));
+    }
+
+    this.section('RECURRENCE — comparison against earlier runs', lines);
+  }
+
+  /**
+   * Objections that survived citation grounding. Logged separately from gaps
+   * because they answer a different question -- "what is wrong with the videos
+   * that exist" rather than "what is missing" -- and because an objection with
+   * weak evidence is the one most likely to make a creator change something
+   * that was never actually a problem.
+   */
+  logObjections(objections) {
+    if (!objections.length) {
+      this.section('OBJECTIONS — complaints about existing videos', [
+        'No complaint was voiced by at least 2 distinct comments, so none are reported.',
+      ]);
+      return;
+    }
+    const lines = [`${objections.length} objection(s) survived citation grounding:`, ''];
+    objections.forEach((o, i) => {
+      lines.push(`  ${i + 1}. [${o.severity}] "${o.label}"`);
+      lines.push(`     ${truncate(o.detail, 160)}`);
+      if (o.fix) lines.push(`     fix: ${truncate(o.fix, 140)}`);
+      lines.push(`     evidence (${o.evidenceCount} comments, ${o.distinctVideos} videos):`);
+      o.evidence.slice(0, 3).forEach((e) => lines.push(`       - (♥${e.likes}) "${truncate(e.text, 120)}"`));
+      lines.push('');
+    });
+    this.section('OBJECTIONS — complaints about existing videos', lines);
+  }
+
   /** Logs each topic the model produced, its evidence videos, and the relevance check. */
   logTopics(topics, relevanceResults) {
     const lines = [`DeepSeek clustered the videos into ${topics.length} topics:`, ''];

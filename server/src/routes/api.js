@@ -3,11 +3,13 @@ import * as jobs from '../lib/jobs.js';
 import * as cache from '../lib/cache.js';
 import { rateLimit } from '../lib/rateLimit.js';
 import { quotaStatus } from '../lib/quota.js';
-import { runPipeline } from '../services/pipeline.js';
+import * as runner from '../services/runner.js';
 import { config } from '../config.js';
-import { MAX_CUSTOM_WINDOW_DAYS } from '../services/youtube.js';
+import { MAX_CUSTOM_WINDOW_DAYS, parseChannelInput } from '../services/youtube.js';
 import { listRuns as listAuditRuns, readRunLog } from '../lib/auditLog.js';
 import * as store from '../lib/store.js';
+import * as watches from '../lib/watches.js';
+import * as scheduler from '../services/scheduler.js';
 
 export const router = express.Router();
 
@@ -19,9 +21,26 @@ const CONTENT_TYPES = new Set(['shorts', 'long', 'both']);
 const GAP_MODES = new Set(['inclusive', 'strict']);
 
 function validate(body) {
+  // Channel mode analyses one channel's own uploads, so it takes a channel
+  // reference instead of a niche. Accepts a URL, an @handle or a UC... id --
+  // resolved to an id server-side by channels.list (1 unit).
+  const rawChannel = String(body.channelId ?? '').trim();
+  let channelId;
+  if (rawChannel) {
+    if (!parseChannelInput(rawChannel)) {
+      throw bad('That does not look like a YouTube channel. Paste the channel URL, its @handle, or its UC... id.');
+    }
+    channelId = rawChannel;
+  }
+
   const niche = String(body.niche ?? '').trim();
-  if (niche.length < 2) throw bad('Niche must be at least 2 characters.');
-  if (niche.length > 100) throw bad('Niche must be under 100 characters.');
+  // In channel mode the channel itself is the subject, so a niche is optional.
+  if (!channelId) {
+    if (niche.length < 2) throw bad('Niche must be at least 2 characters.');
+    if (niche.length > 100) throw bad('Niche must be under 100 characters.');
+  } else if (niche.length > 100) {
+    throw bad('Niche must be under 100 characters.');
+  }
 
   const window = body.window ?? '7d';
   if (!WINDOWS.has(window)) throw bad(`window must be one of: ${[...WINDOWS].join(', ')}`);
@@ -56,7 +75,7 @@ function validate(body) {
   const regionCode = body.regionCode ? String(body.regionCode).toUpperCase().slice(0, 2) : undefined;
   const relevanceLanguage = body.relevanceLanguage ? String(body.relevanceLanguage).toLowerCase().slice(0, 2) : undefined;
 
-  return { niche, window, customAfter, contentType, gapMode, minViews, regionCode, relevanceLanguage, deepScan };
+  return { niche, window, customAfter, contentType, gapMode, minViews, regionCode, relevanceLanguage, deepScan, channelId };
 }
 
 router.get('/health', (_req, res) => {
@@ -76,46 +95,21 @@ router.post('/analyze', (req, res, next) => {
     return next(err);
   }
 
-  const key = cache.cacheKey(input);
   const force = req.body?.force === true;
 
+  // A cache hit costs nothing, so it bypasses the rate limit entirely --
+  // browsing already-computed reports should never be throttled.
   if (!force) {
-    const hit = cache.get(key);
+    const hit = cache.get(cache.cacheKey(input));
     if (hit) {
-      return res.json({
-        status: 'done',
-        cached: true,
-        cacheAgeSeconds: hit.ageSeconds,
-        result: hit.value,
-      });
+      return res.json({ status: 'done', cached: true, cacheAgeSeconds: hit.ageSeconds, result: hit.value });
     }
   }
 
-  // Only uncached runs count against the per-IP limit and the YouTube quota,
-  // so browsing cached reports stays free.
+  // Only uncached runs count against the per-IP limit and the YouTube quota.
   rateLimit(req, res, () => {
-    const id = jobs.create(input);
-    res.status(202).json({ status: 'running', jobId: id, cached: false });
-
-    runPipeline(input, jobs.reporter(id), id)
-      .then((result) => {
-        cache.set(key, result);
-        // Durable, runId-addressed copy. The cache above is keyed by query hash
-        // and expires in hours; this is what makes /r/<runId> keep working, and
-        // what the history list reads.
-        try {
-          store.saveRun(result);
-        } catch (err) {
-          // A storage failure must not lose the user the report they just paid
-          // quota for -- the in-memory job still has it.
-          console.error(`[job ${id}] could not persist report:`, err.message);
-        }
-        jobs.finish(id, result);
-      })
-      .catch((err) => {
-        console.error(`[job ${id}] failed:`, err.message);
-        jobs.fail(id, err);
-      });
+    const started = runner.startAnalysis(input, { force });
+    res.status(started.status === 'done' ? 200 : 202).json(started);
   });
 });
 
@@ -173,6 +167,89 @@ router.get('/runs/:runId', (req, res) => {
   if (!result) return res.status(404).json({ error: 'Report not found or pruned.', code: 'RUN_NOT_FOUND' });
   res.json({ status: 'done', persisted: true, result });
 });
+
+// ------------------------------------------------------------- watches ----
+
+/**
+ * Saved subjects, re-analysed on an interval. A watch is what actually builds
+ * the baseline gap recurrence needs -- without something re-running the
+ * analysis, "recurring" can never become true.
+ */
+router.get('/watches', (_req, res) => {
+  res.json({
+    watches: watches.list(),
+    minIntervalHours: config.scheduler.minIntervalHours,
+    maxWatches: config.scheduler.maxWatches,
+    schedulerEnabled: config.scheduler.enabled,
+  });
+});
+
+router.post('/watches', (req, res, next) => {
+  let input;
+  try {
+    input = validate(req.body ?? {});
+
+    const existing = watches.list();
+    if (existing.length >= config.scheduler.maxWatches) {
+      throw bad(`At most ${config.scheduler.maxWatches} watches. Delete one first.`);
+    }
+
+    const intervalHours = Number(req.body.intervalHours ?? 24 * 7);
+    if (!Number.isFinite(intervalHours) || intervalHours < config.scheduler.minIntervalHours) {
+      // A floor, not a preference: each run spends real quota unattended, and a
+      // watch on a 1-hour interval would drain the day's budget while nobody
+      // was looking.
+      throw bad(`intervalHours must be at least ${config.scheduler.minIntervalHours}.`);
+    }
+
+    // The same subject watched twice would just double-spend quota to append
+    // duplicate history for one niche.
+    const key = JSON.stringify(cache.cacheKey(input));
+    if (existing.some((w) => JSON.stringify(cache.cacheKey(w.input)) === key)) {
+      throw bad('That exact query is already being watched.');
+    }
+
+    res.status(201).json({ watch: watches.create({ input, intervalHours, label: req.body.label }) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/watches/:id', (req, res, next) => {
+  try {
+    const patch = {};
+    if (req.body?.enabled !== undefined) patch.enabled = Boolean(req.body.enabled);
+    if (req.body?.label !== undefined) patch.label = String(req.body.label).slice(0, 120);
+    if (req.body?.intervalHours !== undefined) {
+      const h = Number(req.body.intervalHours);
+      if (!Number.isFinite(h) || h < config.scheduler.minIntervalHours) {
+        throw bad(`intervalHours must be at least ${config.scheduler.minIntervalHours}.`);
+      }
+      patch.intervalHours = h;
+    }
+    const updated = watches.update(req.params.id, patch);
+    if (!updated) return res.status(404).json({ error: 'Watch not found.', code: 'WATCH_NOT_FOUND' });
+    res.json({ watch: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/watches/:id', (req, res) => {
+  if (!watches.remove(req.params.id)) {
+    return res.status(404).json({ error: 'Watch not found.', code: 'WATCH_NOT_FOUND' });
+  }
+  res.status(204).end();
+});
+
+/** What the newest run of a watch found that the previous one did not. Free. */
+router.get('/watches/:id/digest', (req, res) => {
+  const d = scheduler.digest(req.params.id);
+  if (!d) return res.status(404).json({ error: 'No completed run for that watch yet.', code: 'NO_DIGEST' });
+  res.json({ digest: d });
+});
+
+// ------------------------------------------------------------ audit log ----
 
 /**
  * Audit trail: what each run actually extracted, and whether it stayed on the

@@ -218,3 +218,125 @@ export async function getComments(videoId, maxResults = 50) {
     return [];
   }
 }
+
+// --------------------------------------------------------- channel mode ----
+
+/**
+ * Parses whatever a person pastes into a channel reference. Accepts a full URL
+ * (/channel/UC..., /@handle, /c/name, /user/name), a bare @handle, or a raw
+ * UC... id. Returns `{ kind, value }` for resolveChannel() to look up, or null
+ * if it doesn't look like a channel reference at all.
+ */
+export function parseChannelInput(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+
+  // A bare channel id. These are always UC + 22 chars.
+  if (/^UC[\w-]{22}$/.test(s)) return { kind: 'id', value: s };
+  if (/^@[\w.-]+$/.test(s)) return { kind: 'handle', value: s };
+
+  let url;
+  try {
+    url = new URL(s.includes('://') ? s : `https://${s}`);
+  } catch {
+    return null;
+  }
+  if (!/(^|\.)youtube\.com$/.test(url.hostname) && !/(^|\.)youtu\.be$/.test(url.hostname)) return null;
+
+  const parts = url.pathname.split('/').filter(Boolean);
+  if (parts[0] === 'channel' && parts[1]) return { kind: 'id', value: parts[1] };
+  if (parts[0]?.startsWith('@')) return { kind: 'handle', value: parts[0] };
+  // /c/Name and /user/Name are both legacy custom-URL forms; forHandle is the
+  // modern lookup and generally still resolves them.
+  if ((parts[0] === 'c' || parts[0] === 'user') && parts[1]) return { kind: 'handle', value: `@${parts[1]}` };
+  return null;
+}
+
+/**
+ * Resolves a channel reference to its id, title, stats and uploads playlist.
+ * 1 unit -- channels.list, not search.list, which is the whole reason channel
+ * mode costs ~29 units a run against a niche search's 127+.
+ */
+export async function resolveChannel(ref) {
+  const params = { part: 'snippet,statistics,contentDetails', maxResults: 1 };
+  if (ref.kind === 'id') params.id = ref.value;
+  else params.forHandle = ref.value;
+
+  const data = await call('channels', params, 'channels');
+  const c = data.items?.[0];
+  if (!c) {
+    throw Object.assign(
+      new Error(`No YouTube channel found for "${ref.value}". Paste the channel's URL, @handle, or UC... id.`),
+      { status: 404, code: 'CHANNEL_NOT_FOUND' }
+    );
+  }
+
+  const uploadsPlaylistId = c.contentDetails?.relatedPlaylists?.uploads;
+  if (!uploadsPlaylistId) {
+    throw Object.assign(
+      new Error(`"${c.snippet?.title}" has no public uploads playlist to analyse.`),
+      { status: 404, code: 'CHANNEL_NO_UPLOADS' }
+    );
+  }
+
+  return {
+    channelId: c.id,
+    title: c.snippet?.title ?? '',
+    description: c.snippet?.description ?? '',
+    country: c.snippet?.country ?? null,
+    subscribers: Number(c.statistics?.subscriberCount ?? 0),
+    hiddenSubscribers: Boolean(c.statistics?.hiddenSubscriberCount),
+    totalViews: Number(c.statistics?.viewCount ?? 0),
+    videoCount: Number(c.statistics?.videoCount ?? 0),
+    uploadsPlaylistId,
+  };
+}
+
+/**
+ * Recent uploads from a channel's uploads playlist, back to `publishedAfter`.
+ *
+ * playlistItems.list is 1 unit per page of 50 against search.list's 100 per
+ * page -- so this walks pages freely where a niche search cannot. Uploads come
+ * back newest-first, which is what lets it stop as soon as it crosses the
+ * window boundary instead of paging the channel's whole history.
+ *
+ * `maxPages` bounds latency rather than quota: a channel with 5,000 uploads
+ * inside a 90-day window is not a channel this tool can usefully analyse in one
+ * request anyway.
+ */
+export async function getChannelUploads({ uploadsPlaylistId, publishedAfter, maxPages = 6 }) {
+  const cutoff = new Date(publishedAfter).getTime();
+  const hits = [];
+  let pageToken;
+  let pages = 0;
+  let reachedCutoff = false;
+
+  while (pages < maxPages) {
+    const data = await call('playlistItems', {
+      part: 'snippet,contentDetails',
+      playlistId: uploadsPlaylistId,
+      maxResults: 50,
+      pageToken,
+    }, 'playlistItems');
+    pages++;
+
+    for (const item of data.items ?? []) {
+      const videoId = item.contentDetails?.videoId;
+      if (!videoId) continue;
+      // contentDetails.videoPublishedAt is the video's own publish time;
+      // snippet.publishedAt is when it was ADDED to the playlist, which for an
+      // uploads playlist is usually but not always the same thing.
+      const publishedAt = item.contentDetails?.videoPublishedAt ?? item.snippet?.publishedAt;
+      if (publishedAt && new Date(publishedAt).getTime() < cutoff) {
+        reachedCutoff = true;
+        continue;
+      }
+      hits.push({ videoId, channelId: item.snippet?.channelId });
+    }
+
+    pageToken = data.nextPageToken;
+    if (!pageToken || reachedCutoff) break;
+  }
+
+  return { hits, pages, truncated: Boolean(pageToken) && !reachedCutoff };
+}
