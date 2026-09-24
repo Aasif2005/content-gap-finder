@@ -1,10 +1,15 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps, truncate } from '../src/services/analyze.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords } from '../src/lib/relevance.js';
 import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
+import { searchPlan } from '../src/lib/searchPlan.js';
+import { withLock } from '../src/lib/fileLock.js';
 
 describe('parseDuration', () => {
   test('parses the ISO-8601 forms YouTube actually returns', () => {
@@ -539,5 +544,74 @@ describe('truncate', () => {
 
   test('collapses whitespace before truncating', () => {
     assert.equal(truncate('  hello   world  ', 20), 'hello world');
+  });
+});
+
+describe('searchPlan', () => {
+  test('"both" and "shorts" each need exactly one slice', () => {
+    assert.deepEqual(searchPlan({ contentType: 'both' }), [{ order: 'viewCount', videoDuration: 'any' }]);
+    assert.deepEqual(searchPlan({ contentType: 'shorts' }), [{ order: 'viewCount', videoDuration: 'short' }]);
+  });
+
+  // The bug this whole mechanism exists for. YouTube's videoDuration buckets are
+  // short(<4m)/medium(4-20m)/long(>20m) and a call takes exactly one -- so
+  // "long-form" (anything over 180s) spans two of them. Requesting only `medium`
+  // capped long-form analysis at 20 minutes: verified live on "home lab server
+  // tutorial"/90d, contentType=long returned 0 videos over 20 min while the same
+  // query under `any` surfaced 11, up to 45 minutes.
+  test('"long" spans BOTH the medium and long duration buckets', () => {
+    const buckets = searchPlan({ contentType: 'long' }).map((s) => s.videoDuration);
+    assert.deepEqual(buckets, ['medium', 'long']);
+    assert.ok(buckets.includes('long'), 'must request the >20min bucket, or long-form silently caps at 20 minutes');
+  });
+
+  test('deep scan adds a date-ordered pass over the same buckets, never dropping the viewCount pass', () => {
+    const plan = searchPlan({ contentType: 'both', deepScan: true });
+    assert.equal(plan.length, 2);
+    assert.deepEqual(plan.map((s) => s.order), ['viewCount', 'date']);
+    // order=viewCount alone makes the pool the top N by ABSOLUTE views, which
+    // pre-selects against the breakout small channel that views-per-subscriber
+    // scoring exists to surface.
+    assert.ok(plan.some((s) => s.order === 'date'));
+  });
+
+  test('long-form deep scan covers every bucket/order combination', () => {
+    const plan = searchPlan({ contentType: 'long', deepScan: true });
+    assert.equal(plan.length, 4);
+    assert.equal(new Set(plan.map((s) => `${s.order}:${s.videoDuration}`)).size, 4, 'no duplicate slices -- each one costs 100 units');
+  });
+
+  test('defaults to the cheapest single slice when given nothing', () => {
+    assert.equal(searchPlan().length, 1);
+  });
+});
+
+describe('withLock', () => {
+  const tmpBase = path.join(os.tmpdir(), `cgf-lock-test-${process.pid}`);
+
+  test('runs the critical section and releases the lock afterwards', () => {
+    const target = `${tmpBase}-a`;
+    const result = withLock(target, () => 'done');
+    assert.equal(result, 'done');
+    assert.equal(fs.existsSync(`${target}.lock`), false, 'lock must not leak after a normal return');
+  });
+
+  test('releases the lock even when the critical section throws', () => {
+    const target = `${tmpBase}-b`;
+    assert.throws(() => withLock(target, () => { throw new Error('boom'); }), /boom/);
+    assert.equal(fs.existsSync(`${target}.lock`), false, 'a throw inside the lock must not wedge every later call');
+  });
+
+  test('serializes against a lock already held, rather than running straight through', () => {
+    const target = `${tmpBase}-c`;
+    // Simulate another process holding the lock, but backdate it past the stale
+    // threshold so the spin loop reclaims it instead of waiting the full 2s.
+    fs.writeFileSync(`${target}.lock`, '');
+    const old = Date.now() - 60_000;
+    fs.utimesSync(`${target}.lock`, new Date(old), new Date(old));
+    let ran = false;
+    withLock(target, () => { ran = true; });
+    assert.equal(ran, true, 'a stale lock must be reclaimed, not block forever');
+    assert.equal(fs.existsSync(`${target}.lock`), false);
   });
 });

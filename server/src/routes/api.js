@@ -47,11 +47,15 @@ function validate(body) {
   const minViews = Number(body.minViews ?? 0);
   if (!Number.isFinite(minViews) || minViews < 0) throw bad('minViews must be a non-negative number.');
 
+  // Opt-in: doubles the search.list slices to widen the candidate pool. Costs
+  // real quota, so it is never on by default -- see lib/searchPlan.js.
+  const deepScan = body.deepScan === true;
+
   // ISO 3166-1 alpha-2 / ISO 639-1 respectively; YouTube rejects anything else.
   const regionCode = body.regionCode ? String(body.regionCode).toUpperCase().slice(0, 2) : undefined;
   const relevanceLanguage = body.relevanceLanguage ? String(body.relevanceLanguage).toLowerCase().slice(0, 2) : undefined;
 
-  return { niche, window, customAfter, contentType, gapMode, minViews, regionCode, relevanceLanguage };
+  return { niche, window, customAfter, contentType, gapMode, minViews, regionCode, relevanceLanguage, deepScan };
 }
 
 router.get('/health', (_req, res) => {
@@ -120,9 +124,13 @@ router.get('/jobs/:id', (req, res) => {
   });
 });
 
-router.get('/quota', (_req, res) => {
+router.get('/quota', (req, res) => {
   res.json({
-    ...quotaStatus(),
+    ...quotaStatus({
+      contentType: req.query.contentType,
+      deepScan: req.query.deepScan === 'true',
+      channelMode: req.query.channelMode === 'true',
+    }),
     cache: cache.stats(),
     cacheTtlSeconds: config.cache.ttlSeconds,
     rateLimitPerHour: config.rateLimit.perHour,

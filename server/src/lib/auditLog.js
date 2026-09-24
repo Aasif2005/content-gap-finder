@@ -43,13 +43,24 @@ export class RunLogger {
    * cut it to 1 logged "videos.list resolved 1 of them", reading as if the
    * YouTube API call itself only found 1 video, when it found all 50.
    */
-  logSearch(hits, resolvedCount, videos, warnings = []) {
+  logSearch(hits, resolvedCount, videos, warnings = [], slices = []) {
     const filterLine =
       resolvedCount !== videos.length
         ? [`format/min-views/region/language filters then narrowed that down to the ${videos.length} shown below:`, ...warnings.map((w) => `  ⚠ ${w}`)]
         : [];
+    // Per-slice yield. A thin pool is usually one slice coming back nearly
+    // empty, and without this the log shows only the merged total -- which
+    // can't distinguish "the niche has little content" from "the long-form
+    // bucket returned nothing".
+    const sliceLines = slices.length > 1
+      ? [
+          `${slices.length} search.list slices (${slices.length * 100} units):`,
+          ...slices.map((sl) => `  order=${sl.order} duration=${sl.videoDuration} -> ${sl.found} results, pool now ${sl.poolAfter}`),
+        ]
+      : [];
     this.section('SEARCH — raw candidates from YouTube', [
-      `search.list matched ${hits.length} videos for "${this.input.niche}" (window: ${this.input.window}, type: ${this.input.contentType}, region: ${this.input.regionCode ?? 'any'}, language: ${this.input.relevanceLanguage ?? 'any'})`,
+      `search.list matched ${hits.length} videos for "${this.input.niche}" (window: ${this.input.window}, type: ${this.input.contentType}, region: ${this.input.regionCode ?? 'any'}, language: ${this.input.relevanceLanguage ?? 'any'}${this.input.deepScan ? ', deep scan' : ''})`,
+      ...sliceLines,
       `videos.list resolved ${resolvedCount} of them to full stats`,
       ...filterLine,
       '',

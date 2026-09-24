@@ -1,6 +1,9 @@
 import { config } from '../config.js';
 import { spend } from '../lib/quota.js';
 import { languageQueryHint } from '../lib/language.js';
+import { searchPlan } from '../lib/searchPlan.js';
+
+export { searchPlan };
 
 const { base, apiKey } = config.youtube;
 
@@ -53,15 +56,15 @@ export function windowToPublishedAfter(window, customAfter) {
 }
 
 /**
- * One search.list call = 100 units. We over-fetch (up to 50) because the
- * duration filter below will discard some, and search.list cannot filter on
- * the <=180s Shorts boundary itself.
+ * Builds the candidate pool. One search.list slice = 100 units and 50 results;
+ * see searchPlan() for why a request needs the slices it does. Results are
+ * merged and deduped by videoId, so overlapping slices cost quota but never
+ * double-count a video.
+ *
+ * Returns `{ hits, slices }` -- `slices` is the per-call yield, which the audit
+ * log prints so a thin pool can be traced to the slice that came back empty.
  */
-export async function searchVideos({ niche, window, customAfter, contentType, regionCode, relevanceLanguage, order = 'viewCount' }) {
-  // videoDuration buckets are short(<4m) / medium(4-20m) / long(>20m). Shorts are
-  // <=3m, so "short" is a superset we refine after videos.list returns durations.
-  const videoDuration = contentType === 'shorts' ? 'short' : contentType === 'long' ? 'medium' : 'any';
-
+export async function searchVideos({ niche, window, customAfter, contentType, regionCode, relevanceLanguage, deepScan = false }) {
   // relevanceLanguage as a search.list PARAMETER barely moves the ranking (see
   // lib/language.js) -- folding the language's name into the QUERY TEXT itself
   // does much more, because search.list is a full-text relevance search and
@@ -74,22 +77,38 @@ export async function searchVideos({ niche, window, customAfter, contentType, re
   // genuinely on-language candidates being fetched in the first place.
   const languageHint = languageQueryHint(relevanceLanguage);
   const q = languageHint ? `${niche} ${languageHint}` : niche;
+  const publishedAfter = windowToPublishedAfter(window, customAfter);
 
-  const data = await call('search', {
-    part: 'snippet',
-    q,
-    type: 'video',
-    order,
-    maxResults: 50,
-    publishedAfter: windowToPublishedAfter(window, customAfter),
-    videoDuration,
-    regionCode,
-    relevanceLanguage,
-  }, 'search');
+  const plan = searchPlan({ contentType, deepScan });
+  const byId = new Map();
+  const slices = [];
 
-  return (data.items ?? [])
-    .filter((i) => i.id?.videoId)
-    .map((i) => ({ videoId: i.id.videoId, channelId: i.snippet.channelId }));
+  for (const slice of plan) {
+    const data = await call('search', {
+      part: 'snippet',
+      q,
+      type: 'video',
+      order: slice.order,
+      maxResults: 50,
+      publishedAfter,
+      videoDuration: slice.videoDuration,
+      regionCode,
+      relevanceLanguage,
+    }, 'search');
+
+    let found = 0;
+    for (const i of data.items ?? []) {
+      if (!i.id?.videoId) continue;
+      found++;
+      // First slice to surface a video wins; later slices only add new ones.
+      if (!byId.has(i.id.videoId)) {
+        byId.set(i.id.videoId, { videoId: i.id.videoId, channelId: i.snippet.channelId });
+      }
+    }
+    slices.push({ ...slice, found, poolAfter: byId.size });
+  }
+
+  return { hits: [...byId.values()], slices };
 }
 
 /** videos.list, batched 50 ids per call at 1 unit each. */

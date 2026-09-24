@@ -40,9 +40,11 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     relevanceLanguage,
     minViews = 0,
     gapMode = 'inclusive',
+    deepScan = false,
   } = input;
 
   const warnings = [];
+  let thinPool = null; // set below if the scored set is too small for relative scoring to mean much
   const log = new RunLogger(runId, input);
 
   try {
@@ -55,9 +57,15 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
 
   async function runPhases() {
 
-  // 1. Search -- the only 100-unit call in the whole run.
-  onProgress('searching', `Searching YouTube for "${niche}"`, 8);
-  const hits = await yt.searchVideos({ niche, window, customAfter, contentType, regionCode, relevanceLanguage });
+  // 1. Search -- the 100-unit-per-slice call, and the whole cost story of a run.
+  // How many slices a request needs is lib/searchPlan.js's decision; deep scan
+  // widens the pool with a second date-ordered pass so a breakout small channel
+  // can actually enter it (order=viewCount alone pre-selects for absolute views,
+  // which is exactly what views-per-subscriber scoring is supposed to see past).
+  onProgress('searching', `Searching YouTube for "${niche}"${deepScan ? ' (deep scan)' : ''}`, 8);
+  const { hits, slices } = await yt.searchVideos({
+    niche, window, customAfter, contentType, regionCode, relevanceLanguage, deepScan,
+  });
   if (!hits.length) {
     throw Object.assign(
       new Error(`No videos found for "${niche}" in this time range. Try a broader niche or a longer window.`),
@@ -162,7 +170,31 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     );
   }
 
-  log.logSearch(hits, beforeFilter, ranked, warnings);
+  // Relative scoring needs a population to be relative to. Below the threshold,
+  // min-max normalization collapses toward "rank order with decimals", the
+  // breadth bonus has almost nothing to count, and one weakly-evidenced topic
+  // reads on screen exactly like a well-supported one. Say so rather than
+  // presenting a 3-video run with the confidence of a 50-video run.
+  if (ranked.length < config.youtube.thinPoolThreshold) {
+    thinPool = {
+      videos: ranked.length,
+      threshold: config.youtube.thinPoolThreshold,
+      // What the user can actually do about it, most-likely-to-help first.
+      suggestions: [
+        window !== '90d' && window !== 'custom' ? 'widen the time window' : null,
+        relevanceLanguage ? `drop the "${relevanceLanguage}" language filter` : null,
+        regionCode ? `drop the "${regionCode}" region filter` : null,
+        minViews > 0 ? `lower the ${minViews.toLocaleString()} minimum-views filter` : null,
+        !deepScan ? 'turn on deep scan to widen the candidate pool' : null,
+        'try a broader niche phrase',
+      ].filter(Boolean),
+    };
+    warnings.push(
+      `Only ${ranked.length} videos made it to scoring (under ${config.youtube.thinPoolThreshold}). Heat scores are relative to this set, so with a set this small they mostly just re-state view order -- treat the ranking below as weak evidence. Try: ${thinPool.suggestions.join(', ')}.`
+    );
+  }
+
+  log.logSearch(hits, beforeFilter, ranked, warnings, slices);
 
   // 4. Comments for the top slice only. commentThreads.list is per-video, so
   // this is N round trips -- the cap is about latency as much as quota.
@@ -299,7 +331,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   onProgress('done', 'Complete', 100);
 
   return {
-    query: { niche, window, customAfter, contentType, regionCode, relevanceLanguage, minViews, gapMode },
+    query: { niche, window, customAfter, contentType, regionCode, relevanceLanguage, minViews, gapMode, deepScan },
     generatedAt: new Date().toISOString(),
     runId,
     stats: {
@@ -317,8 +349,10 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
         totalTokens: (clusterUsage?.total_tokens ?? 0) + (gapUsage?.total_tokens ?? 0),
       },
       relevance: relevanceSummary,
+      searchSlices: slices,
     },
     warnings,
+    thinPool,
     topics,
     gaps,
     avoid,

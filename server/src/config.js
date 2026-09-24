@@ -8,11 +8,20 @@ export const config = {
     apiKey: process.env.YOUTUBE_API_KEY,
     base: 'https://www.googleapis.com/youtube/v3',
     // Documented unit costs. search.list is the expensive one by 100x, which is
-    // why the pipeline does exactly one search and then batches everything else.
-    cost: { search: 100, videos: 1, channels: 1, commentThreads: 1 },
+    // why a run spends as few of them as the request allows (see lib/searchPlan.js)
+    // and batches everything else. playlistItems is what makes channel mode cheap:
+    // walking a channel's uploads costs 1 unit where searching costs 100.
+    cost: { search: 100, videos: 1, channels: 1, commentThreads: 1, playlistItems: 1 },
     dailyUnitBudget: num(process.env.YOUTUBE_DAILY_UNIT_BUDGET, 9000),
     maxCommentVideos: num(process.env.MAX_COMMENT_VIDEOS, 25),
     commentsPerVideo: num(process.env.COMMENTS_PER_VIDEO, 50),
+    // Below this many scored videos, the relative scoring the whole report rests
+    // on stops meaning anything: min-max normalization over 3 videos makes heat
+    // a rank in disguise, and scoreTopic's breadth bonus has nothing to measure.
+    // The pipeline warns instead of pretending. A real run ("what if hypothesis"
+    // + language ta) came back with 3 candidates and was presented with exactly
+    // the same confidence as a 50-video run.
+    thinPoolThreshold: num(process.env.THIN_POOL_THRESHOLD, 12),
   },
 
   deepseek: {

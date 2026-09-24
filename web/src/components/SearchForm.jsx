@@ -50,6 +50,7 @@ export function SearchForm({ onSubmit, busy }) {
   const [relevanceLanguage, setRelevanceLanguage] = useState('');
   const [minViews, setMinViews] = useState('');
   const [gapMode, setGapMode] = useState('inclusive');
+  const [deepScan, setDeepScan] = useState(false);
   const [customAfter, setCustomAfter] = useState(daysAgoISO(14));
 
   const submit = (e) => {
@@ -66,6 +67,7 @@ export function SearchForm({ onSubmit, busy }) {
       minViews: Number(minViews) || 0,
       regionCode: regionCode.trim() || undefined,
       relevanceLanguage: relevanceLanguage.trim() || undefined,
+      deepScan,
     });
   };
 
@@ -142,6 +144,28 @@ export function SearchForm({ onSubmit, busy }) {
               <option value="strict">Uncovered only</option>
             </select>
           </Field>
+
+          {/* Deep scan spans the row: it changes what a run COSTS, so it gets
+              room to say so rather than hiding behind a terse hint. */}
+          <label className="flex cursor-pointer items-start gap-2.5 sm:col-span-4">
+            <input
+              type="checkbox"
+              checked={deepScan}
+              onChange={(e) => setDeepScan(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-ink-300 accent-ink-900 dark:border-ink-600 dark:accent-white"
+            />
+            <span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-300">
+                Deep scan
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-relaxed text-ink-400">
+                Doubles the candidate pool with a second pass sorted by upload date instead of
+                view count. Without it the pool is the top 50 by <em>absolute</em> views, which
+                quietly filters out the breakout small channel that views-per-subscriber scoring
+                is meant to find. Costs one extra 100-unit search per format.
+              </span>
+            </span>
+          </label>
         </div>
       )}
     </form>

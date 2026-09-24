@@ -5,6 +5,7 @@ import { TopicCard } from './components/TopicCard.jsx';
 import { GapCard } from './components/GapCard.jsx';
 import { AvoidCard } from './components/AvoidCard.jsx';
 import { EmptyState, StatRow, Badge } from './components/Bits.jsx';
+import { ThinPoolNotice } from './components/ThinPoolNotice.jsx';
 import { startAnalysis, pollJob, getQuota } from './lib/api.js';
 
 const TABS = [
@@ -126,6 +127,18 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* A thin pool is not a warning among warnings -- it undermines every
+                number below it, so it gets its own callout with one-click ways
+                out rather than a line buried in a list. */}
+            {result.thinPool && (
+              <ThinPoolNotice
+                thinPool={result.thinPool}
+                query={result.query}
+                busy={busy}
+                onRerun={(patch) => run({ ...lastInput.current, ...patch }, { force: true })}
+              />
+            )}
 
             {result.warnings?.length > 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
