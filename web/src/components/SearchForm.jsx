@@ -17,11 +17,6 @@ const TYPES = [
   { value: 'long', label: 'Long-form' },
 ];
 
-const MODES = [
-  { value: 'niche', label: 'Niche' },
-  { value: 'channel', label: 'Channel' },
-];
-
 function Pills({ options, value, onChange, name, disabled }) {
   return (
     <div role="radiogroup" aria-label={name} className="inline-flex rounded-lg bg-ink-100 p-0.5 dark:bg-ink-800">
@@ -46,7 +41,9 @@ function Pills({ options, value, onChange, name, disabled }) {
   );
 }
 
-export function SearchForm({ onSubmit, busy, initial = {} }) {
+/** `mode` ('niche' | 'channel') is fixed by which page rendered this form -- the
+ * page itself is the mode switch now, so the form no longer has its own toggle. */
+export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
   const [niche, setNiche] = useState(initial.niche ?? '');
   const [window, setWindow] = useState(initial.window ?? '7d');
   const [contentType, setContentType] = useState(initial.contentType ?? 'both');
@@ -59,7 +56,6 @@ export function SearchForm({ onSubmit, busy, initial = {} }) {
   const [minViews, setMinViews] = useState(initial.minViews ? String(initial.minViews) : '');
   const [gapMode, setGapMode] = useState(initial.gapMode ?? 'inclusive');
   const [deepScan, setDeepScan] = useState(Boolean(initial.deepScan));
-  const [mode, setMode] = useState(initial.channelId ? 'channel' : 'niche');
   const [channelId, setChannelId] = useState(initial.channelId ?? '');
   const [customAfter, setCustomAfter] = useState(
     initial.customAfter ? initial.customAfter.slice(0, 10) : daysAgoISO(14)
@@ -127,11 +123,6 @@ export function SearchForm({ onSubmit, busy, initial = {} }) {
       </p>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <label className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
-          <span className="font-medium">Analyse</span>
-          <Pills name="Analysis mode" options={MODES} value={mode} onChange={setMode} disabled={busy} />
-        </label>
-
         <label className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
           <span className="font-medium">Published</span>
           <Pills name="Time window" options={WINDOWS} value={window} onChange={setWindow} disabled={busy} />

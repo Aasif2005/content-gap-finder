@@ -24,9 +24,24 @@ const FIELDS = {
   deepScan: { parse: (v) => v === 'true', serialize: (v) => (v ? 'true' : undefined) },
 };
 
-/** `/r/<runId>` -> that run id, else null. */
+/**
+ * Niche Explorer and Channel Analyzer are two separate top-level pages, not a
+ * mode toggle buried in one form -- niche search is exploratory (broad
+ * discovery across many creators), channel analysis is diagnostic (one
+ * creator's own catalogue and audience). The channel page lives under
+ * `/channel`; the niche page owns everything else. `/r/<id>` and `/channel/r/<id>`
+ * both resolve the same way, so a shared report link stays on the page it
+ * belongs to.
+ */
+export function modeFromPath(pathname = window.location.pathname) {
+  return pathname === '/channel' || pathname.startsWith('/channel/') ? 'channel' : 'niche';
+}
+
+export const basePathFor = (mode) => (mode === 'channel' ? '/channel' : '');
+
+/** `/r/<runId>` or `/channel/r/<runId>` -> that run id, else null. */
 export function runIdFromPath(pathname = window.location.pathname) {
-  const m = /^\/r\/([a-zA-Z0-9_-]+)\/?$/.exec(pathname);
+  const m = /^(?:\/channel)?\/r\/([a-zA-Z0-9_-]+)\/?$/.exec(pathname);
   return m ? m[1] : null;
 }
 
@@ -52,11 +67,12 @@ export function queryToSearch(input = {}) {
 }
 
 /** Replaces the URL without a navigation, so a report becomes linkable in place. */
-export function pushReportUrl(runId) {
+export function pushReportUrl(runId, mode = 'niche') {
   if (!runId) return;
-  window.history.pushState({ runId }, '', `/r/${runId}`);
+  window.history.pushState({ runId }, '', `${basePathFor(mode)}/r/${runId}`);
 }
 
-export function pushQueryUrl(input) {
-  window.history.replaceState({}, '', `/${queryToSearch(input)}`);
+export function pushQueryUrl(input, mode = 'niche') {
+  const base = basePathFor(mode) || '/';
+  window.history.replaceState({}, '', `${base}${queryToSearch(input)}`);
 }

@@ -24,7 +24,7 @@ const when = (iso, { future = false } = {}) => {
  * re-open, nothing is ever recurring and the most valuable signal in the product
  * stays permanently unavailable. A watch is the thing that builds the baseline.
  */
-export function WatchPanel({ currentQuery, onOpenRun }) {
+export function WatchPanel({ currentQuery, onOpenRun, mode = 'niche' }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
@@ -71,8 +71,12 @@ export function WatchPanel({ currentQuery, onOpenRun }) {
     }
   };
 
-  const watches = state?.watches ?? [];
-  const full = state && watches.length >= state.maxWatches;
+  // Watches carry the full query they re-run, so the mode split is a client-side
+  // filter here rather than a separate endpoint -- one watch list, two views of it.
+  const watches = (state?.watches ?? []).filter((w) =>
+    mode === 'channel' ? Boolean(w.input?.channelId) : !w.input?.channelId
+  );
+  const full = state && (state.watches?.length ?? 0) >= state.maxWatches;
 
   return (
     <div className="min-w-0">

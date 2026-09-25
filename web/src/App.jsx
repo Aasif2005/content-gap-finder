@@ -12,7 +12,41 @@ import { HistoryPanel } from './components/HistoryPanel.jsx';
 import { WatchPanel } from './components/WatchPanel.jsx';
 import { startAnalysis, pollJob, getQuota, getRun } from './lib/api.js';
 import { compact } from './lib/format.js';
-import { runIdFromPath, queryFromUrl, pushReportUrl, pushQueryUrl } from './lib/urlState.js';
+import {
+  runIdFromPath,
+  queryFromUrl,
+  pushReportUrl,
+  pushQueryUrl,
+  modeFromPath,
+  basePathFor,
+} from './lib/urlState.js';
+
+// Niche search is exploratory (broad discovery across many creators, content
+// ideas for something you don't own yet); channel analysis is diagnostic (one
+// creator's own catalogue and own audience -- what to improve, what's already
+// working, what viewers keep asking for). Different intent, so they are two
+// separate top-level pages under one app shell, not a toggle buried in the
+// search form -- the page you're on now IS the mode.
+const PAGES = {
+  niche: {
+    label: 'Niche Explorer',
+    navLabel: 'Explore a niche',
+    subtitle: "Enter a niche. Get what's trending on YouTube right now, what viewers keep "
+      + 'asking for that nobody has made, and what to avoid.',
+    emptyTitle: 'Start with a niche',
+    emptyBody: 'Try something specific — “cast iron restoration” beats “cooking”. Narrow niches produce '
+      + 'sharper gaps because the comments are all about the same subject.',
+  },
+  channel: {
+    label: 'Channel Analyzer',
+    navLabel: 'Analyze my channel',
+    subtitle: 'Paste a channel. See which of its own videos are working, what its own viewers keep '
+      + 'asking for and have not gotten, and what they complain about.',
+    emptyTitle: 'Start with a channel',
+    emptyBody: 'Paste a channel URL, @handle, or channel id. Every result is scoped to that channel’s own '
+      + 'uploads and its own viewers’ comments — nothing else.',
+  },
+};
 
 // Channel mode reports on one creator's own catalogue and own audience, so the
 // niche wording is simply wrong there ("what is working in this niche" on a
@@ -49,6 +83,7 @@ const TABS = [
 const relFrac = (r) => (r ? `${r.relevant}/${r.total}` : '—');
 
 export default function App() {
+  const [mode, setMode] = useState(() => modeFromPath());
   const [phase, setPhase] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -74,33 +109,52 @@ export default function App() {
     setPhase({ phase: 'searching', detail: 'Loading saved report…', progress: 50, elapsedMs: 0 });
     try {
       const { result: saved } = await getRun(runId);
+      const savedMode = saved.channelMode ? 'channel' : 'niche';
       setResult(saved);
+      setMode(savedMode);
       lastInput.current = saved.query;
       setPhase(null);
-      if (push) pushReportUrl(runId);
+      if (push) pushReportUrl(runId, savedMode);
     } catch (err) {
       setError(`Could not load that report: ${err.message}`);
       setPhase(null);
     }
   }, []);
 
-  // A /r/<runId> URL, on first load and on back/forward.
+  // A /r/<runId> or /channel/r/<runId> URL, on first load and on back/forward.
   useEffect(() => {
     const fromPath = runIdFromPath();
     if (fromPath) openRun(fromPath, { push: false });
+    else setMode(modeFromPath());
 
     const onPop = () => {
       const id = runIdFromPath();
       if (id) openRun(id, { push: false });
-      else { setResult(null); setError(null); }
+      else {
+        setResult(null);
+        setError(null);
+        setMode(modeFromPath());
+      }
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [openRun]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Switches page (nav click). Leaves the other page's in-progress report alone -- it just isn't shown. */
+  const switchMode = useCallback((next) => {
+    if (next === mode) return;
+    setMode(next);
+    setResult(null);
+    setError(null);
+    setPhase(null);
+    lastInput.current = null;
+    window.history.pushState({}, '', basePathFor(next) || '/');
+  }, [mode]);
 
   const run = useCallback(async (input, { force = false } = {}) => {
     lastInput.current = input;
-    pushQueryUrl(input); // so a reload or a shared link reopens the same search
+    pushQueryUrl(input, mode); // so a reload or a shared link reopens the same search
     setError(null);
     setResult(null);
     setCacheInfo(null);
@@ -114,7 +168,7 @@ export default function App() {
         setCacheInfo({ cached: true, ageSeconds: started.cacheAgeSeconds });
         setResult(started.result);
         setPhase(null);
-        if (started.result?.runId) pushReportUrl(started.result.runId);
+        if (started.result?.runId) pushReportUrl(started.result.runId, mode);
         return;
       }
 
@@ -124,14 +178,14 @@ export default function App() {
       setResult(final);
       setPhase(null);
       // Now the report has an id, so give it a URL worth sharing.
-      pushReportUrl(final.runId);
+      pushReportUrl(final.runId, mode);
       refreshQuota();
     } catch (err) {
       setError(err.message);
       setPhase(null);
       refreshQuota();
     }
-  }, [refreshQuota]);
+  }, [refreshQuota, mode]);
 
   const busy = Boolean(phase);
   const counts = result
@@ -143,17 +197,35 @@ export default function App() {
       }
     : {};
 
+  const page = PAGES[mode];
+
   return (
     <div className="mx-auto min-h-full max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
+      <nav className="mb-6 inline-flex rounded-lg bg-ink-100 p-0.5 dark:bg-ink-800">
+        {Object.entries(PAGES).map(([key, p]) => (
+          <a
+            key={key}
+            href={basePathFor(key) || '/'}
+            onClick={(e) => { e.preventDefault(); switchMode(key); }}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+              mode === key
+                ? 'bg-white text-ink-900 shadow-sm dark:bg-ink-600 dark:text-white'
+                : 'text-ink-500 hover:text-ink-800 dark:text-ink-400 dark:hover:text-ink-100'
+            }`}
+          >
+            {p.navLabel}
+          </a>
+        ))}
+      </nav>
+
       <header className="mb-8">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl dark:text-white">
-              Content Gap Finder
+              Content Gap Finder <span className="font-normal text-ink-400 dark:text-ink-500">· {page.label}</span>
             </h1>
             <p className="mt-1 max-w-xl text-sm text-ink-500 dark:text-ink-400">
-              Enter a niche. Get what's trending on YouTube right now, what viewers keep
-              asking for that nobody has made, and what to avoid.
+              {page.subtitle}
             </p>
           </div>
 
@@ -173,11 +245,11 @@ export default function App() {
         </div>
       </header>
 
-      <SearchForm onSubmit={run} busy={busy} initial={initialQuery} />
+      <SearchForm onSubmit={run} busy={busy} initial={initialQuery} mode={mode} />
 
       <div className="mt-4 flex flex-wrap items-start gap-x-6">
-        <HistoryPanel onOpen={openRun} currentRunId={result?.runId} />
-        <WatchPanel currentQuery={result?.query ?? lastInput.current} onOpenRun={openRun} />
+        <HistoryPanel onOpen={openRun} currentRunId={result?.runId} mode={mode} />
+        <WatchPanel currentQuery={result?.query ?? lastInput.current} onOpenRun={openRun} mode={mode} />
       </div>
 
       <div className="mt-8">
@@ -403,10 +475,7 @@ export default function App() {
         )}
 
         {!busy && !result && !error && (
-          <EmptyState title="Start with a niche">
-            Try something specific — “cast iron restoration” beats “cooking”. Narrow niches produce
-            sharper gaps because the comments are all about the same subject.
-          </EmptyState>
+          <EmptyState title={page.emptyTitle}>{page.emptyBody}</EmptyState>
         )}
       </div>
     </div>

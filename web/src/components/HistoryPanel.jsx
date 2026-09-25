@@ -17,7 +17,7 @@ const when = (iso) => {
  * endpoint existed and had no consumer at all. Reopening a past report costs no
  * quota, which makes this the cheapest useful thing in the app.
  */
-export function HistoryPanel({ onOpen, currentRunId }) {
+export function HistoryPanel({ onOpen, currentRunId, mode = 'niche' }) {
   const [open, setOpen] = useState(false);
   const [runs, setRuns] = useState(null);
   const [error, setError] = useState(null);
@@ -25,10 +25,11 @@ export function HistoryPanel({ onOpen, currentRunId }) {
   useEffect(() => {
     if (!open) return;
     setError(null);
-    getRuns({ limit: 40 })
+    setRuns(null);
+    getRuns({ limit: 40, mode })
       .then((d) => setRuns(d.runs))
       .catch((e) => setError(e.message));
-  }, [open, currentRunId]);
+  }, [open, currentRunId, mode]);
 
   return (
     <div className="min-w-0">

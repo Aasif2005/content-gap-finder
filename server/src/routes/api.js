@@ -156,6 +156,9 @@ router.get('/runs', (req, res) => {
       nicheKey: req.query.niche || req.query.channelId
         ? store.subjectKey({ niche: req.query.niche, channelId: req.query.channelId })
         : undefined,
+      // Scopes history to one page's mode (niche explorer vs channel analyzer)
+      // when the caller isn't already asking for one specific subject.
+      channelMode: req.query.mode === 'channel' ? true : req.query.mode === 'niche' ? false : undefined,
     }),
   });
 });

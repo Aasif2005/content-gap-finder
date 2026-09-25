@@ -121,10 +121,13 @@ function readIndex() {
  * Newest first. `nicheKey` narrows to one niche's history, which is what the
  * recurrence pass and the "previous runs of this niche" UI both want.
  */
-export function listRuns({ limit = 30, nicheKey: key, channelId } = {}) {
+export function listRuns({ limit = 30, nicheKey: key, channelId, channelMode } = {}) {
   let rows = readIndex();
   if (key) rows = rows.filter((r) => r.nicheKey === key);
   if (channelId) rows = rows.filter((r) => r.channelId === channelId);
+  // Lets the two separate pages (niche explorer / channel analyzer) each show
+  // only their own history, instead of one mixed list.
+  if (channelMode !== undefined) rows = rows.filter((r) => r.channelMode === channelMode);
   return rows.sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt)).slice(0, limit);
 }
 

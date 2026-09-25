@@ -42,7 +42,14 @@ Tests: `npm test --workspace server`
 ## How it works
 
 There are two ways in. **Niche mode** searches YouTube for a subject; **channel mode**
-analyses one channel's own uploads and its own audience.
+analyses one channel's own uploads and its own audience. These are two different
+questions — "what's out there, and what's missing" vs. "what's working for *me*, and what
+do *my* viewers want" — so in the UI they are two separate top-level pages (**Niche
+Explorer** at `/`, **Channel Analyzer** at `/channel`, switched via the nav bar at the top),
+not a toggle inside one shared form. Each page has its own search form (no unused
+region/language/deep-scan fields to hide), its own run history, and its own saved watches —
+scoped with `GET /api/runs?mode=niche|channel` and a client-side filter on watches' saved
+query, so the two subjects never show up mixed together in one list.
 
 ```
 niche + window + format                    channel URL / @handle / UC… id
@@ -601,10 +608,12 @@ server/
   test/unit.test.js
 web/
   src/
-    App.jsx                tabs, polling, URL state
-    components/            SearchForm, ProgressRail, Topic/Gap/Objection/Avoid cards,
-                           ThinPoolNotice, HistoryPanel, WatchPanel, ExportMenu
-    lib/                   API client, formatters, URL state, export serializers
+    App.jsx                page router (/ = Niche Explorer, /channel = Channel Analyzer),
+                           nav switcher, tabs, polling, URL state
+    components/            SearchForm (mode fixed by the page, no toggle), ProgressRail,
+                           Topic/Gap/Objection/Avoid cards, ThinPoolNotice,
+                           HistoryPanel, WatchPanel (both mode-filtered), ExportMenu
+    lib/                   API client, formatters, URL state (mode ↔ path), export serializers
 ```
 
 ## Known limits
