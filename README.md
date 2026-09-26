@@ -167,6 +167,23 @@ how many different videos, and how many likes those comments drew.
 **Uploader comments are excluded.** A creator replying "recipe's in the description!" in
 their own thread matches every demand pattern we look for but is not audience demand.
 
+### A gap is a video to film, not a question to answer
+
+Two things can both look like "repeated demand in the comments," and only one of them
+belongs on this tab. **Repeated content requests** ("make a UK/Europe geopolitics video",
+"reupload the lift comedy scene") are gaps — a creator can film them. **Genuine curiosity
+about a real-world event nobody has explained** ("why did he cry at that event", "why was
+he hospitalized") is *also* a gap — that's a filmable explainer, not just a question.
+
+What is deliberately excluded: a question that's only about a specific *existing* video's
+own footage or dialogue ("which movie did he mean in that speech", "who was that line
+directed at") — answering it means re-explaining a video that already exists, not filming
+something new — and rhetorical debate between commenters with no informational question at
+all ("what has this politician actually done"). A live run against a real, noisy
+political-figure niche caught both of these leaking through as "gaps" before this rule
+existed; the prompt now tells the two apart explicitly, verified live against a rerun of the
+same niche after the fix.
+
 ---
 
 ## Open design decisions, and how they were settled

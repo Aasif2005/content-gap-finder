@@ -222,6 +222,18 @@ Rules:
   Do NOT report a gap that a high-heat video already answers well.
 - Reject generic filler ("more content please", "great video"). A gap must be a
   specific, filmable subject.
+- A question can be a real gap, but tell apart WHICH question. ACCEPT a question
+  about the REAL-WORLD subject the niche is about, when no existing video
+  actually explains it ("why did he cry at that event", "why was he hospitalized",
+  "what actually happened there") -- that is a filmable explainer, exactly the
+  kind of gap this task exists to find. REJECT a question that is only about a
+  specific EXISTING video's own footage or dialogue ("which movie did he mean in
+  that speech", "who was that line directed at", "was that ever answered in the
+  video") -- satisfying it means re-explaining a video that already exists, not
+  filming something new. Also REJECT rhetorical political or personal debate
+  between commenters with no informational question at all ("what has this
+  politician actually done", "whose fault is this") -- that is commenters arguing
+  with each other, not the audience asking the creator for anything.
 - A gap is demand for MORE content about the niche, not a request to abandon
   it. Comments telling the channel to stop covering the niche and cover an
   unrelated subject instead (world news, a different person, an unrelated
@@ -261,6 +273,16 @@ Rules:
   Do NOT report a gap that a high-heat video already answers well.
 - Reject generic filler ("more content please", "great video"). A gap must be a
   specific, filmable subject.
+- A question can be a real gap, but tell apart WHICH question. ACCEPT a question
+  about the channel's REAL-WORLD subject matter, when no existing video actually
+  covers it ("why did this happen", "what's the story behind X") -- that is a
+  filmable explainer, exactly the kind of gap this task exists to find. REJECT a
+  question that is only about a specific EXISTING video's own footage or
+  dialogue ("which one did you mean", "was that ever answered in the video") --
+  satisfying it means re-explaining a video that already exists, not filming
+  something new. Also REJECT rhetorical debate between commenters with no
+  informational question at all -- that is commenters arguing with each other,
+  not the audience asking the creator for anything.
 - These are the channel's OWN subscribers. A request for a subject the channel
   has not covered before is a genuine, valuable gap -- NOT audience fatigue and
   NOT off-topic. Report it. Only reject requests that no creator could act on
