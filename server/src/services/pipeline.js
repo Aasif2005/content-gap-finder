@@ -7,6 +7,7 @@ import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHij
 import { matchesRequestedLanguage } from '../lib/language.js';
 import { classifyRecurrence } from '../lib/recurrence.js';
 import { annotateOutliers } from '../lib/outlier.js';
+import { formulaHint } from '../lib/hookFormulas.js';
 import * as store from '../lib/store.js';
 
 /** Trims a scored video down to what the UI actually renders. */
@@ -400,8 +401,9 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   // 7. LLM pass B: gap mining, grounded back to real comments.
   const { gaps: rawGaps, objections: rawObjections, usage: gapUsage } = await mineGaps({
     niche: subject, window: windowLabel, videos: ranked, comments: gapComments, topics: rawTopics, gapMode, channelMode, onProgress,
+    formulaHint: outlierSummary ? formulaHint(outlierSummary.topFormulas) : '',
   });
-  const gapsResolved = groundGaps(rawGaps, gapComments).map((g) => ({
+  const gapsResolved = groundGaps(rawGaps, gapComments, { context: niche }).map((g) => ({
     ...g,
     coveringVideos: resolve(g.coveringVideoIds).map(publicVideo),
   }));

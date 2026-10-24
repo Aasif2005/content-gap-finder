@@ -121,6 +121,40 @@ export function GapCard({ gap, rank }) {
                   Suggested format: {gap.suggestedFormat}
                 </p>
               )}
+              {gap.thumbnailText && (
+                <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
+                  Thumbnail text: <span className="font-semibold text-ink-700 dark:text-ink-200">{gap.thumbnailText}</span>
+                </p>
+              )}
+              {gap.titleLint && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <Badge
+                    tone={gap.titleLint.score >= 70 ? 'good' : gap.titleLint.score >= 50 ? 'warm' : 'bad'}
+                    title="Deterministic title lint (length, shouting, vague words, figures, thumbnail overlap). A checklist, not a click prediction."
+                  >
+                    title check {gap.titleLint.score}/100
+                  </Badge>
+                  {gap.titleLint.issues.map(([kind, msg]) => (
+                    <Badge key={kind} tone={kind === 'ungrounded-number' ? 'bad' : kind === 'no-number' ? 'neutral' : 'warm'} title={msg}>
+                      {kind}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {gap.titleOptions?.length > 1 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                    {gap.titleOptions.length - 1} other title{gap.titleOptions.length === 2 ? '' : 's'}
+                  </summary>
+                  <ul className="mt-1 space-y-0.5">
+                    {gap.titleOptions.slice(1).map((o) => (
+                      <li key={o.title} className="text-xs text-ink-600 dark:text-ink-300">
+                        {o.title} <span className="nums text-ink-400">· {o.score}/100</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           )}
 

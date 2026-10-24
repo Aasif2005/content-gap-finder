@@ -17,3 +17,14 @@ export function classifyFormula(text) {
   }
   return best ? { id: best.id, name: best.name, hits } : { id: null, name: 'Unclassified', hits: 0 };
 }
+
+/** One-line prompt hint naming the formulas outperforming in a niche, with their shape. */
+export function formulaHint(topFormulas = [], limit = 2) {
+  const lines = topFormulas
+    .slice(0, limit)
+    .map((t) => FORMULAS.find((f) => f.name === t.name))
+    .filter(Boolean)
+    .map((f) => `- ${f.name}: ${f.shape}`);
+  if (!lines.length) return '';
+  return `TITLE WORDING that is beating its channel's median in this niche (use only if it fits a gap honestly; do not force it):\n${lines.join('\n')}`;
+}

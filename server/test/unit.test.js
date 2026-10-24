@@ -10,7 +10,8 @@ import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatin
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
 import { withLock } from '../src/lib/fileLock.js';
-import { FORMULAS, classifyFormula } from '../src/lib/hookFormulas.js';
+import { FORMULAS, classifyFormula, formulaHint } from '../src/lib/hookFormulas.js';
+import { lintTitle, ungroundedNumbers, rankTitleOptions } from '../src/lib/titleLint.js';
 import { median, medianMultiple, annotateOutliers } from '../src/lib/outlier.js';
 import { nicheKey, subjectKey } from '../src/lib/store.js';
 import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurrence.js';
@@ -798,7 +799,7 @@ describe('export serializers', () => {
 
   test('CSV header and row column counts line up', () => {
     const [header] = gapsToCsv(result).split('\r\n');
-    assert.equal(header.split(',').length, 13);
+    assert.equal(header.split(",").length, 15);
   });
 
   test('markdown keeps the evidence quotes, not just the model conclusion', () => {
@@ -1054,5 +1055,63 @@ describe('median-multiple outliers', () => {
     assert.equal(s.outliers, 1);
     assert.deepEqual(s.thinChannels, ['Two']);
     assert.equal(s.topFormulas[0].name, 'The Statistic');
+  });
+});
+
+describe('title lint and ranking (ported from youtube-agent-skill)', () => {
+  test('flags length, shouting, vague words, missing figure', () => {
+    const r = lintTitle('INSANE ULTIMATE SECRET cast iron guide that covers absolutely everything you could ever want to know');
+    const kinds = r.issues.map(([k]) => k);
+    for (const k of ['length', 'shouting', 'vague', 'no-number']) assert.ok(kinds.includes(k), k);
+  });
+  test('flags a thumbnail that repeats the title, and over-long thumbnail text', () => {
+    assert.ok(lintTitle('Restore cast iron fast', 'CAST IRON').issues.some(([k]) => k === 'duplicate'));
+    assert.ok(lintTitle('Restore a pan', 'one two three four five').issues.some(([k]) => k === 'thumb-length'));
+  });
+  test('ungroundedNumbers only reports figures absent from the evidence', () => {
+    assert.deepEqual(ungroundedNumbers('Restore a 1920 pan in 10 minutes', 'my 1920 Griswold is rusty'), ['10']);
+    assert.deepEqual(ungroundedNumbers('Restore a pan', 'anything 5'), []);
+  });
+  test('a title with an invented number loses to a clean one even when it scores higher on the lint', () => {
+    const ranked = rankTitleOptions(['Restore a rusty pan in 7 minutes', 'Restore a rusty pan'], { corpus: 'how do i restore a rusty pan' });
+    assert.equal(ranked[0].title, 'Restore a rusty pan');
+    assert.ok(ranked[1].ungrounded);
+  });
+  test('if every option invents a number, the best-scoring one still wins', () => {
+    const ranked = rankTitleOptions(['Fix it in 3 steps', 'Fix it in 3 steps today'], { corpus: '' });
+    assert.ok(ranked.every((r) => r.ungrounded));
+    assert.equal(ranked.length, 2);
+  });
+  test('dedupes case-insensitively and drops blanks', () => {
+    assert.equal(rankTitleOptions(['A pan', 'a pan', '', null, undefined]).length, 1);
+  });
+  test('groundGaps picks the title in code, keeps alternates, and carries the thumbnail text', () => {
+    const comments = [
+      { index: 1, videoId: 'v1', text: 'how do i remove black residue', likes: 5, replyCount: 0 },
+      { index: 2, videoId: 'v2', text: 'black residue keeps coming back', likes: 3, replyCount: 0 },
+    ];
+    const [g] = groundGaps([{
+      question: 'How do I remove black residue?', evidence_comment_indexes: [1, 2], demand_strength: 'high', coverage: 'none',
+      title_options: ['Remove black residue in 5 minutes', 'Why black residue keeps coming back'], thumbnail_text: 'NOT SEASONING',
+    }], comments, { context: 'cast iron' });
+    assert.equal(g.suggestedTitle, 'Why black residue keeps coming back');
+    assert.equal(g.titleOptions.length, 2);
+    assert.equal(g.thumbnailText, 'NOT SEASONING');
+    assert.ok(g.titleLint.score > 0);
+  });
+  test('groundGaps still accepts the old single suggested_title shape', () => {
+    const comments = [
+      { index: 1, videoId: 'v1', text: 'please explain x', likes: 1, replyCount: 0 },
+      { index: 2, videoId: 'v2', text: 'explain x too', likes: 1, replyCount: 0 },
+    ];
+    const [g] = groundGaps([{ question: 'x?', evidence_comment_indexes: [1, 2], suggested_title: 'Explaining x' }], comments);
+    assert.equal(g.suggestedTitle, 'Explaining x');
+  });
+});
+
+describe('formulaHint', () => {
+  test('is empty with no formulas and names the shape otherwise', () => {
+    assert.equal(formulaHint([]), '');
+    assert.match(formulaHint([{ name: 'The Statistic', count: 3 }]), /The Statistic: /);
   });
 });

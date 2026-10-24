@@ -1,4 +1,5 @@
 import { chatJSON } from './deepseek.js';
+import { rankTitleOptions } from '../lib/titleLint.js';
 import { config } from '../config.js';
 
 // Real bug this fixes: a plain .slice(0, n) cuts by UTF-16 code unit, not by
@@ -238,7 +239,7 @@ Rules:
   it. Comments telling the channel to stop covering the niche and cover an
   unrelated subject instead (world news, a different person, an unrelated
   topic) are audience fatigue, not a content gap -- reject them.
-- explanation and suggested_title must follow ONLY from what the cited
+- explanation and every title option must follow ONLY from what the cited
   comments actually say. Never invent a premise or connect two separate
   comments into a claim neither one makes.
 - demand_strength: "high" only when many independent comments converge on it.
@@ -287,7 +288,7 @@ Rules:
   has not covered before is a genuine, valuable gap -- NOT audience fatigue and
   NOT off-topic. Report it. Only reject requests that no creator could act on
   (abuse, spam, demands about other channels' behaviour).
-- explanation and suggested_title must follow ONLY from what the cited
+- explanation and every title option must follow ONLY from what the cited
   comments actually say. Never invent a premise or connect two separate
   comments into a claim neither one makes.
 - demand_strength: "high" only when many independent comments converge on it.
@@ -301,7 +302,7 @@ Rules:
 - "fix" on an objection must be a concrete thing to do differently, drawn only
   from what the cited comments complain about.`;
 
-export async function mineGaps({ niche, window, videos, comments, topics, gapMode, channelMode = false, onProgress }) {
+export async function mineGaps({ niche, window, videos, comments, topics, gapMode, channelMode = false, formulaHint = '', onProgress }) {
   onProgress?.('gaps', `Mining ${comments.length} comments for unmet demand`, 78);
   if (!comments.length) return { gaps: [], objections: [], usage: null };
 
@@ -326,6 +327,10 @@ COMMENTS (${comments.length} of them, indexed):
 ${commentBlock}
 
 ${coverageRule}
+${formulaHint ? `\n${formulaHint}\n` : ''}
+TITLE RULES: put a number, a name or a date in a title ONLY if it appears in the
+cited comments -- never invent a figure, and that includes a count like "3 ways"
+or "5 fixes", to make a title punchier. No all-caps shouting, no filler adjectives ("amazing", "ultimate").
 
 Return json with exactly this shape:
 {
@@ -337,7 +342,8 @@ Return json with exactly this shape:
       "covering_video_ids": ["ids that partly cover it, [] if none"],
       "demand_strength": "high" | "medium" | "low",
       "evidence_comment_indexes": [3, 17, 42],
-      "suggested_title": "a video title a creator could film to fill this gap",
+      "title_options": ["three different titles a creator could film to fill this gap, each under 60 characters, the subject in the first three words"],
+      "thumbnail_text": "at most 3 words for the thumbnail that add to the title and do not repeat its words",
       "suggested_format": "Short" | "long-form"
     }
   ],
@@ -376,7 +382,7 @@ export function parseCommentIndex(raw) {
   return m ? Number(m[1]) : null;
 }
 
-export function groundGaps(gaps, comments) {
+export function groundGaps(gaps, comments, { context = '' } = {}) {
   const byIndex = new Map(comments.map((c) => [c.index, c]));
   const strengthWeight = { high: 1.3, medium: 1.0, low: 0.75 };
   const coverageWeight = { none: 1.25, weak: 1.0 };
@@ -399,13 +405,30 @@ export function groundGaps(gaps, comments) {
         (strengthWeight[gap.demand_strength] ?? 1) *
         (coverageWeight[gap.coverage] ?? 1);
 
+      // Titles are linted and ranked in code -- the model never scores its own
+      // output. A number counts as grounded only if the audience said it (the
+      // cited comments, the question) or the niche names it. Existing video
+      // titles are deliberately NOT part of the corpus: across 100 titles nearly
+      // every small number appears somewhere, which would let an invented
+      // "3 fixes" through as if it were evidence.
+      const corpus = [context, gap.question, ...evidence.map((e) => e.text)].join(' ');
+      const thumbnailText = typeof gap.thumbnail_text === 'string' ? gap.thumbnail_text.trim() : '';
+      const titleOptions = rankTitleOptions(
+        [...(Array.isArray(gap.title_options) ? gap.title_options : []), gap.suggested_title],
+        { thumb: thumbnailText || null, corpus }
+      );
+      const bestTitle = titleOptions[0];
+
       return {
         question: gap.question,
         explanation: gap.explanation ?? '',
         coverage: gap.coverage ?? 'weak',
         coveringVideoIds: gap.covering_video_ids ?? [],
         demandStrength: gap.demand_strength ?? 'medium',
-        suggestedTitle: gap.suggested_title ?? '',
+        suggestedTitle: bestTitle?.title ?? '',
+        titleLint: bestTitle ? { score: bestTitle.score, issues: bestTitle.issues, good: bestTitle.good } : null,
+        titleOptions: titleOptions.map((o) => ({ title: o.title, score: o.score, issues: o.issues })),
+        thumbnailText,
         suggestedFormat: gap.suggested_format ?? '',
         evidence,
         evidenceCount: evidence.length,

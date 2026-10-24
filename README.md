@@ -209,6 +209,22 @@ political-figure niche caught both of these leaking through as "gaps" before thi
 existed; the prompt now tells the two apart explicitly, verified live against a rerun of the
 same niche after the fix.
 
+### Titles are linted in code, and may not invent numbers
+
+Each gap comes back with three candidate titles and a ≤3-word thumbnail text. The model
+does not pick or score them: [`lib/titleLint.js`](server/src/lib/titleLint.js) (a port of
+`title.py` from youtube-agent-skill — checks the 60-character desktop and 40-character
+mobile cuts, all-caps shouting, vague words, a missing figure, subject up front, and the
+thumbnail repeating the title) scores every candidate and the best one becomes "Film this".
+The lint is a checklist, not a click prediction, and the UI says so.
+
+The lint *rewards* numbers, so a model chasing it would invent them. One check was added on
+top of the port: a number counts as grounded only if it appears in the cited comments, the
+question, or the niche. Existing video titles are deliberately not part of that corpus — across
+100 titles almost every small number appears somewhere, which let an invented "3 fixes" pass
+as evidence on the first live run. A candidate with an ungrounded number can only win if every
+candidate has one.
+
 ---
 
 ## Open design decisions, and how they were settled
@@ -640,6 +656,7 @@ server/
     lib/
       heat.js              the scoring formula
       outlier.js           views vs. each channel's own median (from youtube-agent-skill)
+      titleLint.js         deterministic title/thumbnail lint + invented-number check
       hookFormulas.js      21 title/hook formulas (data/hooks.json) -> label a title
       searchPlan.js        which search.list slices a request needs = the cost model
       cache.js             disk cache, keyed by query hash (swap for Redis at this seam)

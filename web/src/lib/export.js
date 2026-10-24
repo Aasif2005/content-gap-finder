@@ -22,7 +22,7 @@ const csv = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
 export function gapsToCsv(result) {
   const rows = [[
     'question', 'demand_strength', 'coverage', 'demand_score', 'evidence_comments',
-    'distinct_videos', 'suggested_title', 'suggested_format', 'recurrence', 'times_seen',
+    'distinct_videos', 'suggested_title', 'title_score', 'thumbnail_text', 'suggested_format', 'recurrence', 'times_seen',
     'first_seen', 'niche_relevant', 'top_evidence',
   ]];
   for (const g of result.gaps ?? []) {
@@ -34,6 +34,8 @@ export function gapsToCsv(result) {
       g.evidenceCount,
       g.distinctVideos,
       g.suggestedTitle,
+      g.titleLint?.score ?? '',
+      g.thumbnailText ?? '',
       g.suggestedFormat,
       g.recurrence?.status ?? '',
       g.recurrence?.timesSeen ?? '',
@@ -95,6 +97,8 @@ export function reportToMarkdown(result) {
       out.push(`### ${i + 1}. ${g.question}`, '', `*${flags.join(' · ')}*`, '');
       if (g.explanation) out.push(g.explanation, '');
       if (g.suggestedTitle) out.push(`**Film this:** ${g.suggestedTitle}${g.suggestedFormat ? ` (${g.suggestedFormat})` : ''}`, '');
+      if (g.thumbnailText) out.push(`**Thumbnail text:** ${g.thumbnailText}`, '');
+      if (g.titleOptions?.length > 1) out.push('Other titles: ' + g.titleOptions.slice(1).map((o) => `"${o.title}"`).join(' · '), '');
       if (g.evidence?.length) {
         out.push('What viewers actually said:', '');
         g.evidence.slice(0, 4).forEach((e) => out.push(`> "${e.text}" — ♥ ${e.likes}`, ''));
