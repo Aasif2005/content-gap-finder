@@ -8,10 +8,10 @@ const MOBILE = 40;
 const HARD = 100;
 const VAGUE = new Set(['amazing', 'incredible', 'insane', 'crazy', 'huge', 'massive', 'ultimate', 'best', 'powerful',
   'secret', 'revolutionary', 'mindblowing', 'epic', 'perfect', 'complete', 'everything']);
-const STOP = new Set(['the', 'a', 'an', 'of', 'for', 'to', 'in', 'on', 'and', 'or', 'is', 'are', 'with', 'your', 'you', 'my', 'i',
+export const STOP = new Set(['the', 'a', 'an', 'of', 'for', 'to', 'in', 'on', 'and', 'or', 'is', 'are', 'with', 'your', 'you', 'my', 'i',
   'this', 'that', 'it', 'how', 'what', 'why']);
 
-const words = (t) => t.toLowerCase().match(/[a-z0-9']+/g) ?? [];
+export const words = (t) => t.toLowerCase().match(/[a-z0-9']+/g) ?? [];
 const codePoints = (s) => Array.from(s);
 // Python's str.isupper(): at least one cased character, and none lowercase.
 const isUpper = (w) => w !== w.toLowerCase() && w === w.toUpperCase();

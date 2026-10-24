@@ -81,3 +81,20 @@ export const deleteWatch = (id) =>
 
 /** What a watch's newest run found that the previous one did not. Costs nothing. */
 export const getDigest = (id) => fetch(`/api/watches/${id}/digest`).then(json);
+
+// --- "Make it" briefs --------------------------------------------------------
+
+/** A previously drafted brief, or null. Costs nothing. */
+export const getBrief = (runId, index) =>
+  fetch(`/api/runs/${runId}/gaps/${index}/brief`).then(json).then((b) => b.brief);
+
+/** Drafts (or returns the saved) brief for one gap. Generating is one DeepSeek call, polled like a run. */
+export async function makeBrief(runId, index, { force = false } = {}) {
+  const started = await fetch(`/api/runs/${runId}/gaps/${index}/brief`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force }),
+  }).then(json);
+  if (started.status === 'done') return started.brief;
+  return pollJob(started.jobId, null, { timeoutMs: 240_000 });
+}

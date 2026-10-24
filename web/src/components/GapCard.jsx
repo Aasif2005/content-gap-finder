@@ -1,10 +1,11 @@
 import { compact } from '../lib/format.js';
 import { Card, Rank, Badge } from './Bits.jsx';
 import { VideoStrip } from './VideoStrip.jsx';
+import { BriefPanel } from './BriefPanel.jsx';
 
 const STRENGTH = { high: 'hot', medium: 'warm', low: 'neutral' };
 
-export function GapCard({ gap, rank }) {
+export function GapCard({ gap, rank, runId, index }) {
   return (
     <Card className="rise">
       <div className="flex items-start gap-3">
@@ -157,6 +158,8 @@ export function GapCard({ gap, rank }) {
               )}
             </div>
           )}
+
+          {gap.suggestedTitle && <BriefPanel runId={runId} index={index} />}
 
           {gap.coveringVideos?.length > 0 && (
             <details className="group mt-3">

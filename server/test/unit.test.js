@@ -11,6 +11,8 @@ import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
 import { withLock } from '../src/lib/fileLock.js';
 import { FORMULAS, classifyFormula, formulaHint } from '../src/lib/hookFormulas.js';
+import { scoreHook, band } from '../src/lib/hookScore.js';
+import { finalizeBrief, queryTest, briefPrompt, formulaList } from '../src/services/brief.js';
 import { lintTitle, ungroundedNumbers, rankTitleOptions } from '../src/lib/titleLint.js';
 import { median, medianMultiple, annotateOutliers } from '../src/lib/outlier.js';
 import { nicheKey, subjectKey } from '../src/lib/store.js';
@@ -1113,5 +1115,75 @@ describe('formulaHint', () => {
   test('is empty with no formulas and names the shape otherwise', () => {
     assert.equal(formulaHint([]), '');
     assert.match(formulaHint([{ name: 'The Statistic', count: 3 }]), /The Statistic: /);
+  });
+});
+
+describe('hook score (ported from youtube-agent-skill)', () => {
+  test('a specific, direct, high-stakes hook outscores a filler greeting', () => {
+    const strong = scoreHook('You are wasting 40 minutes every time you restore a pan the old way, and it costs you the finish.');
+    const weak = scoreHook('Hey guys welcome back to my channel today we are going to talk about something really amazing');
+    assert.ok(strong.verdict > weak.verdict + 20);
+    assert.equal(weak.band, 'WEAK');
+    assert.equal(weak.weakest, 'SPECIFICITY');
+  });
+  test('verdict rounds half to even like the original (Python round), not half up', () => {
+    // 0.6*mean + 0.4*min lands on exact .5 for some inputs; Math.round would disagree there.
+    const hooks = ['Cast iron.', 'Why does your pan rust?', 'You will never guess what happened to my Griswold'];
+    for (const h of hooks) assert.ok(Number.isInteger(scoreHook(h).verdict));
+  });
+  test('band thresholds', () => {
+    assert.deepEqual([band(72), band(71), band(55), band(54)], ['STRONG', 'WORKABLE', 'WORKABLE', 'WEAK']);
+  });
+});
+
+describe('make-it brief', () => {
+  const corpus = 'cast iron restoration how do i remove black residue from my 1920 skillet';
+  const raw = {
+    hooks: [
+      { text: 'You will lose the finish on your 1920 skillet if you scrub it before you see what this black residue really is.', formula_id: 'the-warning' },
+      { text: 'This trick saves 73 pans a year and nobody told you why it works at all.', formula_id: 'the-statistic' },
+    ],
+    beats: [
+      { beat: 'turn', say: 'one two three four five six seven eight nine ten', on_screen: 'the pan' },
+      { beat: 'body', say: 'word '.repeat(140).trim(), on_screen: 'close-up' },
+      { beat: 'close', say: '   ', on_screen: 'x' },
+    ],
+    seo: { queries: ['remove black residue cast iron', 'skillet black gunk', 'seasoning flaking off'], description_opening: 'How to remove black residue from a cast iron skillet.', tags: ['Cast Iron', 'cast iron', 'skillet', 'x'] },
+  };
+  const out = finalizeBrief(raw, { title: 'Black Residue on Cast Iron: What It Is', thumbnailText: 'not seasoning', corpus });
+
+  test('hooks are scored in code and an invented number cannot win over a clean hook', () => {
+    assert.equal(out.hooks.length, 2);
+    assert.equal(out.bestHooks[0].inventedNumbers.length, 0);
+    assert.ok(out.hooks[1].ungrounded);
+    assert.deepEqual(out.hooks[1].inventedNumbers, ['73']);
+    assert.ok(Number.isInteger(out.hooks[0].verdict));
+  });
+  test('runtime is a word count at 150 wpm, ignoring empty beats', () => {
+    assert.equal(out.beats.length, 2);
+    assert.equal(out.runtime.words, 150);
+    assert.equal(out.runtime.seconds, 60);
+  });
+  test('tags are deduped case-insensitively', () => {
+    assert.deepEqual(out.seo.tags, ['Cast Iron', 'skillet', 'x']);
+  });
+  test('the query test checks title and description opening separately', () => {
+    const q = Object.fromEntries(out.seo.queryTest.map((r) => [r.query, r]));
+    assert.equal(q['remove black residue cast iron'].inTitle, false); // "remove" is not in the title
+    assert.equal(q['remove black residue cast iron'].inOpening, true);
+    assert.equal(q['seasoning flaking off'].inOpening, false);
+  });
+  test('queryTest never passes an empty (all-stopword) query', () => {
+    assert.equal(queryTest(['the a'], 'anything', 'anything')[0].inOpening, false);
+  });
+  test('survives a malformed model response without throwing', () => {
+    const empty = finalizeBrief({ hooks: 'nope', beats: null, seo: 5 }, { title: 'T', thumbnailText: '', corpus: '' });
+    assert.deepEqual([empty.hooks.length, empty.beats.length, empty.seo.tags.length], [0, 0, 0]);
+  });
+  test('the prompt carries the evidence and all 21 formulas but not the unrelated run data', () => {
+    const gap = { question: 'Q?', explanation: 'E', coverage: 'none', suggestedFormat: 'long-form', suggestedTitle: 'T', thumbnailText: 'tt', evidence: [{ text: 'comment one', likes: 3 }], coveringVideos: [] };
+    const p = briefPrompt({ run: { channelMode: false, query: { niche: 'cast iron' } }, gap });
+    assert.match(p, /comment one/);
+    assert.equal(formulaList().split('\n').length, 21);
   });
 });

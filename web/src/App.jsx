@@ -390,7 +390,7 @@ export default function App() {
 
                 {tab === 'gaps' &&
                   (result.gaps.length ? (
-                    result.gaps.map((g, i) => <GapCard key={g.question + i} gap={g} rank={i + 1} />)
+                    result.gaps.map((g, i) => <GapCard key={g.question + i} gap={g} rank={i + 1} runId={result.runId} index={i} />)
                   ) : (
                     <EmptyState title="No unmet demand found">
                       Every recurring request in these comments is already answered by a strong video — a sign

@@ -225,6 +225,29 @@ question, or the niche. Existing video titles are deliberately not part of that 
 as evidence on the first live run. A candidate with an ungrounded number can only win if every
 candidate has one.
 
+### "Make it": from a gap to something you can film
+
+Each gap has a **Make it** button. It spends nothing until pressed, then makes one DeepSeek
+call (about 6-8k tokens, 30-90s) and returns hooks, script beats and search text, using the
+prompts of `yt-script` and `yt-seo` from youtube-agent-skill. Everything that can be decided
+in code is, and the model never grades its own writing:
+
+- **Five hooks**, each scored by [`lib/hookScore.js`](server/src/lib/hookScore.js) (a port of
+  `hookscore.py`: specificity, address, stakes, curiosity, brevity; verdict = 60% mean + 40%
+  weakest) and labelled with the closest of the 21 formulas by wording. The original author
+  measured that it separates deliberately bad hooks from real ones but barely separates a
+  creator's own hits from misses, so the UI calls it a checklist, not a prediction — and it
+  tends to score plain hooks low when no figure in the comments could be used.
+- **Invented figures are caught**, as for titles: a hook or description containing a number
+  that is not in the viewers' own words is flagged, and can only be a "best hook" if every
+  hook has one.
+- **Script beats** with what is *on screen* for each, and a runtime computed from the word
+  count at 150 words a minute.
+- **The query test**: for each of the three searches a person would type, does the title (or
+  at least the description opening) contain its words? If not, the title is what to change.
+- Saved by (report, gap) so re-opening costs nothing, and limited separately from analyses
+  (`BRIEF_RATE_LIMIT_PER_HOUR`, default 30) since it costs no YouTube quota.
+
 ---
 
 ## Open design decisions, and how they were settled
@@ -321,6 +344,8 @@ Two wrinkles worth knowing:
 | `GET /api/jobs/:id` | Poll phase, detail, progress, and the final result. |
 | `GET /api/runs` | Report history, newest first. Free. `?niche=` narrows to one subject. |
 | `GET /api/runs/:runId` | A persisted report. What makes `/r/<runId>` shareable. Free. |
+| `POST /api/runs/:runId/gaps/:i/brief` | "Make it": hooks, script beats and search text for one gap. One DeepSeek call, polled as a job; a saved brief is returned free, and a second click joins the running job. `{"force":true}` redrafts. |
+| `GET /api/runs/:runId/gaps/:i/brief` | A saved brief, or `brief: null`. Free. |
 | `GET /api/watches` | Saved watches, plus the interval floor and limit. |
 | `POST /api/watches` | Save a query to re-run on a schedule (`intervalHours`). |
 | `PATCH /api/watches/:id` | Pause, resume, relabel, or re-interval a watch. |
@@ -653,10 +678,12 @@ server/
       pipeline.js          phase orchestration
       runner.js            shared run orchestration for the route and the scheduler
       scheduler.js         re-runs saved watches, conservatively
+      brief.js             "Make it": hooks + script + SEO for one gap (one DeepSeek call)
     lib/
       heat.js              the scoring formula
       outlier.js           views vs. each channel's own median (from youtube-agent-skill)
       titleLint.js         deterministic title/thumbnail lint + invented-number check
+      hookScore.js         five-property hook scorer (port of hookscore.py)
       hookFormulas.js      21 title/hook formulas (data/hooks.json) -> label a title
       searchPlan.js        which search.list slices a request needs = the cost model
       cache.js             disk cache, keyed by query hash (swap for Redis at this seam)

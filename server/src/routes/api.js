@@ -1,7 +1,8 @@
 import express from 'express';
 import * as jobs from '../lib/jobs.js';
 import * as cache from '../lib/cache.js';
-import { rateLimit } from '../lib/rateLimit.js';
+import { rateLimit, briefRateLimit } from '../lib/rateLimit.js';
+import * as brief from '../services/brief.js';
 import { quotaStatus } from '../lib/quota.js';
 import * as runner from '../services/runner.js';
 import { config } from '../config.js';
@@ -173,6 +174,38 @@ router.get('/runs/:runId', (req, res) => {
   const result = store.readRun(req.params.runId);
   if (!result) return res.status(404).json({ error: 'Report not found or pruned.', code: 'RUN_NOT_FOUND' });
   res.json({ status: 'done', persisted: true, result });
+});
+
+/**
+ * "Make it": hooks, script beats and SEO for one gap of a saved report. A saved
+ * brief is a disk read; generating one is a single DeepSeek call, polled through
+ * the job registry like an analysis (a reasoning model can take over a minute).
+ */
+router.get('/runs/:runId/gaps/:i/brief', (req, res) => {
+  // 200 with a null brief rather than a 404: "none yet" is the normal state of
+  // most gaps, and the page asks for every one on load.
+  const saved = store.readBrief(req.params.runId, Number(req.params.i));
+  res.json({ status: saved ? 'done' : 'none', cached: Boolean(saved), brief: saved });
+});
+
+router.post('/runs/:runId/gaps/:i/brief', (req, res, next) => {
+  const index = Number(req.params.i);
+  const force = req.body?.force === true;
+  try {
+    // Saved briefs and joins of a running job cost nothing, so they skip the limiter.
+    const free = !force && (store.readBrief(req.params.runId, index) || null);
+    if (free) return res.json({ status: 'done', cached: true, brief: free });
+    briefRateLimit(req, res, () => {
+      try {
+        const started = brief.startBrief(req.params.runId, index, { force });
+        res.status(started.status === 'done' ? 200 : 202).json(started);
+      } catch (err) {
+        next(err);
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ------------------------------------------------------------- watches ----

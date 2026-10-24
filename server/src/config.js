@@ -50,7 +50,11 @@ export const config = {
     // that two questions are the same question, however short they are.
     minSharedTokens: num(process.env.RECURRENCE_MIN_SHARED_TOKENS, 2),
   },
-  rateLimit: { perHour: num(process.env.RATE_LIMIT_PER_HOUR, 10) },
+  rateLimit: {
+    perHour: num(process.env.RATE_LIMIT_PER_HOUR, 10),
+    // "Make it" briefs cost one DeepSeek call and no YouTube quota.
+    briefsPerHour: num(process.env.BRIEF_RATE_LIMIT_PER_HOUR, 30),
+  },
 
   // Saved-watch scheduler (services/scheduler.js). Single-instance, like
   // lib/jobs.js -- two servers running it would double every watch.

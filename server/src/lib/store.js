@@ -24,6 +24,7 @@ import { withLock } from './fileLock.js';
 const STATE_DIR = path.resolve(fileURLToPath(new URL('../../.state', import.meta.url)));
 const RUNS_DIR = path.join(STATE_DIR, 'runs');
 const NICHES_DIR = path.join(STATE_DIR, 'niches');
+const BRIEFS_DIR = path.join(STATE_DIR, 'briefs');
 const RUN_INDEX = path.join(STATE_DIR, 'runs-index.jsonl');
 
 /**
@@ -151,6 +152,38 @@ function pruneRuns() {
   });
   for (const r of drop) {
     try { fs.unlinkSync(path.join(RUNS_DIR, `${r.runId}.json`)); } catch { /* already gone */ }
+    // A brief is meaningless without the report it was drafted from.
+    try {
+      for (const f of fs.readdirSync(BRIEFS_DIR)) if (f.startsWith(`${r.runId}-`)) fs.unlinkSync(path.join(BRIEFS_DIR, f));
+    } catch { /* no briefs directory yet */ }
+  }
+}
+
+// ---------------------------------------------------------------- briefs ---
+
+/**
+ * A "Make it" brief (hooks, script beats, SEO) for one gap of one report. Kept
+ * by (runId, gap index) so a second click costs nothing: the DeepSeek call is
+ * the only thing here that spends money, and a creator will re-open the same
+ * gap several times while deciding.
+ */
+const briefPath = (runId, index) =>
+  /^[a-zA-Z0-9_-]+$/.test(runId ?? '') && Number.isInteger(index) && index >= 0
+    ? path.join(BRIEFS_DIR, `${runId}-${index}.json`)
+    : null;
+
+export function saveBrief(runId, index, brief) {
+  const file = briefPath(runId, index);
+  if (file) writeAtomic(file, JSON.stringify(brief));
+}
+
+export function readBrief(runId, index) {
+  const file = briefPath(runId, index);
+  if (!file) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
   }
 }
 
