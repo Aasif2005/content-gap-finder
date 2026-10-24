@@ -75,7 +75,28 @@ function Reason({ reason, items, query, busy, onRerun }) {
  * to the step that made it short, and the filter responsible can be undone from
  * the same place.
  */
-export function EvidencePanel({ exclusions, query, busy, onRerun }) {
+const OUTPUT_NAMES = { heat: 'Heat ranking', topics: 'Trending topics', gaps: 'Content gaps', outliers: 'Channel-median outliers', recurrence: 'Recurrence' };
+const DOT = { solid: 'bg-emerald-500', small: 'bg-amber-400', thin: 'bg-rose-500', 'n/a': 'bg-ink-300 dark:bg-ink-600' };
+
+/** How much to trust each output, judged by what that output computes (server lib/confidence.js). */
+function Trust({ evidence }) {
+  return (
+    <section>
+      <h4 className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">How much to trust each output</h4>
+      <ul className="mt-1.5 space-y-1">
+        {Object.entries(evidence).map(([key, e]) => (
+          <li key={key} className="flex items-start gap-2 text-xs">
+            <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${DOT[e.level]}`} />
+            <span className="w-40 shrink-0 font-medium text-ink-700 dark:text-ink-200">{OUTPUT_NAMES[key] ?? key} <span className="font-normal text-ink-400">· {e.level}</span></span>
+            <span className="text-ink-500 dark:text-ink-400">{e.why}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export function EvidencePanel({ exclusions, evidence, query, busy, onRerun }) {
   const { funnel, byReason, items, excluded, language, integrity } = exclusions;
   const found = funnel[0]?.count ?? 0;
   const scored = funnel.find((f) => f.key === 'scored')?.count ?? 0;
@@ -87,11 +108,15 @@ export function EvidencePanel({ exclusions, query, busy, onRerun }) {
       <summary className="cursor-pointer list-none text-sm text-ink-700 dark:text-ink-200">
         <b>{found}</b> {funnel[0]?.label.toLowerCase().includes('upload') ? 'uploads in the window' : 'videos found'} → <b>{scored}</b> scored
         {excluded > 0 && <> · <b>{excluded}</b> left out, and why</>}
+        {evidence && Object.entries(evidence).filter(([, e]) => e.level === 'small' || e.level === 'thin').map(([k, e]) => (
+          <span key={k} className={`ml-2 text-xs ${e.level === 'thin' ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>{(OUTPUT_NAMES[k] ?? k).toLowerCase()}: {e.level}</span>
+        ))}
         <span className="ml-2 text-xs text-ink-400">details ▾</span>
       </summary>
 
       <div className="mt-3 space-y-4">
         <Funnel steps={funnel} />
+        {exclusions.shortfall?.detail && <p className="text-xs text-ink-500 dark:text-ink-400">{exclusions.shortfall.detail}</p>}
 
         {left.length > 0 && (
           <section className="space-y-2">
@@ -114,6 +139,8 @@ export function EvidencePanel({ exclusions, query, busy, onRerun }) {
             {unread.map((r) => <Reason key={r.code} reason={r} items={items} query={query} busy={busy} onRerun={onRerun} />)}
           </section>
         )}
+
+        {evidence && <Trust evidence={evidence} />}
 
         {!integrity && (
           <p className="text-xs font-medium text-rose-600 dark:text-rose-400">

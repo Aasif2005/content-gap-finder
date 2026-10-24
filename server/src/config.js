@@ -15,13 +15,31 @@ export const config = {
     dailyUnitBudget: num(process.env.YOUTUBE_DAILY_UNIT_BUDGET, 9000),
     maxCommentVideos: num(process.env.MAX_COMMENT_VIDEOS, 25),
     commentsPerVideo: num(process.env.COMMENTS_PER_VIDEO, 50),
-    // Below this many scored videos, the relative scoring the whole report rests
-    // on stops meaning anything: min-max normalization over 3 videos makes heat
-    // a rank in disguise, and scoreTopic's breadth bonus has nothing to measure.
-    // The pipeline warns instead of pretending. A real run ("what if hypothesis"
-    // + language ta) came back with 3 candidates and was presented with exactly
-    // the same confidence as a 50-video run.
-    thinPoolThreshold: num(process.env.THIN_POOL_THRESHOLD, 12),
+  },
+
+  // How much evidence each OUTPUT needs before it is called solid (lib/confidence.js).
+  // These replace one flat "12 videos" rule, which was the same number whether the
+  // thing being computed was a ranking, a gap list or a recurrence streak, and which
+  // flagged a channel's complete 7-video week as weak. They are judgement defaults
+  // with a stated reason, not statistical laws -- tune them against your own niches.
+  evidence: {
+    // Heat is a rank within the set: one video moves a score by 100/(n-1) points.
+    // At 8 videos that is ~14 points, at 5 it is 25 -- a ranking that moves a
+    // quarter of the scale when one video is added or removed is not a ranking.
+    // THIN_POOL_THRESHOLD is the old name for the first of these.
+    heatMinVideos: num(process.env.EVIDENCE_HEAT_MIN_VIDEOS ?? process.env.THIN_POOL_THRESHOLD, 8),
+    heatFloor: num(process.env.EVIDENCE_HEAT_FLOOR, 5),
+    // A topic's breadth bonus counts distinct channels; under this there is nothing to count.
+    heatMinChannels: num(process.env.EVIDENCE_HEAT_MIN_CHANNELS, 4),
+    // Gaps come from comments, not from the number of videos: how many videos had
+    // comments read, and how many comments reached gap mining.
+    gapMinVideos: num(process.env.EVIDENCE_GAP_MIN_VIDEOS, 5),
+    gapMinComments: num(process.env.EVIDENCE_GAP_MIN_COMMENTS, 100),
+    gapFloorVideos: num(process.env.EVIDENCE_GAP_FLOOR_VIDEOS, 3),
+    gapFloorComments: num(process.env.EVIDENCE_GAP_FLOOR_COMMENTS, 40),
+    outlierMinChannels: num(process.env.EVIDENCE_OUTLIER_MIN_CHANNELS, 5),
+    // Share of what was found that filters removed before the shortfall is blamed on them.
+    filterBlameShare: num(process.env.EVIDENCE_FILTER_BLAME_SHARE, 0.3),
   },
 
   deepseek: {

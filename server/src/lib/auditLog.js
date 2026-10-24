@@ -118,6 +118,13 @@ export class RunLogger {
    * weak evidence is the one most likely to make a creator change something
    * that was never actually a problem.
    */
+  /** Logs how much each output can be trusted, and why the set is the size it is. */
+  logEvidence(evidence, shortfall) {
+    const lines = Object.entries(evidence).map(([name, e]) => `  ${e.level.padEnd(6)} ${name.padEnd(10)} ${e.why}`);
+    lines.push('', `Why the set is the size it is: ${shortfall.detail}`);
+    this.section('EVIDENCE — how much each output can be trusted', lines);
+  }
+
   /** Logs every video set aside and why -- the working behind the funnel on the report. */
   logExclusions(ex) {
     const lines = ['Funnel:'];

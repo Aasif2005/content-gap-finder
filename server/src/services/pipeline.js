@@ -6,6 +6,7 @@ import { RunLogger } from '../lib/auditLog.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, untrustedVideoIds } from '../lib/relevance.js';
 import { languageDecision } from '../lib/language.js';
 import { ExclusionLedger } from '../lib/exclusions.js';
+import { assessEvidence, assessTopic, explainShortfall, thinPoolFrom } from '../lib/confidence.js';
 import { classifyRecurrence } from '../lib/recurrence.js';
 import { annotateOutliers } from '../lib/outlier.js';
 import { formulaHint } from '../lib/hookFormulas.js';
@@ -70,7 +71,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   const warnings = [];
   // Every video set aside, and why (lib/exclusions.js). Surfaced in the report and the audit log.
   const ledger = new ExclusionLedger();
-  let thinPool = null; // set below if the scored set is too small for relative scoring to mean much
+  let thinPool = null; // set at the end, only if the ranking itself is thin (lib/confidence.js)
   // What the report is ABOUT, for prompts and messages: the niche in niche mode,
   // the channel's title in channel mode.
   let subject = niche;
@@ -96,6 +97,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   let hits;
   let slices = [];
   let channel = null;
+  let uploadsTruncated = false;
 
   if (channelMode) {
     onProgress('searching', 'Resolving channel', 5);
@@ -108,6 +110,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
       publishedAfter: yt.windowToPublishedAfter(window, customAfter),
     });
     hits = uploads.hits;
+    uploadsTruncated = uploads.truncated;
     if (uploads.truncated) {
       warnings.push(`${channel.title} uploaded more than ${hits.length} videos in this window; only the most recent ${hits.length} were analysed.`);
     }
@@ -260,34 +263,6 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
         `${tagOnlyCount} of ${ranked.length} videos mention "${niche}" only in tags/hashtags, not in the title. They may be tag-hijacked.`
       );
     }
-  }
-
-  // Relative scoring needs a population to be relative to. Below the threshold,
-  // min-max normalization collapses toward "rank order with decimals", the
-  // breadth bonus has almost nothing to count, and one weakly-evidenced topic
-  // reads on screen exactly like a well-supported one. Say so rather than
-  // presenting a 3-video run with the confidence of a 50-video run.
-  if (ranked.length < config.youtube.thinPoolThreshold) {
-    thinPool = {
-      videos: ranked.length,
-      threshold: config.youtube.thinPoolThreshold,
-      // What the user can actually do about it, most-likely-to-help first.
-      suggestions: [
-        window !== '90d' && window !== 'custom' ? 'widen the time window' : null,
-        relevanceLanguage ? `drop the "${relevanceLanguage}" language filter` : null,
-        regionCode ? `drop the "${regionCode}" region filter` : null,
-        minViews > 0 ? `lower the ${minViews.toLocaleString()} minimum-views filter` : null,
-        !deepScan ? 'turn on deep scan to widen the candidate pool' : null,
-        'try a broader niche phrase',
-      ].filter(Boolean),
-    };
-    // Kept in `warnings` as well as in `thinPool`, because the audit log and any
-    // non-UI consumer only read the warnings list. The UI filters this exact
-    // string back out (by identity, not by matching on its text) so the
-    // dedicated callout doesn't say the same thing twice on the same screen.
-    thinPool.warning =
-      `Only ${ranked.length} videos made it to scoring (under ${config.youtube.thinPoolThreshold}). Heat scores are relative to this set, so with a set this small they mostly just re-state view order -- treat the ranking below as weak evidence. Try: ${thinPool.suggestions.join(', ')}.`;
-    warnings.push(thinPool.warning);
   }
 
   if (channelMode) {
@@ -498,6 +473,31 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   };
   log.logExclusions(exclusions);
 
+  // How much each output can be trusted, judged by what THAT output computes
+  // (lib/confidence.js), not by one flat video count. Only a thin ranking earns
+  // the banner; a channel's complete small week is "small", not "weak".
+  const evidence = assessEvidence({
+    channelMode,
+    scored: ranked.length,
+    distinctChannels: new Set(ranked.map((v) => v.channelId)).size,
+    population: afterFormat,
+    uploadsTruncated,
+    topics,
+    commentVideos: withComments,
+    commentsAnalysed: gapComments.length,
+    outlierChannels: outlierSummary ? outlierSummary.channelsMeasured : null,
+    runsCompared,
+  });
+  topics.forEach((t) => { t.evidence = assessTopic(t, { channelMode }); });
+  const shortfall = explainShortfall({ funnel: exclusions.funnel, byReason: exclusions.byReason, channelMode, uploadsTruncated });
+  thinPool = thinPoolFrom(evidence, shortfall, { window, relevanceLanguage, regionCode, minViews, deepScan, contentType, channelMode }, exclusions.funnel);
+  // Kept in `warnings` as well as in `thinPool`, because the audit log and any
+  // non-UI consumer only read the warnings list. The UI filters this exact string
+  // back out (by identity) so the callout doesn't say the same thing twice.
+  if (thinPool) warnings.push(thinPool.warning);
+  exclusions.shortfall = shortfall;
+  log.logEvidence(evidence, shortfall);
+
   log.finish({ status: 'done', ...relevanceSummary });
 
   onProgress('done', 'Complete', 100);
@@ -529,6 +529,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     },
     warnings,
     thinPool,
+    evidence,
     exclusions,
     outliers: outlierSummary,
     channelMode,

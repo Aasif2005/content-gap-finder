@@ -83,6 +83,21 @@ export function reportToMarkdown(result) {
     out.push('', `> **Weak evidence.** Only ${result.thinPool.videos} videos were scored, so the ranking below is close to view order restated.`);
   }
 
+  // Where the videos went, in one line: a reader of an exported report cannot
+  // open the funnel, and "7 scored" means something different after a filter
+  // removed half of what was found.
+  const ex = result.exclusions;
+  if (ex?.funnel?.length) {
+    const found = ex.funnel[0].count;
+    const scored = ex.funnel.find((f) => f.key === 'scored')?.count ?? 0;
+    const why = (ex.byReason ?? []).filter((r) => r.kind === 'excluded').map((r) => `${r.count} ${r.label.toLowerCase()}`);
+    out.push('', `> ${found} found, ${scored} scored${why.length ? `; left out: ${why.join('; ')}` : ''}.`);
+  }
+  const lowEvidence = Object.entries(result.evidence ?? {}).filter(([, e]) => e.level === 'small' || e.level === 'thin');
+  if (lowEvidence.length) {
+    out.push(`> Evidence: ${lowEvidence.map(([k, e]) => `${k} ${e.level}`).join(', ')}.`);
+  }
+
   if (result.gaps?.length) {
     out.push('', '## Content gaps', '');
     result.gaps.forEach((g, i) => {

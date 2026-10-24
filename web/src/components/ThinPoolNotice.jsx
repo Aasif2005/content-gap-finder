@@ -12,20 +12,17 @@
  * is how a caveat gets ignored.
  */
 export function ThinPoolNotice({ thinPool, query, busy, onRerun }) {
-  const { videos, threshold } = thinPool;
+  const { videos, threshold, swing, detail, cause } = thinPool;
+  const channelMode = Boolean(query.channelId);
 
   // Only offer routes that would actually change this query. Offering "widen the
   // window" on a run that is already at 90d trains people to distrust the whole
-  // callout.
-  const escapes = [
-    query.window !== '90d' && query.window !== 'custom' && {
-      label: 'Widen to 90 days',
-      patch: { window: '90d', customAfter: undefined },
-    },
-    !query.deepScan && {
-      label: 'Deep scan',
-      patch: { deepScan: true },
-      title: 'Doubles the candidate pool with a second date-ordered search pass. Costs one extra 100-unit search.',
+  // callout -- and dropping a filter does nothing for a channel that simply
+  // published little, so which routes lead depends on the cause.
+  const filterEscapes = [
+    query.contentType && query.contentType !== 'both' && {
+      label: `Include both formats (now ${query.contentType === 'long' ? 'long-form' : 'Shorts'} only)`,
+      patch: { contentType: 'both' },
     },
     query.relevanceLanguage && {
       label: `Drop "${query.relevanceLanguage}" language filter`,
@@ -40,17 +37,28 @@ export function ThinPoolNotice({ thinPool, query, busy, onRerun }) {
       patch: { minViews: 0 },
     },
   ].filter(Boolean);
+  const widenEscapes = [
+    query.window !== '90d' && query.window !== 'custom' && {
+      label: 'Widen to 90 days',
+      patch: { window: '90d', customAfter: undefined },
+    },
+    !channelMode && !query.deepScan && {
+      label: 'Deep scan',
+      patch: { deepScan: true },
+      title: 'Doubles the candidate pool with a second date-ordered search pass. Costs one extra 100-unit search.',
+    },
+  ].filter(Boolean);
+  const escapes = cause === 'filters' ? [...filterEscapes, ...widenEscapes] : [...widenEscapes, ...filterEscapes];
 
   return (
     <div className="rounded-xl border border-orange-300 bg-orange-50 p-4 dark:border-orange-500/40 dark:bg-orange-500/10">
       <p className="text-sm font-semibold text-orange-900 dark:text-orange-200">
-        Only {videos} video{videos === 1 ? '' : 's'} to score — treat this report as weak evidence
+        Only {videos} video{videos === 1 ? '' : 's'} to score — treat the ranking as weak evidence
       </p>
       <p className="mt-1 text-sm text-orange-800 dark:text-orange-300">
-        Heat, topic breadth and the ranking below are all computed <em>relative to this result
-        set</em>. Under about {threshold} videos there is not enough spread for that to mean
-        much — the ranking mostly just restates view order, and a topic backed by one video
-        looks the same as one backed by ten.
+        Heat is a rank <em>within this set</em>: with {videos} video{videos === 1 ? '' : 's'}, adding or removing one
+        moves a score by about {swing} points (it takes about {threshold} for that to drop to ~{Math.round(100 / (threshold - 1))}).
+        {detail && <> {detail}</>}
       </p>
 
       {escapes.length > 0 && (

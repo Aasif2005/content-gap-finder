@@ -26,6 +26,11 @@ export function TopicCard({ topic, rank }) {
               {topic.breadth} channel{topic.breadth === 1 ? '' : 's'}
             </Badge>
             <Badge>{compact(topic.totalViews)} total views</Badge>
+            {topic.evidence && topic.evidence.level !== 'solid' && (
+              <Badge tone={topic.evidence.level === 'thin' ? 'warm' : 'neutral'} title={topic.evidence.why}>
+                {topic.evidence.level === 'thin' ? 'single video' : 'one channel'}
+              </Badge>
+            )}
             <Badge title="Median engagement rate across the topic's videos">
               {(topic.medianEngagementRate * 100).toFixed(2)}% eng
             </Badge>

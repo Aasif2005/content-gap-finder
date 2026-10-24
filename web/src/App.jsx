@@ -349,6 +349,7 @@ export default function App() {
             {result.exclusions && (
               <EvidencePanel
                 exclusions={result.exclusions}
+                evidence={result.evidence}
                 query={result.query}
                 busy={busy}
                 onRerun={(patch) => run({ ...lastInput.current, ...patch }, { force: true })}
@@ -387,6 +388,9 @@ export default function App() {
               <p className="mt-3 text-sm text-ink-500 dark:text-ink-400">
                 {TABS.find((t) => t.key === tab).hint(Boolean(result.channelMode))}
               </p>
+              {tab === 'gaps' && result.evidence?.gaps && result.evidence.gaps.level !== 'solid' && result.evidence.gaps.level !== 'n/a' && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{result.evidence.gaps.why}</p>
+              )}
 
               <div className="mt-4 space-y-3">
                 {tab === 'topics' &&

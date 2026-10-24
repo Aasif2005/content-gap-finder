@@ -172,6 +172,30 @@ Where a reason comes from a filter you set, the panel offers a button to re-run 
 funnel carries its own check: everything found is either scored or has a reason, and if the
 arithmetic ever fails the panel says so. The audit log lists every video with its reason.
 
+### How much to trust each output
+
+A single "under 12 videos is weak" rule was the same number whether the thing being computed was
+a ranking, a gap list or a recurrence streak, and it flagged a channel's complete 7-video week as
+weak evidence when 7 of 7 is the whole population, not a sample. Each output is now judged by what
+it actually computes ([`lib/confidence.js`](server/src/lib/confidence.js)), as `solid`, `small`
+(real but coarse: say so, don't alarm), `thin`, or `n/a`:
+
+| Output | What it needs, and why |
+|---|---|
+| Heat ranking | Heat is a rank within the set, so one video moves a score by 100/(n-1) points: 14 at 8 videos, 25 at 5, 50 at 3. **Solid at ≥8 videos from ≥4 channels** (`EVIDENCE_HEAT_MIN_VIDEOS`), thin under 5. A channel's own uploads are the whole population: *complete but small* is `small`, not thin, unless the walk was cut short or there are under 3. |
+| Content gaps | Driven by **comments**, not video count: ≥5 videos with comments read and ≥100 comments used for solid; under 3 videos or 40 comments is thin. |
+| Topics | Per card: one video is a single-video topic, one channel is a one-channel topic. |
+| Outliers | ≥5 channels with enough history for a median. `n/a` in channel mode. |
+| Recurrence | ≥2 earlier runs; the first run is `n/a`, not a weakness. |
+
+These are judgement defaults with a stated reason, not statistical laws, and they are tunable
+(`EVIDENCE_*`). **They are deliberately not relaxed for short windows**: a 7-video ranking is
+coarse however good the excuse, and lowering the bar would hide that. What a short window changes
+is the explanation. Only a *thin* ranking earns the orange banner, and the funnel's own
+arithmetic says why: if your filters removed a third or more of what was found, they are blamed
+and dropping them is offered first; otherwise it is the niche and window ("only 3 videos matched
+this niche in 24h": widen it) or the channel's cadence (dropping filters would do nothing).
+
 ### Outliers: a video against its own channel's median
 
 Views per subscriber is a proxy. A cleaner version of the same question is *how far did this
@@ -736,6 +760,7 @@ server/
       heat.js              the scoring formula
       outlier.js           views vs. each channel's own median (from youtube-agent-skill)
       exclusions.js        ledger of every video set aside and why (the funnel on the report)
+      confidence.js        how much to trust each output, by what it computes (replaces the flat 12)
       titleLint.js         deterministic title/thumbnail lint + invented-number check
       hookScore.js         five-property hook scorer (port of hookscore.py)
       hookFormulas.js      21 title/hook formulas (data/hooks.json) -> label a title
@@ -771,10 +796,11 @@ web/
 - **Pool size is bounded by slices.** Each `search.list` slice returns 50 videos for 100
   units, so a niche run sees 50 (or 100 with deep scan or long-form, 200 with both). Channel
   mode pages the uploads playlist at 1 unit per 50 instead, capped at 6 pages for latency.
-- **Thin pools are reported, not fixed.** Heat, topic breadth and the ranking are all
-  relative to the result set, so under ~12 videos they mostly restate view order. The run
-  says so prominently and offers one-click ways to widen, but it cannot manufacture videos
-  that don't exist in the window.
+- **Thin pools are reported, not fixed.** Heat is a rank within the result set, so with very
+  few videos it mostly restates view order. The run says so, says *why* the set is that
+  size (your filters, the niche and window, or the channel's own cadence) and offers the
+  matching one-click remedy, but it cannot manufacture videos that don't exist in the window.
+  How much each output is trusted is judged by what it computes, below.
 - **Recurrence needs a baseline.** Nothing can be marked recurring on a subject's first
   stored run — the signal only appears from the second run onward, which is what watches
   exist to produce. Fuzzy question matching is stemmed-token overlap, not semantic: a gap

@@ -16,6 +16,7 @@ import { finalizeBrief, queryTest, briefPrompt, formulaList, systemPrompt } from
 import { lintTitle, ungroundedNumbers, rankTitleOptions, unverifiedNames, unverifiedTags, impliesAccusation } from '../src/lib/titleLint.js';
 import { detectSensitive, assessSensitivity } from '../src/lib/sensitive.js';
 import { ExclusionLedger, REASONS } from '../src/lib/exclusions.js';
+import { assessEvidence, assessTopic, explainShortfall, thinPoolFrom, suggestionsFor, rankSwing } from '../src/lib/confidence.js';
 import { median, medianMultiple, annotateOutliers } from '../src/lib/outlier.js';
 import { nicheKey, subjectKey } from '../src/lib/store.js';
 import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurrence.js';
@@ -1453,5 +1454,111 @@ describe('languageDecision reports which signal settled it', () => {
       { title: 'GHOST', defaultAudioLanguage: null },
       { title: 'x', defaultAudioLanguage: 'ta' },
     ]) assert.equal(matchesRequestedLanguage('ta', video), languageDecision('ta', video).verdict);
+  });
+});
+
+describe('calibrated evidence', () => {
+  const base = { channelMode: false, scored: 20, distinctChannels: 12, topics: [], commentVideos: 25, commentsAnalysed: 300, outlierChannels: 10, runsCompared: 3 };
+
+  test('one video moves a ranked score by 100/(n-1) points, which is why 8 is the default', () => {
+    assert.equal(rankSwing(8), 14);
+    assert.equal(rankSwing(5), 25);
+    assert.equal(rankSwing(1), 100);
+  });
+  test('a broad niche run is solid on every output', () => {
+    const e = assessEvidence(base);
+    assert.deepEqual([e.heat.level, e.gaps.level, e.outliers.level, e.recurrence.level], ['solid', 'solid', 'solid', 'solid']);
+  });
+  test('the real Madan Gowri week: 7 of 7 long uploads is small but complete, not weak', () => {
+    const e = assessEvidence({ channelMode: true, scored: 7, distinctChannels: 1, population: 7, commentVideos: 7, commentsAnalysed: 60, runsCompared: 1 });
+    assert.equal(e.heat.level, 'small');
+    assert.match(e.heat.why, /complete output/);
+    assert.match(e.heat.why, /not a sample/);
+    assert.equal(thinPoolFrom(e, { cause: 'cadence', detail: 'd' }, {}, []), null);
+  });
+  test('a channel walk cut short is judged as a sample, not as the whole population', () => {
+    const e = assessEvidence({ channelMode: true, scored: 4, distinctChannels: 1, population: 4, uploadsTruncated: true });
+    assert.equal(e.heat.level, 'thin');
+  });
+  test('a channel with 2 uploads cannot be ranked even though it is complete', () => {
+    assert.equal(assessEvidence({ channelMode: true, scored: 2, distinctChannels: 1, population: 2 }).heat.level, 'thin');
+  });
+  test('a niche pool of 12 videos from 3 channels is small: breadth has nothing to count', () => {
+    assert.equal(assessEvidence({ ...base, scored: 12, distinctChannels: 3 }).heat.level, 'small');
+  });
+  test('a niche pool under the floor is thin and earns the banner', () => {
+    const e = assessEvidence({ ...base, scored: 3, distinctChannels: 3 });
+    assert.equal(e.heat.level, 'thin');
+    const pool = thinPoolFrom(e, { cause: 'niche', detail: 'Only 3 videos matched this niche in this window.' }, { window: '7d', contentType: 'both' }, []);
+    assert.equal(pool.videos, 3);
+    assert.equal(pool.swing, 50);
+    assert.match(pool.warning, /weak evidence/);
+  });
+  test('gaps are judged on comments, not on how many videos were scored', () => {
+    assert.equal(assessEvidence({ ...base, scored: 3, commentVideos: 25, commentsAnalysed: 300 }).gaps.level, 'solid');
+    assert.equal(assessEvidence({ ...base, commentVideos: 7, commentsAnalysed: 60 }).gaps.level, 'small');
+    assert.equal(assessEvidence({ ...base, commentVideos: 2, commentsAnalysed: 10 }).gaps.level, 'thin');
+    assert.equal(assessEvidence({ ...base, commentVideos: 0, commentsAnalysed: 0 }).gaps.level, 'thin');
+  });
+  test('outliers and recurrence are n/a when not applicable, never "weak"', () => {
+    assert.equal(assessEvidence({ ...base, channelMode: true, outlierChannels: null }).outliers.level, 'n/a');
+    assert.equal(assessEvidence({ ...base, outlierChannels: null }).outliers.level, 'n/a');
+    assert.equal(assessEvidence({ ...base, runsCompared: 0 }).recurrence.level, 'n/a');
+    assert.equal(assessEvidence({ ...base, runsCompared: 1 }).recurrence.level, 'small');
+  });
+  test('a topic on one video is thin, one channel is small, otherwise solid', () => {
+    assert.equal(assessTopic({ videos: [1] }).level, 'thin');
+    assert.equal(assessTopic({ videos: [1, 2], breadth: 1 }).level, 'small');
+    assert.equal(assessTopic({ videos: [1, 2], breadth: 1 }, { channelMode: true }).level, 'solid');
+    assert.equal(assessTopic({ videos: [1, 2, 3], breadth: 3 }).level, 'solid');
+  });
+  test('the topics output says how many topics rest on a single video', () => {
+    const e = assessEvidence({ ...base, topics: [{ videos: [1], breadth: 1 }, { videos: [1, 2], breadth: 2 }] });
+    assert.equal(e.topics.level, 'small');
+    assert.match(e.topics.why, /1 of 2/);
+  });
+});
+
+describe('why the set is the size it is', () => {
+  const funnel = (found, scored) => [{ key: 'found', count: found }, { key: 'scored', count: scored }];
+  const filterReason = { kind: 'excluded', filter: 'contentType', label: 'A Short, with long-form selected', count: 7 };
+
+  test('blames the filters when they removed a large share', () => {
+    const r = explainShortfall({ funnel: funnel(14, 7), byReason: [filterReason], channelMode: true });
+    assert.equal(r.cause, 'filters');
+    assert.match(r.detail, /7 of 14/);
+  });
+  test('a channel that simply published little is cadence, and dropping filters would not help', () => {
+    const r = explainShortfall({ funnel: funnel(4, 4), byReason: [], channelMode: true });
+    assert.equal(r.cause, 'cadence');
+    assert.match(r.detail, /published 4 uploads/);
+  });
+  test('a niche with few matches is the niche or window, not the filters', () => {
+    assert.equal(explainShortfall({ funnel: funnel(9, 9), byReason: [], channelMode: false }).cause, 'niche');
+  });
+  test('unavailable videos are not blamed on a filter', () => {
+    const r = explainShortfall({ funnel: funnel(10, 5), byReason: [{ kind: 'excluded', filter: null, label: 'x', count: 5 }], channelMode: false });
+    assert.notEqual(r.cause, 'filters');
+  });
+  test('suggestions are ordered by cause: filters first when they are to blame, wider search first otherwise', () => {
+    const q = { window: '7d', relevanceLanguage: 'ta', contentType: 'long', deepScan: false, channelMode: false, minViews: 0 };
+    assert.match(suggestionsFor('filters', q)[0], /both formats/);
+    assert.equal(suggestionsFor('niche', q)[0], 'widen the time window');
+  });
+  test('it never suggests widening a window that is already 90 days, or deep scan in channel mode', () => {
+    const s = suggestionsFor('niche', { window: '90d', channelMode: true, deepScan: false, contentType: 'both', minViews: 0 });
+    assert.deepEqual(s, []);
+  });
+});
+
+describe('markdown export carries the funnel', () => {
+  test('one line says how many were found, scored and why the rest were left out', () => {
+    const md = reportToMarkdown({
+      query: { niche: 'n', window: '7d' }, generatedAt: '2026-10-25T00:00:00Z', gaps: [], topics: [], stats: { videosAnalyzed: 7, commentsAnalyzed: 60 },
+      exclusions: { funnel: [{ key: 'found', count: 14 }, { key: 'scored', count: 7 }], byReason: [{ kind: 'excluded', count: 7, label: 'A Short, with long-form selected' }] },
+      evidence: { heat: { level: 'small' }, gaps: { level: 'solid' } },
+    });
+    assert.match(md, /14 found, 7 scored; left out: 7 a short, with long-form selected/);
+    assert.match(md, /Evidence: heat small\./);
   });
 });
