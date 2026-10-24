@@ -184,20 +184,22 @@ router.get('/runs/:runId', (req, res) => {
 router.get('/runs/:runId/gaps/:i/brief', (req, res) => {
   // 200 with a null brief rather than a 404: "none yet" is the normal state of
   // most gaps, and the page asks for every one on load.
-  const saved = store.readBrief(req.params.runId, Number(req.params.i));
+  const language = String(req.query.language ?? '').slice(0, 40);
+  const saved = store.readBrief(req.params.runId, Number(req.params.i), language);
   res.json({ status: saved ? 'done' : 'none', cached: Boolean(saved), brief: saved });
 });
 
 router.post('/runs/:runId/gaps/:i/brief', (req, res, next) => {
   const index = Number(req.params.i);
   const force = req.body?.force === true;
+  const language = String(req.body?.language ?? '').trim().slice(0, 40);
   try {
     // Saved briefs and joins of a running job cost nothing, so they skip the limiter.
-    const free = !force && (store.readBrief(req.params.runId, index) || null);
+    const free = !force && (store.readBrief(req.params.runId, index, language) || null);
     if (free) return res.json({ status: 'done', cached: true, brief: free });
     briefRateLimit(req, res, () => {
       try {
-        const started = brief.startBrief(req.params.runId, index, { force });
+        const started = brief.startBrief(req.params.runId, index, { force, language });
         res.status(started.status === 'done' ? 200 : 202).json(started);
       } catch (err) {
         next(err);

@@ -77,6 +77,12 @@ export const config = {
     minSubsFloor: 500,     // avoids divide-by-zero blowups on tiny channels
   },
 
+  // "Make it" briefs (services/brief.js).
+  brief: {
+    // Target length of a long-form outline. A Short is always under a minute.
+    longMinutes: num(process.env.BRIEF_LONG_MINUTES, 8),
+  },
+
   // Median-multiple outliers (lib/outlier.js, from youtube-agent-skill's yt-viral).
   // A niche search returns 1-2 videos per channel, which is not enough for a
   // median, so the top channels' recent uploads are fetched as a baseline:

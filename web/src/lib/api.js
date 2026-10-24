@@ -84,16 +84,16 @@ export const getDigest = (id) => fetch(`/api/watches/${id}/digest`).then(json);
 
 // --- "Make it" briefs --------------------------------------------------------
 
-/** A previously drafted brief, or null. Costs nothing. */
-export const getBrief = (runId, index) =>
-  fetch(`/api/runs/${runId}/gaps/${index}/brief`).then(json).then((b) => b.brief);
+/** A previously drafted brief (in this language), or null. Costs nothing. */
+export const getBrief = (runId, index, language = '') =>
+  fetch(`/api/runs/${runId}/gaps/${index}/brief?language=${encodeURIComponent(language)}`).then(json).then((b) => b.brief);
 
 /** Drafts (or returns the saved) brief for one gap. Generating is one DeepSeek call, polled like a run. */
-export async function makeBrief(runId, index, { force = false } = {}) {
+export async function makeBrief(runId, index, { force = false, language = '' } = {}) {
   const started = await fetch(`/api/runs/${runId}/gaps/${index}/brief`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force }),
+    body: JSON.stringify({ force, language }),
   }).then(json);
   if (started.status === 'done') return started.brief;
   return pollJob(started.jobId, null, { timeoutMs: 240_000 });

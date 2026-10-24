@@ -167,18 +167,26 @@ function pruneRuns() {
  * the only thing here that spends money, and a creator will re-open the same
  * gap several times while deciding.
  */
-const briefPath = (runId, index) =>
+// The language is part of the key: the same gap drafted in English and in Tamil
+// are two different, equally paid-for briefs. Hashed (not slugified) because a
+// language can be typed in any script.
+const languageSuffix = (language) => {
+  const l = (language ?? '').trim().toLowerCase();
+  return l ? `-l${crypto.createHash('sha1').update(l).digest('hex').slice(0, 8)}` : '';
+};
+
+const briefPath = (runId, index, language) =>
   /^[a-zA-Z0-9_-]+$/.test(runId ?? '') && Number.isInteger(index) && index >= 0
-    ? path.join(BRIEFS_DIR, `${runId}-${index}.json`)
+    ? path.join(BRIEFS_DIR, `${runId}-${index}${languageSuffix(language)}.json`)
     : null;
 
-export function saveBrief(runId, index, brief) {
-  const file = briefPath(runId, index);
+export function saveBrief(runId, index, brief, language = '') {
+  const file = briefPath(runId, index, language);
   if (file) writeAtomic(file, JSON.stringify(brief));
 }
 
-export function readBrief(runId, index) {
-  const file = briefPath(runId, index);
+export function readBrief(runId, index, language = '') {
+  const file = briefPath(runId, index, language);
   if (!file) return null;
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));

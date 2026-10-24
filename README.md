@@ -228,25 +228,57 @@ candidate has one.
 ### "Make it": from a gap to something you can film
 
 Each gap has a **Make it** button. It spends nothing until pressed, then makes one DeepSeek
-call (about 6-8k tokens, 30-90s) and returns hooks, script beats and search text, using the
-prompts of `yt-script` and `yt-seo` from youtube-agent-skill. Everything that can be decided
-in code is, and the model never grades its own writing:
+call (about 6-16k tokens, 30-90s) and returns an angle, hooks, a script or outline, and search
+text, using the prompts of `yt-script` and `yt-seo` from youtube-agent-skill. A language picker
+sits beside it ("the audience's language" by default, or any of a dozen); each language is its
+own saved brief.
 
-- **Five hooks**, each scored by [`lib/hookScore.js`](server/src/lib/hookScore.js) (a port of
+The model's only inputs are a handful of viewer comments and some video titles, so it cannot
+know the facts a payoff needs. The brief is built around that, and everything decidable in code
+is decided in code — the model never grades its own writing:
+
+- **It says what it is assuming.** The draft lists `needs` (facts the script relies on that the
+  evidence lacks) and writes `[NEEDS SOURCE: ...]` into the script instead of asserting them.
+  The UI puts them in a "Before you film: confirm these" box. Evidence is labelled by source
+  (`[comment]`, `[video title]`, `[channel's own title]`) and a phrase quoted in a video title is
+  never treated as an official statement. The first version of this called a title quote "the one
+  family statement we have on record".
+- **Length follows format.** A Short is one minute of prose. A long-form brief targets
+  `BRIEF_LONG_MINUTES` (default 8): full prose for the turn, payoff and close, and *talking
+  points* with a time budget for the body, so the creator isn't handed eight minutes of invented
+  dialogue. The runtime says "budgeted" when it is an outline, and times prose by its words in
+  any script.
+- **Invented figures and names are flagged** in hooks, beats, the description and tags: digits
+  *and spelled-out numbers* ("Nine days" once slipped past a digits-only check), and capitalised
+  names the evidence, the covering videos and the channel's own titles never contained. A hook
+  with either can only be a "best hook" if every hook has one. These checks cover Latin text; for
+  other scripts the UI says so (digits are still checked).
+- **Five hooks**, scored by [`lib/hookScore.js`](server/src/lib/hookScore.js) (a port of
   `hookscore.py`: specificity, address, stakes, curiosity, brevity; verdict = 60% mean + 40%
-  weakest) and labelled with the closest of the 21 formulas by wording. The original author
-  measured that it separates deliberately bad hooks from real ones but barely separates a
-  creator's own hits from misses, so the UI calls it a checklist, not a prediction — and it
-  tends to score plain hooks low when no figure in the comments could be used.
-- **Invented figures are caught**, as for titles: a hook or description containing a number
-  that is not in the viewers' own words is flagged, and can only be a "best hook" if every
-  hook has one.
-- **Script beats** with what is *on screen* for each, and a runtime computed from the word
-  count at 150 words a minute.
-- **The query test**: for each of the three searches a person would type, does the title (or
-  at least the description opening) contain its words? If not, the title is what to change.
-- Saved by (report, gap) so re-opening costs nothing, and limited separately from analyses
-  (`BRIEF_RATE_LIMIT_PER_HOUR`, default 30) since it costs no YouTube quota.
+  weakest) and labelled with the closest of the 21 formulas by wording. The checklist is written
+  for English, so hooks in another script are marked *not scored* rather than called weak. The
+  original author measured that it separates deliberately bad hooks from real ones but barely
+  separates a creator's own hits from misses, so the UI calls it a checklist, not a prediction.
+- **Each beat serves the request**, and an `angle` says what this video adds that the covering
+  videos don't. In channel mode the channel's recent titles are passed as a style and vocabulary
+  reference (titles only; it never claims to be the creator's voice).
+- **The query test** reports, for each of the three searches a person would type, whether the
+  title has its words, how much of it the title plus description opening cover, and which words
+  are missing. The description opening is asked to contain the words of at least two queries.
+- Saved by (report, gap, language) so re-opening costs nothing, and limited separately from
+  analyses (`BRIEF_RATE_LIMIT_PER_HOUR`, default 30) since it costs no YouTube quota.
+
+#### Real, ongoing cases involving named people
+
+A gap built on the audience's suspicion of identifiable people in a real case (a missing child,
+an arrest, a death) is flagged by [`lib/sensitive.js`](server/src/lib/sensitive.js) — deterministic
+terms in English, Tamil and Hindi plus the model's own flag — and the flag is *warn and reframe*,
+not a block. The gap card and brief show a banner; the brief is written as **confirmed versus not
+confirmed**, attributes everything to official sources, and never states suspicion as a finding;
+and a title or thumbnail text that implies guilt ("why the family is suspected") gets an
+`accusation` chip and a lower score, so a non-accusing title wins the ranking. The detector errs
+towards flagging (a "murder mystery" party game can trip it): a false positive costs a banner, a
+miss costs a confident title accusing a missing child's parents.
 
 ---
 

@@ -16,7 +16,7 @@ const codePoints = (s) => Array.from(s);
 // Python's str.isupper(): at least one cased character, and none lowercase.
 const isUpper = (w) => w !== w.toLowerCase() && w === w.toUpperCase();
 
-export function lintTitle(title, thumb = null) {
+export function lintTitle(title, thumb = null, { sensitive = false } = {}) {
   const t = title.trim();
   const n = codePoints(t).length;
   const issues = [];
@@ -61,27 +61,97 @@ export function lintTitle(title, thumb = null) {
     if (words(thumb).length > 4) issues.push(['thumb-length', `${words(thumb).length} words on the thumbnail - three is the ceiling at feed size`]);
   }
 
+  if (sensitive && (impliesAccusation(t) || impliesAccusation(thumb))) {
+    issues.push(['accusation', 'implies guilt or suspicion of identifiable people in a real case - say what is confirmed and what is not instead']);
+  }
+
   const score = Math.max(0, Math.min(100, 100 - 14 * issues.length + 4 * good.length));
   return { title: t, chars: n, score, issues, good };
 }
 
-const digitRuns = (s) => (s.match(/\d+/g) ?? []).map((d) => d.replace(/^0+(?=\d)/, ''));
+// Spelled-out numbers are numbers too: "Nine days" slipped past a digits-only
+// check in a real brief. "one" is left out on purpose -- it is far more often a
+// pronoun ("one of the") than a figure, and flagging it would drown the signal.
+const NUMBER_WORDS = new Map(Object.entries({
+  two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+  thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20,
+  thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+  hundred: 100, thousand: 1000, million: 1000000,
+}));
+
+// Digit runs and number words, both as plain numeric strings, so "nine" in a
+// comment grounds "9" in a hook and the other way round.
+const numberTokens = (s) => [
+  ...(s.match(/\d+/g) ?? []).map((d) => d.replace(/^0+(?=\d)/, '')),
+  ...words(s).filter((w) => NUMBER_WORDS.has(w)).map((w) => String(NUMBER_WORDS.get(w))),
+];
 
 /**
  * Numbers in `title` that appear nowhere in `corpus` (the cited comments, the
- * question, the video titles). A grounded number is one a creator can defend.
+ * question, the niche). A grounded number is one a creator can defend.
  */
 export function ungroundedNumbers(title, corpus) {
-  const known = new Set(digitRuns(corpus));
-  return [...new Set(digitRuns(title))].filter((d) => !known.has(d));
+  const known = new Set(numberTokens(corpus));
+  return [...new Set(numberTokens(title))].filter((d) => !known.has(d));
 }
+
+// Capitalised words that are not names of anything we would expect a script to
+// assume the audience knows.
+const NAME_ALLOW = new Set(['English', 'Tamil', 'Hindi', 'Telugu', 'Malayalam', 'Kannada', 'Spanish', 'French', 'German',
+  'YouTube', 'Google', 'Instagram', 'Facebook', 'Twitter', 'India', 'Indian', 'Monday', 'Tuesday', 'Wednesday',
+  'Thursday', 'Friday', 'Saturday', 'Sunday', 'January', 'February', 'March', 'April', 'June', 'July', 'August',
+  'September', 'October', 'November', 'December']);
+const GENERIC_TAG_WORDS = new Set(['tamil', 'hindi', 'english', 'telugu', 'latest', 'news', 'explained', 'explanation',
+  'review', 'tutorial', 'update', 'updates', 'video', 'videos', 'story', 'stories', 'full', 'today', 'guide', 'tips',
+  'best', 'vlog', 'shorts', 'short', 'case', 'facts', 'history', 'analysis', 'reaction', 'trending', 'viral', 'live',
+  'official', 'with', 'from', 'about', 'what', 'why', 'how', 'this', 'that', 'your']);
+
+const knownWords = (corpus) => {
+  const known = new Set();
+  for (const w of words(corpus)) { known.add(w); known.add(w.replace(/'s$/, '')); }
+  return known;
+};
+
+/**
+ * Proper nouns in `text` (a capitalised Latin word that is not the first word of
+ * its sentence) that appear nowhere in `corpus`. A script that names a person,
+ * place or channel the evidence never mentioned is guessing.
+ */
+export function unverifiedNames(text, corpus) {
+  const known = knownWords(corpus);
+  const out = new Set();
+  for (const sentence of text.split(/(?<=[.!?\u2026])\s+|\n/)) {
+    sentence.split(/\s+/).filter(Boolean).forEach((tok, i) => {
+      if (i === 0) return;
+      const w = tok.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
+      if (w.length < 3 || !/^[A-Z][a-z'\u2019-]+$/.test(w) || NAME_ALLOW.has(w)) return;
+      const lw = w.toLowerCase().replace(/['\u2019]s$/, '');
+      if (!known.has(lw)) out.add(w);
+    });
+  }
+  return [...out];
+}
+
+/** Tags with a long Latin word the evidence never used -- usually a guessed name. */
+export function unverifiedTags(tags, corpus) {
+  const known = knownWords(corpus);
+  return tags.filter((tag) =>
+    words(tag).some((w) => /^[a-z]{4,}$/.test(w) && !known.has(w) && !GENERIC_TAG_WORDS.has(w))
+  );
+}
+
+const ACCUSATION =
+  /\b(suspect(?:s|ed)?|guilty|culprits?|killers?|murderers?|fishy|framed|cover[- ]?up|did it|behind (?:it|this))\b|\u0b9a\u0ba8\u0bcd\u0ba4\u0bc7\u0b95|\u0b95\u0bc1\u0bb1\u0bcd\u0bb1\u0bb5\u0bbe\u0bb3\u0bbf|\u0b95\u0bca\u0bb2\u0bc8\u0baf\u0bbe\u0bb3\u0bbf/i;
+
+/** True when a title or thumbnail text implies guilt or suspicion of someone. */
+export const impliesAccusation = (text) => ACCUSATION.test(text ?? '');
 
 /**
  * Lints every candidate, marks invented numbers, and returns them best-first.
  * The winner is chosen here, in code: a candidate with an ungrounded number can
  * only win if every candidate has one.
  */
-export function rankTitleOptions(candidates, { thumb = null, corpus = '' } = {}) {
+export function rankTitleOptions(candidates, { thumb = null, corpus = '', sensitive = false } = {}) {
   const seen = new Set();
   const unique = candidates
     .filter((c) => typeof c === 'string' && c.trim())
@@ -90,7 +160,7 @@ export function rankTitleOptions(candidates, { thumb = null, corpus = '' } = {})
 
   return unique
     .map((title, order) => {
-      const lint = lintTitle(title, thumb);
+      const lint = lintTitle(title, thumb, { sensitive });
       const invented = ungroundedNumbers(title, corpus);
       if (invented.length) {
         lint.issues.push(['ungrounded-number', `${invented.join(', ')} appears in none of the cited comments or videos`]);

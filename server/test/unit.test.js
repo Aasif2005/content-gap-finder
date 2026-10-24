@@ -12,8 +12,9 @@ import { searchPlan } from '../src/lib/searchPlan.js';
 import { withLock } from '../src/lib/fileLock.js';
 import { FORMULAS, classifyFormula, formulaHint } from '../src/lib/hookFormulas.js';
 import { scoreHook, band } from '../src/lib/hookScore.js';
-import { finalizeBrief, queryTest, briefPrompt, formulaList } from '../src/services/brief.js';
-import { lintTitle, ungroundedNumbers, rankTitleOptions } from '../src/lib/titleLint.js';
+import { finalizeBrief, queryTest, briefPrompt, formulaList, systemPrompt } from '../src/services/brief.js';
+import { lintTitle, ungroundedNumbers, rankTitleOptions, unverifiedNames, unverifiedTags, impliesAccusation } from '../src/lib/titleLint.js';
+import { detectSensitive, assessSensitivity } from '../src/lib/sensitive.js';
 import { median, medianMultiple, annotateOutliers } from '../src/lib/outlier.js';
 import { nicheKey, subjectKey } from '../src/lib/store.js';
 import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurrence.js';
@@ -1185,5 +1186,197 @@ describe('make-it brief', () => {
     const p = briefPrompt({ run: { channelMode: false, query: { niche: 'cast iron' } }, gap });
     assert.match(p, /comment one/);
     assert.equal(formulaList().split('\n').length, 21);
+  });
+});
+
+describe('grounding: spelled-out numbers, names, tags', () => {
+  test('a spelled-out number is caught (a real brief said "Nine days")', () => {
+    assert.deepEqual(ungroundedNumbers('Nine days and counting', 'a missing child case'), ['9']);
+  });
+  test('a spelled-out number and a digit ground each other either way round', () => {
+    assert.deepEqual(ungroundedNumbers('Nine days in', 'missing for 9 days'), []);
+    assert.deepEqual(ungroundedNumbers('Missing for 9 days', 'she has been gone nine days'), []);
+  });
+  test('"one" is not treated as a figure (it is a pronoun far more often)', () => {
+    assert.deepEqual(ungroundedNumbers('One idea per beat', ''), []);
+  });
+  test('unverifiedNames flags a capitalised mid-sentence name the evidence never used', () => {
+    assert.deepEqual(unverifiedNames('Watch what Ramesh said about the pan', 'viewers asked about the pan'), ['Ramesh']);
+  });
+  test('unverifiedNames ignores sentence-initial words, acronyms, allowlisted words and known names', () => {
+    assert.deepEqual(unverifiedNames('Why the CB-CID asked Hema on YouTube. Tamil viewers wonder', 'hema case'), []);
+    assert.deepEqual(unverifiedNames("Look at Hema's statement", 'about hema'), []);
+  });
+  test('unverifiedTags flags a guessed name but not generic SEO words or grounded words', () => {
+    const flagged = unverifiedTags(['cast iron repair', 'tamil news', 'ramesh welding'], 'cast iron repair welding');
+    assert.deepEqual(flagged, ['ramesh welding']);
+  });
+  test('accusation wording is caught in English and Tamil, ordinary wording is not', () => {
+    assert.ok(impliesAccusation('Why the family is suspected'));
+    assert.ok(impliesAccusation('குற்றவாளி யார்'));
+    assert.equal(impliesAccusation('What police have confirmed so far'), false);
+  });
+  test('the accusation chip appears only on sensitive cases', () => {
+    assert.ok(!lintTitle('Why the family is suspected').issues.some(([k]) => k === 'accusation'));
+    assert.ok(lintTitle('Why the family is suspected', null, { sensitive: true }).issues.some(([k]) => k === 'accusation'));
+    assert.ok(lintTitle('Case update', 'GUILTY?', { sensitive: true }).issues.some(([k]) => k === 'accusation'));
+  });
+});
+
+describe('sensitive-case detection', () => {
+  test('flags a custody/interrogation demand about parents (the pasted brief)', () => {
+    const r = detectSensitive('police should take both parents into custody and interrogate them. CB-CID updates');
+    assert.equal(r.level, 'high');
+  });
+  test('flags a Tamil child-and-police case with no English terms', () => {
+    assert.equal(detectSensitive('செஞ்சி சிறுமி வழக்கு: காவல் விசாரணை, கைது').level, 'high');
+  });
+  test('flags a missing child with a harm term and a minor', () => {
+    assert.equal(detectSensitive('missing girl found after kidnap').level, 'high');
+  });
+  test('does not flag fiction death, food, or craft', () => {
+    for (const t of ['Avengers death theory: will Iron Man die', 'French toast and Dutch oven bread', 'can a cracked cast iron pot be welded']) {
+      assert.equal(detectSensitive(t).level, 'none', t);
+    }
+  });
+  test('a single legal word is not enough on its own', () => {
+    assert.equal(detectSensitive('the police box in Doctor Who').level, 'none');
+  });
+  test('the model flag can raise sensitivity but never lower a deterministic hit', () => {
+    assert.equal(assessSensitivity('a quiet gardening question', true).level, 'high');
+    assert.equal(assessSensitivity('police custody interrogation', false).level, 'high');
+    assert.equal(assessSensitivity('a quiet gardening question', false).level, 'none');
+  });
+  test('groundGaps carries sensitivity and the accusation lint through to the gap', () => {
+    const comments = [
+      { index: 1, videoId: 'v1', text: 'police should take the parents into custody and interrogate them', likes: 4, replyCount: 0 },
+      { index: 2, videoId: 'v2', text: 'the family looks fishy, custody now', likes: 2, replyCount: 0 },
+    ];
+    const [g] = groundGaps([{
+      question: 'Why is the family suspected?', evidence_comment_indexes: [1, 2], demand_strength: 'high', coverage: 'none',
+      title_options: ['Why the family is suspected'], thumbnail_text: 'custody now',
+    }], comments, { context: 'case' });
+    assert.equal(g.sensitive.level, 'high');
+    assert.ok(g.titleLint.issues.some(([k]) => k === 'accusation'));
+  });
+});
+
+describe('make-it brief v2', () => {
+  const corpus = 'cast iron repair how do i weld a cracked pot 9 days';
+  const base = {
+    angle: 'Shows which repairs a welder will take on.',
+    needs: [{ claim: 'a welder will TIG a crack', why: 'ask a welder' }, { claim: '', why: 'empty claim is dropped' }],
+    hooks: [{ text: 'You will scrap a pot a welder could save, so look before you bin it, today?', formula_id: 'the-warning' }],
+    beats: [
+      { beat: 'turn', seconds: 40, say: 'one two three four five six seven eight nine ten', on_screen: 'pot' },
+      { beat: 'body', seconds: 90, points: ['cleaning the crack', 'what TIG can do [NEEDS SOURCE: confirm with a welder]'], on_screen: 'close-up' },
+      { beat: 'body', seconds: 9999, points: ['x'], on_screen: 'y' },
+      { beat: 'close', say: '', points: [], on_screen: 'empty beat dropped' },
+    ],
+    seo: { queries: ['weld cracked cast iron pot', 'cast iron repair'], description_opening: 'Can you weld a cracked cast iron pot? Repair options.', tags: ['cast iron repair', 'ramesh welding'] },
+  };
+  const out = finalizeBrief(base, { title: 'Weld a cracked cast iron pot', corpus, format: 'long-form' });
+
+  test('keeps angle and needs, drops needs with no claim', () => {
+    assert.equal(out.angle, 'Shows which repairs a welder will take on.');
+    assert.equal(out.needs.length, 1);
+  });
+  test('talking-point beats keep their budget (clamped) and the runtime says it is an estimate', () => {
+    assert.equal(out.beats.length, 3);
+    assert.equal(out.beats[1].seconds, 90);
+    assert.equal(out.beats[2].seconds, 240);
+    assert.equal(out.runtime.estimated, true);
+    assert.equal(out.runtime.format, 'long-form');
+  });
+  test('prose beats are still timed by their words', () => {
+    assert.equal(out.beats[0].seconds, Math.round((10 / 150) * 60));
+  });
+  test('counts [NEEDS SOURCE] markers per beat', () => {
+    assert.equal(out.beats[1].needsSource, 1);
+    assert.equal(out.beats[0].needsSource, 0);
+  });
+  test('a hook naming an unknown person cannot beat a clean hook', () => {
+    const r = finalizeBrief({
+      hooks: [
+        { text: 'You will never guess what Ramesh did to this pot and why it still cooks today.' },
+        { text: 'You will scrap a pot a welder could save, so look before you bin it, today?' },
+      ],
+    }, { title: 'T', corpus, format: 'Short' });
+    assert.equal(r.bestHooks[0].unverifiedNames.length, 0);
+    assert.deepEqual(r.hooks[1].unverifiedNames, ['Ramesh']);
+  });
+  test('flags a guessed tag and an unknown number in the description', () => {
+    assert.deepEqual(out.seo.unverifiedTags, ['ramesh welding']);
+    const r = finalizeBrief({ seo: { queries: [], description_opening: 'Nine pots, fixed.', tags: [] } }, { title: 'T', corpus: '' });
+    assert.deepEqual(r.seo.descriptionInvented, ['9']);
+  });
+  test('a short format reports itself as short', () => {
+    assert.equal(finalizeBrief({}, { title: 'T', format: 'Short' }).runtime.format, 'short');
+  });
+  test('queryTest reports coverage and the missing words, not just pass/fail', () => {
+    const [q] = queryTest(['hema family mela doubt'], 'Hema case: why the family is suspected', 'Hema family doubt explained');
+    assert.equal(q.inOpening, false);
+    assert.deepEqual(q.missing, ['mela']);
+    assert.equal(q.coverage, 0.75);
+  });
+  test('the system prompt adapts to format, language and sensitivity', () => {
+    const short = systemPrompt({ format: 'Short' });
+    assert.match(short, /under 60 seconds/);
+    assert.doesNotMatch(short, /talking points, in the order/);
+    const long = systemPrompt({ format: 'long-form', language: 'Tamil', sensitive: { level: 'high', reasons: ['legal process mentioned (custody)'] } });
+    assert.match(long, /about 8 minutes/);
+    assert.match(long, /write the hooks, script, queries, description and tags in Tamil/);
+    assert.match(long, /SENSITIVE CASE/);
+    assert.match(long, /CONFIRMED/);
+    assert.doesNotMatch(systemPrompt({ format: 'long-form' }), /SENSITIVE CASE/);
+  });
+  test('the prompt labels evidence by source and includes the channel house titles in channel mode', () => {
+    const gap = { question: 'Q?', explanation: 'E', coverage: 'none', suggestedFormat: 'long-form', suggestedTitle: 'T', thumbnailText: '', evidence: [{ text: 'a comment', likes: 1 }], coveringVideos: [{ title: 'Covering video' }] };
+    const run = { channelMode: true, channel: { title: 'Chan' }, query: {}, topVideos: [{ title: 'Own title A', publishedAt: '2026-10-01' }] };
+    const p = briefPrompt({ run, gap });
+    assert.match(p, /\[comment\] \(1 likes\) a comment/);
+    assert.match(p, /\[video title\] Covering video/);
+    assert.match(p, /\[channel's own title\] Own title A/);
+  });
+});
+
+describe('brief checks for non-Latin scripts and false positives', () => {
+  const tamil = '\u0b87\u0ba8\u0bcd\u0ba4 \u0bb5\u0bc0\u0b9f\u0bbf\u0baf\u0bcb\u0bb5\u0bbf\u0bb2\u0bcd \u0b95\u0bc1\u0b9f\u0bc1\u0bae\u0bcd\u0baa\u0bae\u0bcd \u0bae\u0bc7\u0bb2\u0bcd \u0bb5\u0bb0\u0bc1\u0bae\u0bcd \u0b9a\u0ba8\u0bcd\u0ba4\u0bc7\u0b95\u0ba4\u0bcd\u0ba4\u0bc8 \u0b8e\u0b9f\u0bc1\u0ba4\u0bcd\u0ba4\u0bc1\u0b95\u0bcd\u0b95\u0bbf\u0bb1\u0bc7\u0ba9\u0bcd';
+
+  test('Tamil prose is timed by its words, not counted as a handful of Latin tokens', () => {
+    const out = finalizeBrief({ beats: [{ beat: 'turn', say: Array(30).fill(tamil).join(' '), on_screen: 'x' }] }, { title: 'T', corpus: '' });
+    assert.ok(out.beats[0].seconds > 60, `got ${out.beats[0].seconds}s`);
+    assert.equal(out.runtime.estimated, false);
+  });
+  test('a non-Latin hook is left unscored instead of being called weak', () => {
+    const out = finalizeBrief({ hooks: [{ text: tamil }] }, { title: 'T', corpus: '' });
+    assert.equal(out.hooks[0].unscored, true);
+    assert.equal(out.hooks[0].verdict, null);
+    assert.equal(out.hooks[0].band, 'UNSCORED');
+    assert.match(out.languageNote, /non-Latin/);
+  });
+  test('a Latin hook is still scored and carries no language note', () => {
+    const out = finalizeBrief({ hooks: [{ text: 'You will scrap a pot a welder could save, so look before you bin it, today?' }], beats: [{ beat: 'turn', say: 'plain english words here', on_screen: 'x' }] }, { title: 'T', corpus: '' });
+    assert.equal(out.hooks[0].unscored, false);
+    assert.ok(Number.isInteger(out.hooks[0].verdict));
+    assert.equal(out.languageNote, '');
+  });
+  test('words inside a [NEEDS SOURCE: ...] marker are not checked as claims or timed as speech', () => {
+    const out = finalizeBrief({ beats: [{ beat: 'body', say: 'what the police said [NEEDS SOURCE: Confirm With Station Records 12]', on_screen: 'x' }] }, { title: 'T', corpus: 'police said' });
+    assert.equal(out.beats[0].needsSource, 1);
+    assert.deepEqual(out.beats[0].unverifiedNames, []);
+    assert.deepEqual(out.beats[0].inventedNumbers, []);
+    assert.equal(out.beats[0].seconds, Math.round((4 / 150) * 60));
+  });
+  test('a tag is judged against the draft itself, so ordinary words it uses are not flagged', () => {
+    const out = finalizeBrief({
+      hooks: [{ text: 'Why would police demand this, and what do you risk by believing it today?' }],
+      seo: { queries: [], description_opening: 'Police demand explained.', tags: ['police demand', 'quibblewump trail'] },
+    }, { title: 'T', corpus: 'a case' });
+    assert.deepEqual(out.seo.unverifiedTags, ['quibblewump trail']);
+  });
+  test('query tokens ignore 1-2 letter particles but keep numbers', () => {
+    const [q] = queryTest(['hema ah 9 mela'], 'Hema', 'Hema 9');
+    assert.deepEqual(q.missing, ['mela']);
   });
 });

@@ -1,5 +1,6 @@
 import { chatJSON } from './deepseek.js';
 import { rankTitleOptions } from '../lib/titleLint.js';
+import { assessSensitivity } from '../lib/sensitive.js';
 import { config } from '../config.js';
 
 // Real bug this fixes: a plain .slice(0, n) cuts by UTF-16 code unit, not by
@@ -344,7 +345,8 @@ Return json with exactly this shape:
       "evidence_comment_indexes": [3, 17, 42],
       "title_options": ["three different titles a creator could film to fill this gap, each under 60 characters, the subject in the first three words"],
       "thumbnail_text": "at most 3 words for the thumbnail that add to the title and do not repeat its words",
-      "suggested_format": "Short" | "long-form"
+      "suggested_format": "Short" | "long-form",
+      "sensitive": true | false
     }
   ],
   "objections": [
@@ -357,6 +359,9 @@ Return json with exactly this shape:
     }
   ]
 }
+
+Set "sensitive" to true only when the gap is about a real, identifiable person or
+family caught up in an ongoing crime, disappearance, death, arrest or legal case.
 
 Order gaps by strength of demand and objections by severity. Return at most 10
 gaps and at most 6 objections. Quality over quantity -- an empty list is better
@@ -412,10 +417,17 @@ export function groundGaps(gaps, comments, { context = '' } = {}) {
       // every small number appears somewhere, which would let an invented
       // "3 fixes" through as if it were evidence.
       const corpus = [context, gap.question, ...evidence.map((e) => e.text)].join(' ');
+      // A gap built on the audience's suspicion of named people in a real case
+      // gets flagged here (deterministic terms + the model's own flag), so the
+      // title lint can warn about accusations and the brief can reframe.
+      const sensitive = assessSensitivity(
+        [gap.question, gap.explanation, ...evidence.map((e) => e.text)].join(' '),
+        gap.sensitive
+      );
       const thumbnailText = typeof gap.thumbnail_text === 'string' ? gap.thumbnail_text.trim() : '';
       const titleOptions = rankTitleOptions(
         [...(Array.isArray(gap.title_options) ? gap.title_options : []), gap.suggested_title],
-        { thumb: thumbnailText || null, corpus }
+        { thumb: thumbnailText || null, corpus, sensitive: sensitive.level === 'high' }
       );
       const bestTitle = titleOptions[0];
 
@@ -429,6 +441,7 @@ export function groundGaps(gaps, comments, { context = '' } = {}) {
         titleLint: bestTitle ? { score: bestTitle.score, issues: bestTitle.issues, good: bestTitle.good } : null,
         titleOptions: titleOptions.map((o) => ({ title: o.title, score: o.score, issues: o.issues })),
         thumbnailText,
+        sensitive,
         suggestedFormat: gap.suggested_format ?? '',
         evidence,
         evidenceCount: evidence.length,
