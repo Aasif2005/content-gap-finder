@@ -151,6 +151,31 @@ Weights live in `config.heat` and are meant to be tuned against your own niche.
 Because scores are relative to the set, a 9K-sub channel's 50K-view breakout outranks a
 9M-sub channel's 400K-view video — which is the ranking a creator actually needs.
 
+### Outliers: a video against its own channel's median
+
+Views per subscriber is a proxy. A cleaner version of the same question is *how far did this
+video beat what its own channel normally gets?* — a 400K video on a channel whose median is
+30K is worth studying, the same video on a 2M-sub channel is a normal Tuesday. This is the
+`yt-viral` idea from [youtube-agent-skill](https://github.com/Jakeschincariol/youtube-agent-skill)
+(MIT; see [`server/src/data/NOTICE`](server/src/data/NOTICE)), ported to JS in
+[`lib/outlier.js`](server/src/lib/outlier.js).
+
+A niche search returns one or two videos per channel, which can't give a median, so the top
+`OUTLIER_CHANNELS` (default 20) channels' latest 50 uploads are read as a baseline — about
+40 extra units a run. Rules, all deterministic:
+
+- A median needs **≥4 same-format uploads**; below that the video is left unmeasured rather
+  than ranked on noise (those channels are listed in the audit log).
+- Shorts and long-form are never mixed into one median.
+- Uploads under 3 days old are excluded from the baseline — they haven't finished
+  accumulating views and would inflate every multiple.
+- It ships as a **separate signal** (badge, banner, audit-log section), not blended into
+  heat: the weights stay as documented above until the two have been compared on real niches.
+
+Each title is also tagged with the closest of 21 hook formulas (`lib/hookFormulas.js`), and
+the formulas shared by the outliers are summarised. That tag judges the *wording of the
+title*; it is not a claim about why the video worked.
+
 ### Gaps are grounded, not generated
 
 The failure mode that matters here is a plausible-sounding gap nobody actually asked for.
@@ -219,10 +244,13 @@ takes the run shape instead of returning a constant:
 | Run shape | Units | Analyses/day on a 9,000 budget |
 |---|---|---|
 | Channel mode | **29** | ~310 |
-| Niche, both/shorts | 127 | 70 |
-| Niche, long-form | 227 | 39 |
-| Niche + deep scan | 227 | 39 |
-| Niche, long-form + deep scan | 427 | 21 |
+| Niche, both/shorts | 167 | 53 |
+| Niche, long-form | 267 | 33 |
+| Niche + deep scan | 267 | 33 |
+| Niche, long-form + deep scan | 467 | 19 |
+
+(Niche runs include ~40 units for the outlier baselines; `OUTLIER_CHANNELS=0` removes them
+and gives back the old 127/227/427.)
 
 `GET /api/quota` returns that whole table, so the UI can price a toggle *before* someone
 flips it rather than halving their day's budget by surprise.
@@ -611,6 +639,8 @@ server/
       scheduler.js         re-runs saved watches, conservatively
     lib/
       heat.js              the scoring formula
+      outlier.js           views vs. each channel's own median (from youtube-agent-skill)
+      hookFormulas.js      21 title/hook formulas (data/hooks.json) -> label a title
       searchPlan.js        which search.list slices a request needs = the cost model
       cache.js             disk cache, keyed by query hash (swap for Redis at this seam)
       store.js             persisted reports + per-niche gap history (the recurrence baseline)

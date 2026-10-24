@@ -340,3 +340,38 @@ export async function getChannelUploads({ uploadsPlaylistId, publishedAfter, max
 
   return { hits, pages, truncated: Boolean(pageToken) && !reachedCutoff };
 }
+
+/**
+ * Recent uploads (newest 50) with view counts for each given channel, as the
+ * baseline for lib/outlier.js. 1 playlistItems unit per channel plus videos.list
+ * batched 50 ids per unit. One channel failing (deleted, no public uploads)
+ * leaves it out rather than failing the run; a quota error still propagates.
+ * The uploads playlist id is deterministic ("UU" + the channel id minus its
+ * "UC"), so there is no extra lookup to find it.
+ */
+export async function getChannelBaselines(channelIds, { minAgeDays = 0 } = {}) {
+  const cutoff = Date.now() - minAgeDays * 86_400_000;
+  const idsByChannel = new Map();
+  for (const channelId of channelIds) {
+    if (!channelId?.startsWith('UC')) continue;
+    try {
+      const { hits } = await getChannelUploads({
+        uploadsPlaylistId: `UU${channelId.slice(2)}`,
+        publishedAfter: '1970-01-01T00:00:00Z',
+        maxPages: 1,
+      });
+      idsByChannel.set(channelId, hits.map((h) => h.videoId));
+    } catch (err) {
+      if (err.code === 'QUOTA_EXHAUSTED') throw err;
+    }
+  }
+
+  const details = await getVideoDetails([...idsByChannel.values()].flat());
+  const byChannel = new Map();
+  for (const v of details) {
+    if (new Date(v.publishedAt).getTime() > cutoff) continue;
+    if (!byChannel.has(v.channelId)) byChannel.set(v.channelId, []);
+    byChannel.get(v.channelId).push({ videoId: v.videoId, views: v.views, isShort: v.isShort, publishedAt: v.publishedAt });
+  }
+  return byChannel;
+}

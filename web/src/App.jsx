@@ -345,6 +345,16 @@ export default function App() {
               );
             })()}
 
+            {result.outliers?.outliers > 0 && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <b>{result.outliers.outliers}</b> of {result.outliers.measured} measured videos beat their own channel&rsquo;s median by {result.outliers.threshold}&times; or more
+                {result.outliers.topFormulas.length > 0 && (
+                  <> &middot; common title formulas: {result.outliers.topFormulas.slice(0, 3).map((f) => `${f.name} (${f.count})`).join(', ')}</>
+                )}
+                .
+              </div>
+            )}
+
             <div>
               <div className="flex gap-1 border-b border-ink-200 dark:border-ink-800">
                 {TABS.map((t) => (

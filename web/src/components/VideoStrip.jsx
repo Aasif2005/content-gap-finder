@@ -51,6 +51,19 @@ export function VideoStrip({ videos, limit = 4, showEngagement = false }) {
                 ⚠ tag-only
               </Badge>
             )}
+            {v.outlier?.multiple >= 2 && (
+              <Badge
+                tone="good"
+                title={`${v.views.toLocaleString()} views vs. a median of ${v.outlier.median.toLocaleString()} across this channel's last ${v.outlier.baseline} ${v.isShort ? 'Shorts' : 'long videos'}. Ranks the video, not the channel's size.`}
+              >
+                {v.outlier.multiple >= 100 ? '100×+' : `${v.outlier.multiple}×`} channel median
+              </Badge>
+            )}
+            {v.formula && (
+              <Badge title="Title wording matches this hook formula. A judgement about the words, not a claim about why it worked.">
+                {v.formula}
+              </Badge>
+            )}
             {v.isShort && <Badge tone="cool">Short</Badge>}
             <span className="nums hidden text-xs text-ink-400 sm:inline">{duration(v.durationSeconds)}</span>
           </div>

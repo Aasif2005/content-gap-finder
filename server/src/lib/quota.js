@@ -92,7 +92,12 @@ export function unitsPerAnalysis({ contentType = 'both', deepScan = false, chann
   const discovery = channelMode
     ? cost.playlistItems + cost.channels // resolve the channel, then list uploads
     : searchPlan({ contentType, deepScan }).length * cost.search;
-  return discovery + cost.videos + cost.channels + cost.commentThreads * maxCommentVideos;
+  // Niche mode also reads the top channels' recent uploads as an outlier
+  // baseline (services/youtube.js getChannelBaselines): a playlistItems page and
+  // a videos.list batch per channel. Channel mode is already one channel's own
+  // uploads, so it needs none.
+  const baseline = channelMode ? 0 : config.outlier.channels * (cost.playlistItems + cost.videos);
+  return discovery + cost.videos + cost.channels + cost.commentThreads * maxCommentVideos + baseline;
 }
 
 export function quotaStatus(shape = {}) {

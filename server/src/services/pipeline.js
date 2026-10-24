@@ -6,6 +6,7 @@ import { RunLogger } from '../lib/auditLog.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, untrustedVideoIds } from '../lib/relevance.js';
 import { matchesRequestedLanguage } from '../lib/language.js';
 import { classifyRecurrence } from '../lib/recurrence.js';
+import { annotateOutliers } from '../lib/outlier.js';
 import * as store from '../lib/store.js';
 
 /** Trims a scored video down to what the UI actually renders. */
@@ -29,6 +30,8 @@ const publicVideo = (v) => ({
   engagementRate: Math.round(v.signals.engagementRate * 10000) / 10000,
   lowEngagementOutlier: v.lowEngagementOutlier,
   tagOnlyMatch: Boolean(v.tagOnlyMatch),
+  outlier: v.outlier ?? null,
+  formula: v.formula?.id ? v.formula.name : null,
   url: `https://www.youtube.com/watch?v=${v.videoId}`,
 });
 
@@ -212,6 +215,22 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   const ranked = scoreVideos(videos, channelMap);
   for (const v of ranked) v.tier = heatTier(v, ranked);
 
+  // 3b. Median-multiple outliers (youtube-agent-skill's yt-viral). The pool has
+  // 1-2 videos per channel, which cannot give a median, so the top channels'
+  // recent uploads are read as a baseline. Failure degrades to "not measured"
+  // rather than failing a run that already has everything else it needs.
+  let outlierSummary = null;
+  if (!channelMode && config.outlier.channels > 0 && ranked.length) {
+    onProgress('stats', 'Measuring each channel against its own median', 33);
+    try {
+      const topChannels = [...new Set(ranked.map((v) => v.channelId))].slice(0, config.outlier.channels);
+      const baselines = await yt.getChannelBaselines(topChannels, { minAgeDays: config.outlier.minBaselineAgeDays });
+      outlierSummary = annotateOutliers(ranked, baselines);
+    } catch (err) {
+      warnings.push(`Channel-median outliers were not measured: ${err.message}`);
+    }
+  }
+
   // Mark videos that matched the niche only through tags/hashtags. The LLM makes
   // the final call on these -- we just make sure it can see the signal. Skipped
   // in channel mode: every video demonstrably belongs to the channel being
@@ -261,6 +280,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   }
 
   log.logSearch(hits, beforeFilter, ranked, warnings, slices);
+  if (!channelMode) log.logOutliers(outlierSummary, ranked);
 
   // 4. Comments for the top slice only. commentThreads.list is per-video, so
   // this is N round trips -- the cap is about latency as much as quota.
@@ -463,6 +483,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     },
     warnings,
     thinPool,
+    outliers: outlierSummary,
     channelMode,
     channel: channel && {
       channelId: channel.channelId,

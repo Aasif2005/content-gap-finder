@@ -118,6 +118,34 @@ export class RunLogger {
    * weak evidence is the one most likely to make a creator change something
    * that was never actually a problem.
    */
+  /** Logs the channel-median outlier pass: what was measured, what was too thin to, and the shared formulas. */
+  logOutliers(summary, videos) {
+    if (!summary) {
+      this.section('OUTLIERS — views vs. each channel\'s own median', ['Not measured (disabled, channel mode, or the baseline fetch failed -- see warnings).']);
+      return;
+    }
+    const lines = [
+      `${summary.measured} videos across ${summary.channelsMeasured} channels had a usable baseline (>= 4 same-format uploads); ${summary.outliers} beat their channel median by ${summary.threshold}x or more.`,
+      '',
+    ];
+    videos
+      .filter((v) => v.outlier?.multiple >= summary.threshold)
+      .sort((a, b) => b.outlier.multiple - a.outlier.multiple)
+      .slice(0, 10)
+      .forEach((v) => {
+        lines.push(`  ${v.outlier.multiple}x  ${v.views.toLocaleString()} vs ${v.outlier.median.toLocaleString()} median  [${v.formula?.name ?? 'Unclassified'}]`);
+        lines.push(`      ${v.channelTitle} -- ${truncate(v.title, 90)}`);
+      });
+    if (summary.topFormulas.length) {
+      lines.push('', 'Title formulas among the outliers (a judgement about the wording, not why it worked):');
+      summary.topFormulas.forEach((f) => lines.push(`  ${f.count}x  ${f.name}`));
+    }
+    if (summary.thinChannels.length) {
+      lines.push('', `Skipped (fewer than 4 same-format uploads to take a median from): ${summary.thinChannels.slice(0, 8).join(', ')}`);
+    }
+    this.section('OUTLIERS — views vs. each channel\'s own median', lines);
+  }
+
   logObjections(objections) {
     if (!objections.length) {
       this.section('OBJECTIONS — complaints about existing videos', [

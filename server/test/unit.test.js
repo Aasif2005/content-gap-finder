@@ -10,6 +10,8 @@ import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatin
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
 import { withLock } from '../src/lib/fileLock.js';
+import { FORMULAS, classifyFormula } from '../src/lib/hookFormulas.js';
+import { median, medianMultiple, annotateOutliers } from '../src/lib/outlier.js';
 import { nicheKey, subjectKey } from '../src/lib/store.js';
 import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurrence.js';
 // Reaching across the workspace on purpose: these are pure serializers with no
@@ -1008,5 +1010,49 @@ describe('groundObjections', () => {
       comments
     );
     assert.equal(out[0].label, 'High thing');
+  });
+});
+
+describe('hook formulas (ported from youtube-agent-skill)', () => {
+  test('loads all 21 formulas with compiled patterns', () => {
+    assert.equal(FORMULAS.length, 21);
+    assert.ok(FORMULAS.every((f) => f.regexes.length > 0));
+  });
+  test('labels a statistic-shaped title and leaves a plain one unclassified', () => {
+    assert.equal(classifyFormula('97% of new channels quit before video 30').id, 'the-statistic');
+    assert.equal(classifyFormula('cast iron skillet').name, 'Unclassified');
+  });
+});
+
+describe('median-multiple outliers', () => {
+  const long = (views) => ({ views, isShort: false });
+  const base = [long(10_000), long(20_000), long(30_000), long(40_000)];
+
+  test('median handles odd, even and empty', () => {
+    assert.equal(median([3, 1, 2]), 2);
+    assert.equal(median([1, 2, 3, 4]), 2.5);
+    assert.equal(median([]), 0);
+  });
+  test('is a multiple of the channel median', () => {
+    assert.deepEqual(medianMultiple({ views: 125_000, isShort: false }, base), { multiple: 5, median: 25_000, baseline: 4 });
+  });
+  test('declines rather than ranking on fewer than 4 same-format uploads', () => {
+    assert.equal(medianMultiple({ views: 1e6, isShort: false }, base.slice(0, 3)), null);
+  });
+  test('never mixes Shorts and long-form into one median', () => {
+    const mixed = [...base.slice(0, 3), { views: 5_000_000, isShort: true }];
+    assert.equal(medianMultiple({ views: 90_000, isShort: false }, mixed), null);
+  });
+  test('annotates videos, counts formulas among real outliers, reports thin channels', () => {
+    const ranked = [
+      { videoId: 'a', channelId: 'C1', channelTitle: 'One', title: '97% of people quit', views: 125_000, isShort: false },
+      { videoId: 'b', channelId: 'C2', channelTitle: 'Two', title: 'plain title', views: 900, isShort: false },
+    ];
+    const s = annotateOutliers(ranked, new Map([['C1', base], ['C2', base.slice(0, 2)]]), { threshold: 2 });
+    assert.equal(ranked[0].outlier.multiple, 5);
+    assert.equal(ranked[1].outlier, null);
+    assert.equal(s.outliers, 1);
+    assert.deepEqual(s.thinChannels, ['Two']);
+    assert.equal(s.topFormulas[0].name, 'The Statistic');
   });
 });

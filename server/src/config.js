@@ -72,6 +72,19 @@ export const config = {
     commentWeight: 5,      // a comment is worth this many likes
     minSubsFloor: 500,     // avoids divide-by-zero blowups on tiny channels
   },
+
+  // Median-multiple outliers (lib/outlier.js, from youtube-agent-skill's yt-viral).
+  // A niche search returns 1-2 videos per channel, which is not enough for a
+  // median, so the top channels' recent uploads are fetched as a baseline:
+  // 1 playlistItems unit + ~1 videos.list unit per channel. 0 switches it off.
+  outlier: {
+    channels: num(process.env.OUTLIER_CHANNELS, 20),
+    minBaseline: num(process.env.OUTLIER_MIN_BASELINE, 4),
+    // Uploads younger than this have not finished accumulating views, so they
+    // would drag a channel's median down and inflate every multiple.
+    minBaselineAgeDays: num(process.env.OUTLIER_MIN_AGE_DAYS, 3),
+    threshold: num(process.env.OUTLIER_THRESHOLD, 2),
+  },
 };
 
 export function assertConfig() {
