@@ -7,6 +7,7 @@ import { AvoidCard } from './components/AvoidCard.jsx';
 import { ObjectionCard } from './components/ObjectionCard.jsx';
 import { EmptyState, StatRow, Badge } from './components/Bits.jsx';
 import { ThinPoolNotice } from './components/ThinPoolNotice.jsx';
+import { EvidencePanel } from './components/EvidencePanel.jsx';
 import { ExportMenu } from './components/ExportMenu.jsx';
 import { HistoryPanel } from './components/HistoryPanel.jsx';
 import { WatchPanel } from './components/WatchPanel.jsx';
@@ -344,6 +345,15 @@ export default function App() {
                 </div>
               );
             })()}
+
+            {result.exclusions && (
+              <EvidencePanel
+                exclusions={result.exclusions}
+                query={result.query}
+                busy={busy}
+                onRerun={(patch) => run({ ...lastInput.current, ...patch }, { force: true })}
+              />
+            )}
 
             {result.outliers?.outliers > 0 && (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">

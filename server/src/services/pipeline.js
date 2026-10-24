@@ -4,7 +4,8 @@ import { clusterTopics, mineGaps, selectComments, groundGaps, groundObjections, 
 import { config } from '../config.js';
 import { RunLogger } from '../lib/auditLog.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, untrustedVideoIds } from '../lib/relevance.js';
-import { matchesRequestedLanguage } from '../lib/language.js';
+import { languageDecision } from '../lib/language.js';
+import { ExclusionLedger } from '../lib/exclusions.js';
 import { classifyRecurrence } from '../lib/recurrence.js';
 import { annotateOutliers } from '../lib/outlier.js';
 import { formulaHint } from '../lib/hookFormulas.js';
@@ -67,6 +68,8 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   const channelMode = Boolean(channelId);
 
   const warnings = [];
+  // Every video set aside, and why (lib/exclusions.js). Surfaced in the report and the audit log.
+  const ledger = new ExclusionLedger();
   let thinPool = null; // set below if the scored set is too small for relative scoring to mean much
   // What the report is ABOUT, for prompts and messages: the niche in niche mode,
   // the channel's title in channel mode.
@@ -133,12 +136,21 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   onProgress('stats', `Pulling stats for ${hits.length} videos`, 22);
   let videos = await yt.getVideoDetails(hits.map((h) => h.videoId));
 
+  // Hits that videos.list did not return: deleted, private, or restricted since
+  // the search. Without this they vanished between "found" and "scored".
+  const resolvedIds = new Set(videos.map((v) => v.videoId));
+  for (const h of hits) if (!resolvedIds.has(h.videoId)) ledger.add({ videoId: h.videoId }, 'unavailable');
+
   // search.list can only pre-filter to <4min; the real Shorts boundary is 180s,
   // so the precise cut has to happen here, after contentDetails.duration lands.
   const beforeFilter = videos.length;
-  if (contentType === 'shorts') videos = videos.filter((v) => v.isShort);
-  else if (contentType === 'long') videos = videos.filter((v) => !v.isShort);
-  if (minViews > 0) videos = videos.filter((v) => v.views >= minViews);
+  videos = videos.filter((v) => {
+    if (contentType === 'shorts' && !v.isShort) { ledger.add(v, 'format-long', `${Math.round(v.durationSeconds / 60)} min`); return false; }
+    if (contentType === 'long' && v.isShort) { ledger.add(v, 'format-short', `${v.durationSeconds}s`); return false; }
+    if (minViews > 0 && v.views < minViews) { ledger.add(v, 'min-views', `${v.views.toLocaleString()} views, minimum ${minViews.toLocaleString()}`); return false; }
+    return true;
+  });
+  const afterFormat = videos.length;
 
   if (!videos.length) {
     throw Object.assign(
@@ -147,9 +159,6 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
       ),
       { status: 404, code: 'NO_RESULTS_AFTER_FILTER' }
     );
-  }
-  if (beforeFilter - videos.length > 0) {
-    warnings.push(`${beforeFilter - videos.length} of ${beforeFilter} videos dropped by the format/view filters.`);
   }
 
   onProgress('stats', 'Fetching channel sizes', 30);
@@ -164,7 +173,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   // soft-hint behavior it's meant to replace, so both filters below only take
   // effect if they leave at least one video; otherwise they're skipped with a
   // warning explaining why, rather than erroring the run out to zero.
-  const beforeRegionLang = videos.length;
+  let languageSummary = null;
 
   if (relevanceLanguage) {
     // Combines each video's declared/detected audio language (the primary
@@ -175,16 +184,24 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     // text evidence) stays in, same "unknown is not no" rule as the region
     // filter below.
     const before = videos.length;
-    const verdicts = videos.map((v) => matchesRequestedLanguage(relevanceLanguage, v));
-    const kept = videos.filter((_, i) => verdicts[i] !== false);
-    const confirmedCount = verdicts.filter((v) => v === true).length;
+    const decisions = videos.map((v) => languageDecision(relevanceLanguage, v));
+    const kept = videos.filter((_, i) => decisions[i].verdict !== false);
+    const confirmedCount = decisions.filter((d) => d.verdict === true).length;
+    languageSummary = {
+      requested: relevanceLanguage,
+      confirmed: confirmedCount,
+      excluded: before - kept.length,
+      undecided: decisions.filter((d) => d.verdict === null).length,
+      applied: kept.length > 0,
+    };
     if (kept.length) {
+      // Recorded with the signal that settled it: an audio-track mismatch and a
+      // "Hindi Dubbed" title are different grounds, and which one it was is what
+      // tells you whether dropping the filter would help.
+      videos.forEach((v, i) => {
+        if (decisions[i].verdict === false) ledger.add(v, `language-${decisions[i].signal}`, decisions[i].detail);
+      });
       videos = kept;
-      if (confirmedCount < before) {
-        warnings.push(
-          `"${relevanceLanguage}" filtered by each video's audio language (plus title/script evidence as a second opinion) -- ${confirmedCount} of ${before} videos confirmed, ${before - kept.length} excluded as a different language, the rest left undecided rather than guessed.`
-        );
-      }
     } else {
       warnings.push(
         `Every one of ${before} videos was confirmed as a different language than "${relevanceLanguage}" -- results follow YouTube's own relevance ranking instead.`
@@ -200,16 +217,15 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
       return !country || country === regionCode;
     });
     if (regionMatched.length) {
+      for (const v of videos) {
+        if (!regionMatched.includes(v)) ledger.add(v, 'region', `channel country is ${channelMap.get(v.channelId)?.country}, wanted ${regionCode}`);
+      }
       videos = regionMatched;
     } else {
       warnings.push(
         `None of ${videos.length} videos' channels report "${regionCode}" as their country -- most creators never set this field. Results follow YouTube's own relevance ranking instead.`
       );
     }
-  }
-
-  if (beforeRegionLang - videos.length > 0) {
-    warnings.push(`${beforeRegionLang - videos.length} of ${beforeRegionLang} videos dropped by the region/language filter.`);
   }
 
   // 3. Deterministic scoring. The LLM never does arithmetic.
@@ -299,6 +315,12 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
       withComments++;
     }
   }
+  // Scored but never read: either beyond the top-N videos whose comments are
+  // fetched (a per-video call each), or read and found empty.
+  for (const v of commentTargets) if (!commentsByVideo[v.videoId]) ledger.add(v, 'comments-disabled');
+  ranked.slice(commentTargets.length).forEach((v, i) =>
+    ledger.add(v, 'not-comment-read', `rank ${commentTargets.length + i + 1}; only the top ${commentTargets.length} are read`)
+  );
   const selected = selectComments(commentsByVideo, { ownerByVideo });
   const totalFetched = Object.values(commentsByVideo).reduce((a, c) => a + c.length, 0);
   if (!withComments) warnings.push('No comments were available on any top video, so the gap list will be empty.');
@@ -392,6 +414,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   ]);
   const untrusted = channelMode ? new Set() : untrustedVideoIds(ranked, confirmedRelevantVideoIds);
   const gapComments = untrusted.size ? selected.filter((c) => !untrusted.has(c.videoId)) : selected;
+  for (const id of untrusted) if (commentsByVideo[id]) ledger.add(byId.get(id), 'untrusted-tag-only');
   if (gapComments.length < selected.length) {
     warnings.push(
       `${selected.length - gapComments.length} comments excluded from gap mining -- they came from tag-hijacked videos clustering did not confirm as relevant.`
@@ -454,6 +477,27 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     gapRelevance: summarizeRelevance(gapRelevance),
     avoidRelevance: summarizeRelevance(avoidRelevance),
   };
+  // The funnel: what each stage started with, so "weak evidence" can be traced to
+  // the step that thinned it. The integrity flag is the arithmetic that must hold
+  // (everything found is either scored or has a reason it is not); if it ever
+  // fails the report says so instead of showing a funnel that does not add up.
+  const exclusions = {
+    funnel: [
+      { key: 'found', label: channelMode ? 'Uploads in the window' : 'Videos found by search', count: hits.length },
+      { key: 'resolved', label: 'Returned by YouTube', count: beforeFilter },
+      { key: 'format', label: 'After format and view filters', count: afterFormat },
+      { key: 'scored', label: 'Scored', count: ranked.length },
+      { key: 'commentRead', label: 'Videos whose comments were read', count: withComments },
+      { key: 'comments', label: 'Comments used for gaps', count: gapComments.length },
+    ],
+    byReason: ledger.summary(),
+    items: ledger.items(),
+    excluded: ledger.countKind('excluded'),
+    language: languageSummary,
+    integrity: ledger.countKind('excluded') === hits.length - ranked.length,
+  };
+  log.logExclusions(exclusions);
+
   log.finish({ status: 'done', ...relevanceSummary });
 
   onProgress('done', 'Complete', 100);
@@ -485,6 +529,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     },
     warnings,
     thinPool,
+    exclusions,
     outliers: outlierSummary,
     channelMode,
     channel: channel && {

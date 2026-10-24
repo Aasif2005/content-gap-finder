@@ -263,9 +263,23 @@ export function matchesAudioLanguage(languageCode, defaultAudioLanguage) {
  * a CONFIRMED mismatch gets excluded).
  */
 export function matchesRequestedLanguage(languageCode, video) {
+  return languageDecision(languageCode, video).verdict;
+}
+
+/**
+ * The same decision as matchesRequestedLanguage, with the signal that settled
+ * it: `{verdict: true|false|null, signal: 'audio'|'script'|'latin-words'|
+ * 'named-language'|'undecided', detail}`. The pipeline's exclusion ledger needs
+ * the signal because "excluded as a different language" is not one reason --
+ * an audio-track mismatch and a "Hindi Dubbed" title are very different grounds
+ * to leave a video out, and a user deciding whether to drop the language
+ * filter should be able to see which it was.
+ */
+export function languageDecision(languageCode, video) {
   const code = (languageCode ?? '').toLowerCase();
   const audio = matchesAudioLanguage(code, video.defaultAudioLanguage);
   const text = `${video.title ?? ''} ${video.description ?? ''}`;
+  const audioDetail = `audio track is "${video.defaultAudioLanguage}"`;
 
   // The weakest signal, checked once up front: does the title/description
   // explicitly claim a DIFFERENT language via a dub/version/subtitle/audio
@@ -277,31 +291,37 @@ export function matchesRequestedLanguage(languageCode, video) {
   // "undecided" into an excluded when nothing stronger settled it.
   const named = namedLanguages(text);
   const namesOtherLanguage = named.length > 0 && !named.includes(code);
+  const namedResult = namesOtherLanguage
+    ? { verdict: false, signal: 'named-language', detail: `title or description names "${named.join(', ')}" next to a dub/subtitle label` }
+    : { verdict: null, signal: 'undecided', detail: 'no audio-language field and no script or wording evidence either way' };
 
   if (hasScriptFilter(code)) {
     const script = matchesLanguageScript(code, text);
-    if (audio === true || script === true) return true;
+    if (audio === true) return { verdict: true, signal: 'audio', detail: audioDetail };
+    if (script === true) return { verdict: true, signal: 'script', detail: 'title or description is written in this language\'s script' };
     // A title with no matching script proves nothing on its own (see the
     // "GHOST STORIES IN TAMIL" case above) -- only an explicit audio
     // disagreement, unrescued by script, counts as a confirmed mismatch.
-    if (audio === false) return false;
-    return namesOtherLanguage ? false : null;
+    if (audio === false) return { verdict: false, signal: 'audio', detail: audioDetail };
+    return namedResult;
   }
 
   if (hasLatinHeuristic(code)) {
     const latin = matchesLatinLanguage(code, text);
-    if (audio === true || latin === true) return true;
+    if (audio === true) return { verdict: true, signal: 'audio', detail: audioDetail };
+    if (latin === true) return { verdict: true, signal: 'latin-words', detail: 'common words in the title read as this language' };
     // matchesLatinLanguage's false is already a comparative, fairly confident
     // signal (another modeled language scored strictly higher) -- unlike bare
     // script absence, it can stand on its own when audio is unavailable.
-    if (audio === false || latin === false) return false;
-    return namesOtherLanguage ? false : null;
+    if (audio === false) return { verdict: false, signal: 'audio', detail: audioDetail };
+    if (latin === false) return { verdict: false, signal: 'latin-words', detail: 'common words in the title read as a different language' };
+    return namedResult;
   }
 
   // No text-based model for this language at all -- audio is the only strong
   // signal, but it now covers languages this app previously couldn't filter
   // at all. Named-language text still gets the last word when audio itself
   // has nothing to say.
-  if (audio === true || audio === false) return audio;
-  return namesOtherLanguage ? false : null;
+  if (audio === true || audio === false) return { verdict: audio, signal: 'audio', detail: audioDetail };
+  return namedResult;
 }

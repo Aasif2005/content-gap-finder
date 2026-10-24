@@ -6,7 +6,7 @@ import path from 'node:path';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps, groundObjections, truncate } from '../src/services/analyze.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords } from '../src/lib/relevance.js';
-import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage, namedLanguages } from '../src/lib/language.js';
+import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage, namedLanguages, languageDecision } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
 import { withLock } from '../src/lib/fileLock.js';
@@ -15,6 +15,7 @@ import { scoreHook, band } from '../src/lib/hookScore.js';
 import { finalizeBrief, queryTest, briefPrompt, formulaList, systemPrompt } from '../src/services/brief.js';
 import { lintTitle, ungroundedNumbers, rankTitleOptions, unverifiedNames, unverifiedTags, impliesAccusation } from '../src/lib/titleLint.js';
 import { detectSensitive, assessSensitivity } from '../src/lib/sensitive.js';
+import { ExclusionLedger, REASONS } from '../src/lib/exclusions.js';
 import { median, medianMultiple, annotateOutliers } from '../src/lib/outlier.js';
 import { nicheKey, subjectKey } from '../src/lib/store.js';
 import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurrence.js';
@@ -1378,5 +1379,79 @@ describe('brief checks for non-Latin scripts and false positives', () => {
   test('query tokens ignore 1-2 letter particles but keep numbers', () => {
     const [q] = queryTest(['hema ah 9 mela'], 'Hema', 'Hema 9');
     assert.deepEqual(q.missing, ['mela']);
+  });
+});
+
+describe('exclusion ledger', () => {
+  const v = (id, extra = {}) => ({ videoId: id, title: `title ${id}`, channelTitle: 'Chan', views: 100, ...extra });
+
+  test('counts by reason and by kind, keeping excluded and unread apart', () => {
+    const l = new ExclusionLedger();
+    l.add(v('a'), 'format-short', '61s');
+    l.add(v('b'), 'format-short', '30s');
+    l.add(v('c'), 'min-views');
+    l.add(v('d'), 'not-comment-read');
+    assert.equal(l.count('format-short'), 2);
+    assert.equal(l.countKind('excluded'), 3);
+    assert.equal(l.countKind('unread'), 1);
+  });
+  test('summary lists excluded reasons before unread ones, largest first, with a few examples', () => {
+    const l = new ExclusionLedger();
+    for (let i = 0; i < 8; i++) l.add(v(`s${i}`), 'format-short');
+    l.add(v('m'), 'min-views');
+    for (let i = 0; i < 20; i++) l.add(v(`u${i}`), 'not-comment-read');
+    const sum = l.summary();
+    assert.deepEqual(sum.map((r) => r.code), ['format-short', 'min-views', 'not-comment-read']);
+    assert.equal(sum[0].count, 8);
+    assert.equal(sum[0].examples.length, 5);
+    assert.equal(sum[0].examples[0].url, 'https://www.youtube.com/watch?v=s0');
+  });
+  test('an unknown reason is a programming error, not a silently-uncounted video', () => {
+    assert.throws(() => new ExclusionLedger().add(v('a'), 'because'), /Unknown exclusion reason/);
+  });
+  test('items are capped so a huge run cannot bloat the saved report', () => {
+    const l = new ExclusionLedger();
+    for (let i = 0; i < 400; i++) l.add(v(`x${i}`), 'not-comment-read');
+    assert.equal(l.items().length, 300);
+    assert.equal(l.size, 400);
+  });
+  test('every reason that names a filter names one the form actually has', () => {
+    const filters = new Set(Object.values(REASONS).map((r) => r.filter).filter(Boolean));
+    assert.deepEqual([...filters].sort(), ['contentType', 'minViews', 'regionCode', 'relevanceLanguage']);
+  });
+  test('a missing title or view count does not break an entry', () => {
+    const l = new ExclusionLedger();
+    l.add({ videoId: 'gone' }, 'unavailable');
+    assert.deepEqual([l.items()[0].title, l.items()[0].views], ['', null]);
+  });
+});
+
+describe('languageDecision reports which signal settled it', () => {
+  test('an audio-track mismatch', () => {
+    const d = languageDecision('ta', { title: 'x', defaultAudioLanguage: 'hi' });
+    assert.deepEqual([d.verdict, d.signal], [false, 'audio']);
+  });
+  test('a "Hindi Dubbed" title with no audio field', () => {
+    const d = languageDecision('ta', { title: 'GALAXY Full Movie Hindi Dubbed 2026', defaultAudioLanguage: null });
+    assert.deepEqual([d.verdict, d.signal], [false, 'named-language']);
+  });
+  test('Latin-word evidence for another language', () => {
+    const d = languageDecision('en', { title: 'la receta de la abuela para el pan de la casa', defaultAudioLanguage: null });
+    assert.deepEqual([d.verdict, d.signal], [false, 'latin-words']);
+  });
+  test('script evidence confirms', () => {
+    const d = languageDecision('ta', { title: '\u0b87\u0ba8\u0bcd\u0ba4 \u0bb5\u0bc0\u0b9f\u0bbf\u0baf\u0bcb', defaultAudioLanguage: null });
+    assert.deepEqual([d.verdict, d.signal], [true, 'script']);
+  });
+  test('no evidence either way is undecided, and undecided is kept', () => {
+    const d = languageDecision('ta', { title: 'GHOST', defaultAudioLanguage: null });
+    assert.deepEqual([d.verdict, d.signal], [null, 'undecided']);
+  });
+  test('matchesRequestedLanguage is exactly its verdict', () => {
+    for (const video of [
+      { title: 'x', defaultAudioLanguage: 'hi' },
+      { title: 'GHOST', defaultAudioLanguage: null },
+      { title: 'x', defaultAudioLanguage: 'ta' },
+    ]) assert.equal(matchesRequestedLanguage('ta', video), languageDecision('ta', video).verdict);
   });
 });

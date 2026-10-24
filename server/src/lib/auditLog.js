@@ -118,6 +118,27 @@ export class RunLogger {
    * weak evidence is the one most likely to make a creator change something
    * that was never actually a problem.
    */
+  /** Logs every video set aside and why -- the working behind the funnel on the report. */
+  logExclusions(ex) {
+    const lines = ['Funnel:'];
+    ex.funnel.forEach((f) => lines.push(`  ${String(f.count).padStart(5)}  ${f.label}`));
+    if (ex.language) {
+      lines.push('', `Language "${ex.language.requested}": ${ex.language.confirmed} confirmed, ${ex.language.excluded} excluded as a different language, ${ex.language.undecided} undecided (kept: unknown is not no)${ex.language.applied ? '' : ' -- filter NOT applied, it would have removed every video'}.`);
+    }
+    if (!ex.integrity) lines.push('', '  ⚠ The counts above do not add up (found != scored + excluded). Treat this funnel with suspicion.');
+    for (const r of ex.byReason) {
+      lines.push('', `${r.kind === 'excluded' ? 'LEFT OUT' : 'NOT READ'} -- ${r.label}: ${r.count}`);
+    }
+    const listed = ex.items.filter((i) => i.code !== 'not-comment-read');
+    if (listed.length) {
+      lines.push('', 'Each video, with its reason:');
+      listed.forEach((i) => lines.push(`  [${i.code}] ${i.views != null ? `${i.views.toLocaleString()} views  ` : ''}${truncate(i.channelTitle, 28)} -- ${truncate(i.title || i.videoId, 80)}${i.detail ? `  (${i.detail})` : ''}`));
+    }
+    const unread = ex.byReason.find((r) => r.code === 'not-comment-read');
+    if (unread) lines.push('', `(${unread.count} further videos were scored but outside the top videos whose comments are read; not listed one by one.)`);
+    this.section('EXCLUDED — why each video was left out', lines);
+  }
+
   /** Logs the channel-median outlier pass: what was measured, what was too thin to, and the shared formulas. */
   logOutliers(summary, videos) {
     if (!summary) {

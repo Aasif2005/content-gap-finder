@@ -151,6 +151,27 @@ Weights live in `config.heat` and are meant to be tuned against your own niche.
 Because scores are relative to the set, a 9K-sub channel's 50K-view breakout outranks a
 9M-sub channel's 400K-view video — which is the ranking a creator actually needs.
 
+### Where every video went
+
+A report used to say "7 of 14 videos dropped by the format/view filters" and nothing more. Every
+run now keeps a ledger ([`lib/exclusions.js`](server/src/lib/exclusions.js)) of each video the
+pipeline set aside and the reason, shown above the tabs as a funnel — found → returned by YouTube
+→ after format and view filters → scored → comments read → comments used — with each reason
+expandable to the videos themselves (title, channel, views, and the specifics: "61s", "audio track
+is `hi`", "channel country is US, wanted IN").
+
+Two kinds of entry, kept apart because they are different facts. **Left out of scoring**: YouTube
+did not return it (deleted/private), a Short with long-form selected (or the reverse), under the
+minimum views, a different language, or a different country. For language the *signal* is
+recorded — an audio-track mismatch, wording that reads as another language, or a "Hindi Dubbed"
+title are different grounds, and which one it was tells you whether dropping the filter would
+help. **Scored but not used for gaps**: outside the top videos whose comments are read, comments
+disabled, or comments set aside because the niche appears only in the video's tags.
+
+Where a reason comes from a filter you set, the panel offers a button to re-run without it. The
+funnel carries its own check: everything found is either scored or has a reason, and if the
+arithmetic ever fails the panel says so. The audit log lists every video with its reason.
+
 ### Outliers: a video against its own channel's median
 
 Views per subscriber is a proxy. A cleaner version of the same question is *how far did this
@@ -714,6 +735,7 @@ server/
     lib/
       heat.js              the scoring formula
       outlier.js           views vs. each channel's own median (from youtube-agent-skill)
+      exclusions.js        ledger of every video set aside and why (the funnel on the report)
       titleLint.js         deterministic title/thumbnail lint + invented-number check
       hookScore.js         five-property hook scorer (port of hookscore.py)
       hookFormulas.js      21 title/hook formulas (data/hooks.json) -> label a title
