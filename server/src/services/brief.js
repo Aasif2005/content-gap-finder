@@ -6,6 +6,7 @@ import { truncate } from './analyze.js';
 import { FORMULAS, classifyFormula, normalizeFormulaId } from '../lib/hookFormulas.js';
 import { scoreHook, partialHookCheck, weakOpener } from '../lib/hookScore.js';
 import { assessSensitivity } from '../lib/sensitive.js';
+import { languageMismatch } from '../lib/language.js';
 import {
   lintTitle, rankTitleOptions, requestPhrase, ungroundedNumbers, unverifiedNames, unverifiedTags, STOP,
 } from '../lib/titleLint.js';
@@ -64,6 +65,16 @@ function languageRule(language) {
     : 'LANGUAGE: write in the language the viewers used in their comments (if they mix languages or scripts, mix the same way). Keep the TITLE exactly as given.';
 }
 
+// A redraft keeps the essentials it was given, so restyling, retargeting or
+// translating a brief changes its wording, not its scope. Re-planning from
+// scratch was the main cause of a gap drafting at 7:56 one run and 10:02 the next.
+function planRules(plan) {
+  if (!plan?.length) return '';
+  return `
+FIXED PLAN: the essentials are already decided. Return exactly these ${plan.length} as "essentials", in this order, keeping each one's meaning, "answers", "seconds" and "demo" (write "point" in the brief's language). Do not add, merge, split or drop any. Every body beat "covers" one of them by number.
+${plan.map((e, i) => `${i + 1}. ${e.point} (answers ${JSON.stringify(e.answers)}, ${e.seconds}s${e.demo ? ', demo' : ''})`).join('\n')}`;
+}
+
 function sensitiveRules(sensitive) {
   if (sensitive?.level !== 'high') return '';
   return `
@@ -74,8 +85,12 @@ SENSITIVE CASE (${(sensitive.reasons ?? []).join('; ')}): this request is about 
 - Hooks must not accuse. The creator is explaining what is and is not known.`;
 }
 
-export function systemPrompt({ format, language, sensitive, style = '', targetMinutes = null, core = false } = {}) {
-  return `You draft a YouTube video brief for ONE audience request that real viewers voiced in comments.
+export function systemPrompt({ format, language, sensitive, style = '', targetMinutes = null, core = false, plan = null } = {}) {
+  // The language rule leads AND closes the prompt: at the end only, the model
+  // wrote the script in Tamil but the essentials and research notes in English.
+  return `${languageRule(language)}
+
+You draft a YouTube video brief for ONE audience request that real viewers voiced in comments.
 You are given the request, the exact comments behind it, the existing videos that only partly cover it, and a title.
 Everything you write must follow ONLY from that evidence.
 
@@ -89,7 +104,7 @@ HARD RULES
 ESSENTIALS (decide these before writing anything else)
 - "essentials": the fewest things a viewer must leave with for the request to be answered. Each lists in "answers" the numbers of the comments it answers (or "q" for the request itself), "seconds": the time to teach it clearly including any demonstration, and "demo": true when it has to be shown on screen.
 - A thing no comment asked for is not an essential. Side-topics that appear in only one comment are not essentials unless the request needs them.
-- "seconds" is the honest time a focused creator needs, not a generous one: one idea explained with one on-screen example is usually 45-90 seconds; a multi-step demonstration 90-150. Do not round up.
+- "seconds" is the honest time a focused creator needs, not a generous one: one idea explained with one on-screen example is usually 45-90 seconds; a multi-step demonstration 90-150. Do not round up.${planRules(plan)}
 
 ${formatRules(format, { style, targetMinutes, core })}
 
@@ -348,7 +363,7 @@ export function buildOpportunity(gap, { thinComments = config.brief.thinComments
  */
 export function finalizeBrief(raw, {
   title, thumbnailText = '', corpus = '', nameCorpus, format = 'long-form', sensitive = null,
-  evidenceCount = 10, evidenceLikes = [], opportunity = null, style = '', targetMinutes = null,
+  evidenceCount = 10, evidenceLikes = [], opportunity = null, style = '', targetMinutes = null, plan = null,
 } = {}) {
   const names = nameCorpus ?? corpus;
   const short = isShortFormat(format);
@@ -420,7 +435,13 @@ export function finalizeBrief(raw, {
       };
     });
 
-  const essentials = (Array.isArray(raw?.essentials) ? raw.essentials : [])
+  // With a fixed plan the scope is the plan's, whatever the model returned: its
+  // wording of each point is kept (it may be a translation), the rest is not.
+  const modelEssentials = Array.isArray(raw?.essentials) ? raw.essentials : [];
+  const essentialsIn = plan?.length
+    ? plan.map((p, i) => ({ ...p, point: String(modelEssentials[i]?.point ?? '').trim() || p.point }))
+    : modelEssentials;
+  const essentials = essentialsIn
     .map((e, i) => {
       const point = String(e?.point ?? '').trim();
       const cites = (Array.isArray(e?.answers) ? e.answers : [e?.answers])
@@ -512,6 +533,7 @@ export function finalizeBrief(raw, {
     essentials,
     length,
     lengthNote: typeof raw?.length_note === 'string' ? raw.length_note.trim() : '',
+    planned: Boolean(plan?.length),
     style: short ? 'script' : style === 'points' ? 'points' : 'script',
     beats,
     runtime: {
@@ -541,7 +563,11 @@ const rankOf = (h) => h.verdict ?? (h.partial ? Math.round((h.partial.passed / h
 const sourceTag = (e) => (e.source === 'video-title' ? '[video title]' : '[comment]');
 const EVIDENCE_SHOWN = 10;
 
-export function briefPrompt({ run, gap }) {
+export function briefPrompt({ run, gap, language = '' }) {
+  // Per-field cues, next to the fields themselves: a rule many lines away lost
+  // to English field descriptions about half the time.
+  const l = (language ?? '').trim();
+  const inL = l ? ` (in ${l})` : '';
   const evidence = gap.evidence.slice(0, EVIDENCE_SHOWN).map((e, i) => `[${i + 1}] ${sourceTag(e)} (${e.likes} likes) ${truncate(e.text, 240)}`).join('\n');
   const covering = (gap.coveringVideos ?? []).slice(0, 5).map((v) => `- [video title] ${truncate(v.title, 110)}`).join('\n') || '(none)';
   const house = houseTitles(run);
@@ -565,15 +591,15 @@ ${formulaList()}
 
 Return json with exactly this shape:
 {
-  "angle": "what this video adds that the listed videos do not",
-  "essentials": [{ "point": "one thing the viewer must leave with", "answers": [1, "q"], "seconds": 60, "demo": true }],
-  "needs": [{ "kind": "verify" | "prepare", "claim": "a fact to confirm, or a thing to have ready", "why": "where to confirm it, or why it is needed" }],
-  "hooks": [{ "text": "the spoken opener", "formula_id": "one id from the list" }],
-  "beats": [{ "beat": "turn" | "body" | "payoff" | "close", "covers": 1, "seconds": 45, "say": "spoken prose", "points": ["talking points, long-form body beats only"], "on_screen": "what the viewer sees" }],
-  "length_note": "",
-  "seo": { "queries": ["", "", ""], "description_opening": "first two lines", "tags": ["..."] },
+  "angle": "what this video adds that the listed videos do not${inL}",
+  "essentials": [{ "point": "one thing the viewer must leave with${inL}", "answers": [1, "q"], "seconds": 60, "demo": true }],
+  "needs": [{ "kind": "verify" | "prepare", "claim": "a fact to confirm, or a thing to have ready${inL}", "why": "where to confirm it, or why it is needed${inL}" }],
+  "hooks": [{ "text": "the spoken opener${inL}", "formula_id": "one id from the list" }],
+  "beats": [{ "beat": "turn" | "body" | "payoff" | "close", "covers": 1, "seconds": 45, "say": "spoken prose${inL}", "points": ["talking points, long-form body beats only${inL}"], "on_screen": "what the viewer sees${inL}" }],
+  "length_note": "${inL ? `optional note${inL}` : ''}",
+  "seo": { "queries": ["", "", ""], "description_opening": "first two lines${inL}", "tags": ["..."] },
   "title_fix": ""
-}`;
+}${l ? `\n\nEvery text field above is written in ${l}, including the essentials and the needs. Technical terms the viewers themselves use in English may stay in English.` : ''}`;
 }
 
 /** A channel run's own recent titles: all we know of its voice, and a real source of names. */
@@ -585,6 +611,61 @@ function houseTitles(run) {
     .map((v) => v.title);
 }
 
+// Creator-facing text fields of a raw brief, by path, so a language check can
+// name what drifted and a repair can put translations back where they belong.
+function textFields(raw) {
+  const out = [];
+  const add = (id, obj, key) => { if (obj && typeof obj[key] === 'string' && obj[key].trim()) out.push({ id, obj, key }); };
+  add('angle', raw, 'angle');
+  add('length_note', raw, 'length_note');
+  (Array.isArray(raw?.essentials) ? raw.essentials : []).forEach((e, i) => add(`essentials.${i}.point`, e, 'point'));
+  (Array.isArray(raw?.needs) ? raw.needs : []).forEach((n, i) => { add(`needs.${i}.claim`, n, 'claim'); add(`needs.${i}.why`, n, 'why'); });
+  (Array.isArray(raw?.hooks) ? raw.hooks : []).forEach((h, i) => add(`hooks.${i}.text`, h, 'text'));
+  (Array.isArray(raw?.beats) ? raw.beats : []).forEach((b, i) => {
+    add(`beats.${i}.say`, b, 'say');
+    add(`beats.${i}.on_screen`, b, 'on_screen');
+    if (Array.isArray(b?.points)) b.points.forEach((_, j) => add(`beats.${i}.points.${j}`, b.points, j));
+  });
+  return out;
+}
+
+/** Fields of a raw brief that are not in the requested language's script. */
+export function mismatchedFields(raw, language) {
+  if (!(language ?? '').trim()) return [];
+  return textFields(raw).filter((f) => languageMismatch(language, f.obj[f.key]));
+}
+
+/**
+ * Translates only the drifted fields, with one small call (fast model, no
+ * thinking, temperature 0), and keeps a translation only if it now passes the
+ * same script check. Mutates `raw`. A failed repair leaves the original text.
+ */
+export async function repairLanguage(raw, language) {
+  const drifted = mismatchedFields(raw, language);
+  if (!drifted.length) return null;
+  try {
+    const items = Object.fromEntries(drifted.map((f) => [f.id, f.obj[f.key]]));
+    const { data } = await chatJSON({
+      system: `Translate each value into ${language}. Keep technical terms the audience uses in English, tool and platform names, digits and anything inside [square brackets] exactly as they are. Do not add or remove information. Return json {"items": {"<same id>": "<translation>"}}.`,
+      user: JSON.stringify({ items }),
+      model: config.deepseek.fastModel,
+      thinking: 'disabled',
+      temperature: 0,
+      maxTokens: 8000,
+      attempts: 2,
+    });
+    let fixed = 0;
+    for (const f of drifted) {
+      const t = data?.items?.[f.id];
+      if (typeof t === 'string' && t.trim() && !languageMismatch(language, t)) { f.obj[f.key] = t.trim(); fixed++; }
+    }
+    return { fields: drifted.length, fixed, ids: drifted.map((f) => f.id) };
+  } catch (err) {
+    console.error('[brief] language repair failed:', err.message);
+    return { fields: drifted.length, fixed: 0, ids: drifted.map((f) => f.id), error: true };
+  }
+}
+
 const inFlight = new Map();
 
 /**
@@ -594,7 +675,7 @@ const inFlight = new Map();
  * `targetMinutes` reshape a redraft; the result replaces the saved brief for
  * that language.
  */
-export function startBrief(runId, index, { force = false, language = '', format: formatOverride = '', style = '', targetMinutes = null, core = false } = {}) {
+export function startBrief(runId, index, { force = false, language = '', format: formatOverride = '', style = '', targetMinutes = null, core = false, planFrom = null } = {}) {
   const run = store.readRun(runId);
   const gap = run?.gaps?.[index];
   if (!gap) {
@@ -625,15 +706,37 @@ export function startBrief(runId, index, { force = false, language = '', format:
   // A full long-form script is several times the words of an outline.
   const maxTokens = style !== 'points' && !isShortFormat(format) ? 22000 : 14000;
 
-  chatJSON({ system: systemPrompt({ format, language, sensitive, style, targetMinutes: target, core: core && !isShortFormat(format) }), user: briefPrompt({ run, gap }), maxTokens })
-    .then(({ data, usage }) => {
+  // The plan comes from the saved brief on disk, never from the request body.
+  // A core cut is that plan minus the optional (single-comment) essentials, so
+  // it is decided in code rather than by asking the model to drop something.
+  const saved = planFrom !== null ? store.readBrief(runId, index, planFrom) : null;
+  let plan = (saved?.essentials ?? []).map(({ point, answers, seconds, demo, thin }) => ({ point, answers, seconds, demo, thin }));
+  if (core && plan.length) plan = plan.filter((e) => !e.thin);
+  if (isShortFormat(format) && !isShortFormat(saved?.runtime?.format)) plan = []; // a Short re-plans: it holds at most 2
+  plan = plan.map(({ thin, ...e }) => e);
+  const usePlan = plan.length > 0;
+
+  chatJSON({
+    system: systemPrompt({ format, language, sensitive, style, targetMinutes: target, core: core && !usePlan && !isShortFormat(format), plan: usePlan ? plan : null }),
+    user: briefPrompt({ run, gap, language }),
+    maxTokens,
+    ...(config.brief.thinking ? { thinking: config.brief.thinking, temperature: config.brief.temperature } : {}),
+  })
+    .then(async ({ data, usage }) => {
+      const languageRepair = await repairLanguage(data, language);
+      return { data, usage, languageRepair };
+    })
+    .then(({ data, usage, languageRepair }) => {
       const brief = {
         ...finalizeBrief(data, {
           title: gap.suggestedTitle, thumbnailText: gap.thumbnailText, corpus, nameCorpus, format, sensitive,
           evidenceCount: Math.min(EVIDENCE_SHOWN, gap.evidence.length),
           evidenceLikes: gap.evidence.slice(0, EVIDENCE_SHOWN).map((e) => e.likes ?? 0),
-          opportunity, style, targetMinutes: target,
+          opportunity, style, targetMinutes: target, plan: usePlan ? plan : null,
         }),
+        languageRepair,
+        // Fields still not in the requested language after any repair.
+        languageDrift: mismatchedFields(data, language).map((f) => f.id),
         runId,
         gapIndex: index,
         language,

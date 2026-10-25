@@ -11,7 +11,27 @@ const MAX_OUTPUT_TOKENS = 64000;
  * Retries on transport errors, 5xx and unparseable bodies -- a reasoning model
  * occasionally truncates, and one retry is cheaper than failing the whole run.
  */
-export async function chatJSON({ system, user, model = config.deepseek.analysisModel, maxTokens = 16000, temperature = 0.3, attempts = 3 }) {
+/**
+ * The request body. `thinking` is sent only when the caller sets it: DeepSeek
+ * models think by default, and in thinking mode `temperature` is accepted but
+ * has no effect (api-docs.deepseek.com, "Thinking mode"). So `temperature`
+ * here only means something for a call made with thinking 'disabled'.
+ */
+export function requestBody({ model, system, user, maxTokens, temperature, thinking = null }) {
+  return {
+    model,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    response_format: { type: 'json_object' },
+    max_tokens: maxTokens,
+    temperature,
+    ...(thinking ? { thinking: { type: thinking } } : {}),
+  };
+}
+
+export async function chatJSON({ system, user, model = config.deepseek.analysisModel, maxTokens = 16000, temperature = 0.3, attempts = 3, thinking = null }) {
   let lastError;
   let activeModel = model;
   let budget = maxTokens;
@@ -22,16 +42,7 @@ export async function chatJSON({ system, user, model = config.deepseek.analysisM
       const res = await fetch(`${base}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: activeModel,
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: user },
-          ],
-          response_format: { type: 'json_object' },
-          max_tokens: budget,
-          temperature,
-        }),
+        body: JSON.stringify(requestBody({ model: activeModel, system, user, maxTokens: budget, temperature, thinking })),
         signal: AbortSignal.timeout(timeoutMs),
       });
 

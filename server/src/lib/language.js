@@ -86,6 +86,33 @@ export function languageQueryHint(languageCode) {
   return LANGUAGE_NAMES[(languageCode ?? '').toLowerCase()] ?? null;
 }
 
+/** Language code for an English language name ("Tamil" -> "ta"), or null. */
+export function languageCodeFor(name) {
+  const n = String(name ?? '').trim().toLowerCase();
+  return Object.keys(LANGUAGE_NAMES).find((code) => LANGUAGE_NAMES[code].toLowerCase() === n) ?? null;
+}
+
+// Below this share of WORDS in the requested script, a field was written in
+// another language. Words, not letters: "ஒரு live footprint bar-ஐ zoom செய்து
+// row-by-row படிக்கும் screen recording" is ordinary Tamil as creators write it,
+// but long English terms (and Tamil vowel signs, which are marks, not letters)
+// put it under 25% of letters. Real drift had no Tamil words at all.
+const SCRIPT_SHARE_MIN = 0.1;
+
+/**
+ * True when `text` was asked for in `languageName` but is not in its script.
+ * Only judges script languages; for Latin-script ones (Spanish, French...) and
+ * unknown names it returns false, because the script cannot tell them apart.
+ */
+export function languageMismatch(languageName, text) {
+  const code = languageCodeFor(languageName);
+  const script = code && SCRIPTS[code];
+  if (!script) return false;
+  const words = String(text ?? '').match(/[\p{L}\p{M}]+/gu) ?? [];
+  if (words.length < 3) return false; // too short to judge ("OK", a tool name)
+  return words.filter((w) => script.test(w)).length / words.length < SCRIPT_SHARE_MIN;
+}
+
 /**
  * Does this text contain the target language's script?
  * Returns null (not false) for a language we have no script mapping for --

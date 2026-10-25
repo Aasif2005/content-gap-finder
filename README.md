@@ -348,6 +348,30 @@ is decided in code — the model never grades its own writing:
   searches' words are mostly missing from the title, the brief may suggest a `title_fix`; it is
   shown only if it carries more of those words than the current title and passes the same
   invented-number and accusation checks. The gap's title is never replaced silently.
+- **A redraft keeps its plan.** Every redraft (restyle, retarget, core cut, *Redraft*) sends
+  the saved brief's essentials back as a fixed plan, read from disk, never from the request, so
+  it changes the wording, not the scope. The core cut is that plan minus the optional essentials,
+  decided in code. **New plan** is the only way to re-plan. Measured on the footprint gap: three
+  plan-kept drafts kept the same 3 essentials and ran 3:00-3:51 of speech; re-planning each time
+  had produced 3 or 4 essentials and, as outlines, 7:56 and 10:02.
+- **Why not just lower the temperature?** DeepSeek models think by default, and in thinking
+  mode `temperature` is accepted but ignored (api-docs.deepseek.com, "Thinking mode"), so the
+  0.3 we sent never did anything. Four drafts with thinking disabled at 0.2 against four
+  default ones, same prompt: the spread was no smaller (84-126s vs 137-176s of speech), 2 of 4
+  invented figures ("50, 150, 100") and none wrote a `[NEEDS SOURCE]` marker. So briefs keep
+  the model default; `BRIEF_THINKING=disabled` (with `BRIEF_TEMPERATURE`) exists to rerun that
+  comparison, and `chatJSON` now sends `thinking` explicitly when a caller sets it.
+- **The chosen language holds field by field.** The language rule now opens and closes the
+  prompt and each JSON field says "(in Tamil)"; before, essentials and research notes came back
+  in English in about half the drafts. `languageMismatch` (lib/language.js) then checks each
+  field: under 10% of its *words* in the language's script means it drifted (by letters, normal
+  code-mixed Tamil like "ஒரு live footprint bar-ஐ zoom செய்து" failed). Drifted fields get one
+  small translation call (fast model, thinking off, temperature 0), kept only if the result
+  passes the same check; anything left is shown as "N fields still not in Tamil". Latin-script
+  languages are not checked, since their script cannot tell them apart.
+- **Number words are figures only when they count.** "Nine days" and "three ways" are flagged;
+  "the two sides", "two-sided", "which of the two" and "one or two" are references, not figures,
+  and are not. Digits are always checked.
 - `[NEEDS SOURCE]` markers are counted with or without a colon (the model writes a bare one
   about half the time, and a colon-only pattern counted those as zero).
 - Saved by (report, gap, language) so re-opening costs nothing, and limited separately from

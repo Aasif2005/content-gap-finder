@@ -204,7 +204,9 @@ router.post('/runs/:runId/gaps/:i/brief', (req, res, next) => {
     if (free) return res.json({ status: 'done', cached: true, brief: free });
     briefRateLimit(req, res, () => {
       try {
-        const started = brief.startBrief(req.params.runId, index, { force, language, format, style, targetMinutes, core: req.body?.core === true });
+        const started = brief.startBrief(req.params.runId, index, { force, language, format, style, targetMinutes, core: req.body?.core === true,
+          // Which saved brief's essentials to keep; null re-plans from scratch.
+          planFrom: typeof req.body?.planFrom === 'string' ? req.body.planFrom.trim().slice(0, 40) : null });
         res.status(started.status === 'done' ? 200 : 202).json(started);
       } catch (err) {
         next(err);

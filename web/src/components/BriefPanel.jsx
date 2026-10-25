@@ -278,6 +278,20 @@ function Essentials({ essentials }) {
   );
 }
 
+// What the language check found: fields translated after drafting, and any
+// still not in the chosen language.
+function LanguageNote({ brief }) {
+  const r = brief.languageRepair;
+  const drift = brief.languageDrift ?? [];
+  if (!r?.fixed && !drift.length) return null;
+  return (
+    <p className="mt-0.5 text-[11px] text-ink-500">
+      {r?.fixed > 0 && <>{plural(r.fixed, 'field')} came back in another language and {r.fixed === 1 ? 'was' : 'were'} translated to {brief.language}. </>}
+      {drift.length > 0 && <Badge tone="warm" title={drift.join(', ')}>{plural(drift.length, 'field')} still not in {brief.language}</Badge>}
+    </p>
+  );
+}
+
 function HookBadges({ h }) {
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -317,6 +331,7 @@ function Script({ brief, busy, onRedraft }) {
           It tends to score plain hooks low when no figure in the comments could be used.
         </p>
         {brief.languageNote && <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">{brief.languageNote}</p>}
+        <LanguageNote brief={brief} />
         <ul className="mt-2 space-y-2">
           {(brief.hooks ?? []).map((h, i) => (
             <li key={i} className={i < 2 ? '' : 'opacity-70'}>
@@ -446,9 +461,12 @@ export function BriefPanel({ runId, index, sensitive, gap }) {
       setState('error');
     }
   };
-  // A redraft keeps the current brief's style and format unless told otherwise.
+  // A redraft keeps the current brief's style, format and essentials (its plan)
+  // unless told otherwise, so it changes the wording rather than the scope.
+  // "New plan" is the one way to re-plan from scratch.
   const redraft = (opts = {}) => run({
     force: true,
+    planFrom: brief?.essentials?.length ? (brief.language ?? '') : null,
     style: brief?.style === 'points' ? 'points' : '',
     format: brief?.runtime?.format === 'short' ? 'short' : '',
     ...opts,
@@ -511,6 +529,16 @@ export function BriefPanel({ runId, index, sensitive, gap }) {
           >
             {busy ? 'Redrafting…' : 'Redraft'}
           </button>
+          {brief.essentials?.length > 0 && (
+            <button
+              onClick={(e) => { e.preventDefault(); redraft({ planFrom: null }); }}
+              disabled={busy}
+              title="Redraft keeps the essentials. This decides them again from the comments, so the scope and length can change."
+              className="rounded border border-ink-300 px-2 py-0.5 text-[11px] font-medium text-ink-600 hover:bg-ink-100 disabled:opacity-60 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+            >
+              New plan
+            </button>
+          )}
         </span>
       </summary>
       {state === 'error' && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{error}</p>}

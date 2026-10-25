@@ -6,13 +6,13 @@ import path from 'node:path';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps, groundObjections, truncate } from '../src/services/analyze.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords } from '../src/lib/relevance.js';
-import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage, namedLanguages, languageDecision } from '../src/lib/language.js';
+import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage, namedLanguages, languageDecision, languageMismatch, languageCodeFor } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
 import { withLock } from '../src/lib/fileLock.js';
 import { FORMULAS, classifyFormula, formulaHint, normalizeFormulaId } from '../src/lib/hookFormulas.js';
 import { scoreHook, band, weakOpener, partialHookCheck } from '../src/lib/hookScore.js';
-import { finalizeBrief, queryTest, briefPrompt, formulaList, systemPrompt, assessLength, buildOpportunity, titleCoverage } from '../src/services/brief.js';
+import { finalizeBrief, queryTest, briefPrompt, formulaList, systemPrompt, assessLength, buildOpportunity, titleCoverage, mismatchedFields } from '../src/services/brief.js';
 import { lintTitle, ungroundedNumbers, rankTitleOptions, unverifiedNames, unverifiedTags, impliesAccusation, requestPhrase } from '../src/lib/titleLint.js';
 import { detectSensitive, assessSensitivity } from '../src/lib/sensitive.js';
 import { ExclusionLedger, REASONS } from '../src/lib/exclusions.js';
@@ -23,6 +23,7 @@ import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurre
 // Reaching across the workspace on purpose: these are pure serializers with no
 // DOM dependency at module scope, and CSV quoting is exactly the kind of thing
 // that silently corrupts an export until someone opens it in a spreadsheet.
+import { requestBody } from '../src/services/deepseek.js';
 import { gapsToCsv, reportToMarkdown, exportStem } from '../../web/src/lib/export.js';
 
 describe('parseDuration', () => {
@@ -1783,5 +1784,81 @@ describe('make-it v3: a measured script is judged by its words, not the model gu
     assert.match(systemPrompt({ format: 'long-form', style: 'points' }), /3-5 short talking points/);
     assert.equal(finalizeBrief({}, { title: 'T' }).style, 'script');
     assert.equal(finalizeBrief({}, { title: 'T', style: 'points' }).style, 'points');
+  });
+});
+
+describe('fix: number words count only as figures, not references', () => {
+  test('references are not figures', () => {
+    for (const t of ['compare the two sides inside a row', 'the two-sided bid/ask volume', 'which of the two applies', 'one or two candles', 'both two-way and one-way']) {
+      assert.deepEqual(ungroundedNumbers(t, ''), [], t);
+    }
+  });
+  test('counts still are, spelled out or in digits', () => {
+    assert.deepEqual(ungroundedNumbers('Nine days and no word', ''), ['9']);
+    assert.deepEqual(ungroundedNumbers('three ways to read it', ''), ['3']);
+    assert.deepEqual(ungroundedNumbers('two lakh views', ''), ['2']);
+    assert.deepEqual(ungroundedNumbers('against two piles', ''), ['2']);
+    assert.deepEqual(ungroundedNumbers('the 2 sides', ''), ['2']);
+  });
+  test('any number word in the evidence still grounds the figure', () => {
+    assert.deepEqual(ungroundedNumbers('Nine days', 'it has been the nine of us'), []);
+  });
+});
+
+describe('fix: language held per field', () => {
+  test('maps names to codes', () => {
+    assert.equal(languageCodeFor('Tamil'), 'ta');
+    assert.equal(languageCodeFor('klingon'), null);
+  });
+  test('an English note for a Tamil brief is a mismatch; code-mixed Tamil is not', () => {
+    assert.equal(languageMismatch('Tamil', 'Which platform and which version the reported lag refers to'), true);
+    assert.equal(languageMismatch('Tamil', 'Footprint chart-ல ஒரு row-ஐ எப்படி படிக்கிறது'), false);
+    assert.equal(languageMismatch('Tamil', 'delta'), false);
+    // Real brief text that a letter-share check wrongly called English.
+    assert.equal(languageMismatch('Tamil', 'ஒரு live footprint bar-ஐ zoom செய்து row-by-row படிக்கும் screen recording'), false);
+    assert.equal(languageMismatch('Tamil', 'market open-ல் time and sales window-ஐயும் footprint chart-ஐயும் ஒரே screen-ல பார்ப்பது'), false);
+    assert.equal(languageMismatch('Spanish', 'Which platform and which version'), false);
+  });
+  test('mismatchedFields names the drifted fields by path, and nothing when no language was chosen', () => {
+    const raw = {
+      essentials: [{ point: 'What a footprint chart actually shows on screen' }, { point: 'ஒரு row-ஐ எப்படி படிக்கிறது என்று' }],
+      needs: [{ claim: 'Which platform the lag refers to', why: 'ask the commenter' }],
+      beats: [{ say: 'இப்போ chart-ஐ திறந்து பாக்கலாம்', points: ['Compare both sides of the row now'] }],
+    };
+    assert.deepEqual(mismatchedFields(raw, 'Tamil').map((f) => f.id), ['essentials.0.point', 'needs.0.claim', 'needs.0.why', 'beats.0.points.0']);
+    assert.deepEqual(mismatchedFields(raw, ''), []);
+  });
+  test('the language rule opens and closes the prompt, and field cues name the language', () => {
+    const p = systemPrompt({ format: 'long-form', language: 'Tamil' });
+    assert.ok(p.startsWith('LANGUAGE: write the essentials'));
+    const u = briefPrompt({ run: { channelMode: false, query: { niche: 'n' } }, gap: { question: 'q', evidence: [{ text: 'c', likes: 0 }] }, language: 'Tamil' });
+    assert.match(u, /"one thing the viewer must leave with \(in Tamil\)"/);
+    assert.match(u, /Every text field above is written in Tamil, including the essentials and the needs/);
+  });
+});
+
+describe('fix: a redraft keeps its plan', () => {
+  const plan = [{ point: 'what it is', answers: [1, 'q'], seconds: 60, demo: true }, { point: 'reading a row', answers: [2], seconds: 90, demo: false }];
+  test('the prompt carries the plan verbatim', () => {
+    const p = systemPrompt({ format: 'long-form', plan });
+    assert.match(p, /FIXED PLAN: the essentials are already decided\. Return exactly these 2/);
+    assert.match(p, /1\. what it is \(answers \[1,"q"\], 60s, demo\)/);
+  });
+  test('the plan decides the scope whatever the model returns; its wording of a point is kept', () => {
+    const r = finalizeBrief({ essentials: [{ point: 'என்ன இது', answers: [9], seconds: 500 }, { point: 'x' }, { point: 'an extra one' }] }, { title: 'T', plan, evidenceCount: 3 });
+    assert.equal(r.essentials.length, 2);
+    assert.equal(r.essentials[0].point, 'என்ன இது');
+    assert.deepEqual(r.essentials[0].answers, [1, 'q']);
+    assert.equal(r.essentials[0].seconds, 60);
+    assert.equal(r.planned, true);
+  });
+});
+
+describe('fix: thinking mode is explicit in the request', () => {
+  test('the body carries thinking only when asked', () => {
+    const base = { model: 'm', system: 's', user: 'u', maxTokens: 10, temperature: 0.2 };
+    assert.equal('thinking' in requestBody(base), false);
+    assert.deepEqual(requestBody({ ...base, thinking: 'disabled' }).thinking, { type: 'disabled' });
+    assert.equal(requestBody({ ...base, thinking: 'disabled' }).temperature, 0.2);
   });
 });

@@ -105,6 +105,11 @@ export const config = {
     // still drafts, and suggests testing with a Short before a long video.
     thinComments: num(process.env.BRIEF_THIN_COMMENTS, 3),
     thinLikes: num(process.env.BRIEF_THIN_LIKES, 5),
+    // DeepSeek models think by default, and then ignore temperature. 'disabled'
+    // makes temperature take effect; '' leaves the model default. Chosen by a
+    // measured comparison (README, "Make it" variance).
+    thinking: process.env.BRIEF_THINKING ?? '',
+    temperature: num(process.env.BRIEF_TEMPERATURE, 0.2),
   },
 
   // Median-multiple outliers (lib/outlier.js, from youtube-agent-skill's yt-viral).

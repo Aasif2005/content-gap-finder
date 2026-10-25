@@ -79,11 +79,34 @@ const NUMBER_WORDS = new Map(Object.entries({
   hundred: 100, thousand: 1000, million: 1000000,
 }));
 
+// A number word is a figure ("Nine days", "three ways", "Nine pots") unless it
+// is a reference to something already named: three of the four flags in real
+// briefs were "the two sides", "the two-sided" and "which of the two". So it is
+// skipped after a determiner, inside a hyphenated compound and in "one or two".
+// Count nouns are open-ended, so the rule lists the exceptions, not the counts.
+const DETERMINER = new Set(['the', 'those', 'these', 'both', 'all']);
+
+function numberWordFigures(s) {
+  const toks = String(s).toLowerCase().match(/[a-z0-9']+|-/g) ?? [];
+  const out = [];
+  toks.forEach((w, i) => {
+    if (!NUMBER_WORDS.has(w)) return;
+    const prev = toks[i - 1];
+    const next = toks[i + 1];
+    if (prev === '-' || next === '-') return; // two-sided, one-on-one
+    if (DETERMINER.has(prev)) return; // the two sides, of the two
+    if (prev === 'or' || next === 'or') return; // one or two, two or three
+    out.push(String(NUMBER_WORDS.get(w)));
+  });
+  return out;
+}
+
 // Digit runs and number words, both as plain numeric strings, so "nine" in a
-// comment grounds "9" in a hook and the other way round.
-const numberTokens = (s) => [
+// comment grounds "9" in a hook and the other way round. Digits always count;
+// in the corpus every number word counts, since grounding should be generous.
+const numberTokens = (s, { corpus = false } = {}) => [
   ...(s.match(/\d+/g) ?? []).map((d) => d.replace(/^0+(?=\d)/, '')),
-  ...words(s).filter((w) => NUMBER_WORDS.has(w)).map((w) => String(NUMBER_WORDS.get(w))),
+  ...(corpus ? words(s).filter((w) => NUMBER_WORDS.has(w)).map((w) => String(NUMBER_WORDS.get(w))) : numberWordFigures(s)),
 ];
 
 /**
@@ -91,7 +114,7 @@ const numberTokens = (s) => [
  * question, the niche). A grounded number is one a creator can defend.
  */
 export function ungroundedNumbers(title, corpus) {
-  const known = new Set(numberTokens(corpus));
+  const known = new Set(numberTokens(corpus, { corpus: true }));
   return [...new Set(numberTokens(title))].filter((d) => !known.has(d));
 }
 
