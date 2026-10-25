@@ -1,5 +1,5 @@
 /**
- * Which search.list slices a given request needs. Each slice is one 100-unit
+ * Which search.list slices a given request needs. Each slice is one search.list
  * call, so this function IS the cost model of a run -- lib/quota.js prices a
  * request by calling it (before spending anything), and services/youtube.js
  * executes it (spending as it goes). Kept in lib/ rather than services/

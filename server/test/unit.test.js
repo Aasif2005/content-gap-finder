@@ -21,7 +21,7 @@ import { detectSensitive, assessSensitivity } from '../src/lib/sensitive.js';
 import { ExclusionLedger, REASONS } from '../src/lib/exclusions.js';
 import { assessEvidence, assessTopic, explainShortfall, thinPoolFrom, suggestionsFor, rankSwing } from '../src/lib/confidence.js';
 import { median, medianMultiple, annotateOutliers } from '../src/lib/outlier.js';
-import { nicheKey, subjectKey } from '../src/lib/store.js';
+import { nicheKey, subjectKey, partitionByAge, HISTORY_MAX_DAYS } from '../src/lib/store.js';
 import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurrence.js';
 // Reaching across the workspace on purpose: these are pure serializers with no
 // DOM dependency at module scope, and CSV quoting is exactly the kind of thing
@@ -29,9 +29,10 @@ import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurre
 import { requestBody } from '../src/services/deepseek.js';
 import { num } from '../src/config.js';
 import { createRateLimit } from '../src/lib/rateLimit.js';
-import { corsOriginAllowed } from '../src/lib/security.js';
+import { corsOriginAllowed, makeSecurityHeaders } from '../src/lib/security.js';
 import { clampLimit, validInterval } from '../src/routes/api.js';
 import { gapsToCsv, reportToMarkdown, exportStem } from '../../web/src/lib/export.js';
+import { charge, analysesAffordable, searchCallsPerAnalysis, unitsPerAnalysis } from '../src/lib/quota.js';
 
 describe('parseDuration', () => {
   test('parses the ISO-8601 forms YouTube actually returns', () => {
@@ -2044,5 +2045,78 @@ describe('audit: quota pricing', () => {
   test('channel mode is priced at the pages it can walk', async () => {
     const { unitsPerAnalysis } = await import('../src/lib/quota.js');
     assert.ok(unitsPerAnalysis({ channelMode: true }) >= 6 + 5);
+  });
+});
+
+describe('quota buckets: search.list has its own daily call cap', () => {
+  const fresh = { day: 'd', used: 0, calls: {} };
+
+  test('a search call charges the search bucket, not shared units', () => {
+    const s = charge(fresh, 'search');
+    assert.equal(s.searchCalls, 1);
+    assert.equal(s.used, 0);
+    assert.equal(charge(s, 'videos', 3).used, 3);
+  });
+
+  test('the search cap throws while units remain', () => {
+    const full = { ...fresh, searchCalls: 95 };
+    assert.throws(() => charge(full, 'search'), (e) => e.code === 'QUOTA_EXHAUSTED' && /search/.test(e.message));
+    assert.equal(charge(full, 'commentThreads').used, 1);
+  });
+
+  test('long-form makes two search calls, channel mode none', () => {
+    assert.equal(searchCallsPerAnalysis({ contentType: 'long' }), 2);
+    assert.equal(searchCallsPerAnalysis({ contentType: 'both', deepScan: true }), 2);
+    assert.equal(searchCallsPerAnalysis({ channelMode: true }), 0);
+    assert.ok(unitsPerAnalysis({ contentType: 'both' }) < 100, 'search no longer priced as 100 units');
+  });
+
+  test('analyses left is the tighter of the two buckets', () => {
+    assert.equal(analysesAffordable({ used: 0, searchCalls: 90 }, { contentType: 'long' }), 2);
+    const units = unitsPerAnalysis({ contentType: 'both' });
+    assert.equal(analysesAffordable({ used: 9000 - units, searchCalls: 0 }, { contentType: 'both' }), 1);
+    assert.equal(analysesAffordable({ used: 0 }, { contentType: 'both' }), 95, 'an old ledger without searchCalls reads as 0');
+  });
+});
+
+describe('retention: YouTube data is kept 30 days at most', () => {
+  const now = Date.parse('2026-10-26T00:00:00Z');
+  const day = 24 * 3600 * 1000;
+  const at = (days) => new Date(now - days * day).toISOString();
+
+  test('a 31-day-old run is dropped and a 29-day-old one kept', () => {
+    const [keep, drop] = partitionByAge([{ runId: 'old', generatedAt: at(31) }, { runId: 'new', generatedAt: at(29) }], now - 30 * day);
+    assert.deepEqual(drop.map((r) => r.runId), ['old']);
+    assert.deepEqual(keep.map((r) => r.runId), ['new']);
+  });
+
+  test('a row without a readable date is kept, not silently deleted', () => {
+    const [keep] = partitionByAge([{ runId: 'x' }, { runId: 'y', generatedAt: 'nope' }], now);
+    assert.equal(keep.length, 2);
+  });
+
+  test('gap history is kept for 36 months, not 30 days', () => {
+    const cutoff = now - HISTORY_MAX_DAYS * day;
+    const [keep, drop] = partitionByAge([{ generatedAt: at(400) }, { generatedAt: at(1100) }], cutoff);
+    assert.equal(keep.length, 1);
+    assert.equal(drop.length, 1);
+  });
+
+  test('the retention setting can never exceed 30 days', async () => {
+    const { config } = await import('../src/config.js');
+    assert.ok(config.store.maxDataDays <= 30 && config.store.maxDataDays >= 1);
+  });
+});
+
+describe('security headers', () => {
+  const headersFrom = (isProd) => {
+    const set = {};
+    makeSecurityHeaders({ isProd })({}, { set: (k, v) => { set[k] = v; } }, () => {});
+    return set;
+  };
+  test('HSTS only in production', () => {
+    assert.match(headersFrom(true)['Strict-Transport-Security'], /max-age=\d+/);
+    assert.equal(headersFrom(false)['Strict-Transport-Security'], undefined);
+    assert.equal(headersFrom(false)['X-Frame-Options'], 'DENY');
   });
 });

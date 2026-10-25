@@ -175,6 +175,104 @@ function pinnedRunIds() {
   }
 }
 
+// ------------------------------------------------------------- retention ---
+
+// YouTube's Developer Policies (III.E.4) allow API data -- titles, channel
+// names, comment text, and statistics -- to be stored for at most 30 days.
+// A report and its briefs are made of exactly that, so they expire whole,
+// watches or not: a watch's next run refreshes the data anyway.
+const EXPIRED_INDEX = path.join(STATE_DIR, 'expired-runs.jsonl');
+const DAY_MS = 24 * 3600 * 1000;
+// Gap history holds our own model-written questions and scores, never raw
+// YouTube text; the derived-metrics amendment allows 36 months for those.
+export const HISTORY_MAX_DAYS = 36 * 30;
+
+/** Splits rows into [keep, drop] by a date field against a cutoff (ms). */
+export function partitionByAge(rows, cutoffMs, field = 'generatedAt') {
+  const keep = [];
+  const drop = [];
+  for (const r of rows) {
+    const t = new Date(r?.[field]).getTime();
+    (Number.isFinite(t) && t < cutoffMs ? drop : keep).push(r);
+  }
+  return [keep, drop];
+}
+
+const removeOlderFiles = (dir, cutoffMs, match = () => true) => {
+  let n = 0;
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      const p = path.join(dir, f);
+      if (!match(f)) continue;
+      try {
+        if (fs.statSync(p).mtimeMs < cutoffMs) { fs.unlinkSync(p); n += 1; }
+      } catch { /* raced with another delete */ }
+    }
+  } catch { /* directory not created yet */ }
+  return n;
+};
+
+/**
+ * Deletes every report, brief and gap-history row past its retention limit.
+ * Returns counts for the log line.
+ */
+export function sweepExpired({ now = Date.now(), maxDays = config.store.maxDataDays } = {}) {
+  const cutoff = now - maxDays * DAY_MS;
+  let dropped = [];
+  withLock(RUN_INDEX, () => {
+    const [keep, drop] = partitionByAge(readIndex(), cutoff);
+    dropped = drop;
+    if (drop.length) writeAtomic(RUN_INDEX, keep.map((r) => `${JSON.stringify(r)}\n`).join(''));
+  });
+  for (const r of dropped) {
+    try { fs.unlinkSync(path.join(RUNS_DIR, `${r.runId}.json`)); } catch { /* already gone */ }
+  }
+  if (dropped.length) {
+    // Only ids and dates: enough to tell "expired" from "never existed".
+    const at = new Date(now).toISOString();
+    withLock(EXPIRED_INDEX, () => {
+      fs.appendFileSync(EXPIRED_INDEX, dropped.map((r) => `${JSON.stringify({ runId: r.runId, expiredAt: at })}\n`).join(''));
+    });
+  }
+  // Run files the index lost track of, and briefs, by file age: a brief quotes
+  // titles and comments, and is never younger than the report it came from.
+  const runFiles = removeOlderFiles(RUNS_DIR, cutoff, (f) => f.endsWith('.json'));
+  const briefs = removeOlderFiles(BRIEFS_DIR, cutoff, (f) => f.endsWith('.json'));
+  const ids = new Set(dropped.map((r) => r.runId));
+  try {
+    for (const f of fs.readdirSync(BRIEFS_DIR)) {
+      if ([...ids].some((id) => f.startsWith(`${id}-`))) fs.unlinkSync(path.join(BRIEFS_DIR, f));
+    }
+  } catch { /* no briefs directory yet */ }
+
+  let historyRows = 0;
+  const historyCutoff = now - HISTORY_MAX_DAYS * DAY_MS;
+  try {
+    for (const f of fs.readdirSync(NICHES_DIR)) {
+      const file = path.join(NICHES_DIR, f);
+      withLock(file, () => {
+        const rows = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
+          .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+        const [keep, drop] = partitionByAge(rows, historyCutoff);
+        if (!drop.length) return;
+        historyRows += drop.length;
+        writeAtomic(file, keep.map((r) => `${JSON.stringify(r)}\n`).join(''));
+      });
+    }
+  } catch { /* no history yet */ }
+
+  return { runs: dropped.length + runFiles, briefs, historyRows };
+}
+
+/** Whether a run id was deleted by the retention sweep (vs. never existing). */
+export function wasExpired(runId) {
+  try {
+    return fs.readFileSync(EXPIRED_INDEX, 'utf8').includes(`"runId":${JSON.stringify(runId)}`);
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------- briefs ---
 
 /**

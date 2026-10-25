@@ -59,7 +59,7 @@ export function windowToPublishedAfter(window, customAfter) {
 }
 
 /**
- * Builds the candidate pool. One search.list slice = 100 units and 50 results;
+ * Builds the candidate pool. One search.list slice = one call from the daily search bucket and 50 results;
  * see searchPlan() for why a request needs the slices it does. Results are
  * merged and deduped by videoId, so overlapping slices cost quota but never
  * double-count a video.

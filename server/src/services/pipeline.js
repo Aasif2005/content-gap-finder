@@ -89,7 +89,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
 
   async function runPhases() {
 
-  // 1. Discovery. In niche mode this is the 100-unit-per-slice search.list call
+  // 1. Discovery. In niche mode this is the search.list call (one search-bucket call per slice)
   // and the whole cost story of a run; how many slices a request needs is
   // lib/searchPlan.js's decision, and deep scan widens the pool with a second
   // date-ordered pass so a breakout small channel can actually enter it

@@ -1,7 +1,7 @@
 import { config } from '../config.js';
 import * as watches from '../lib/watches.js';
 import * as store from '../lib/store.js';
-import { quotaStatus, unitsPerAnalysis } from '../lib/quota.js';
+import { quotaStatus, canAfford } from '../lib/quota.js';
 import { startAnalysis } from './runner.js';
 
 /**
@@ -34,17 +34,17 @@ async function tick() {
   try {
     const dueNow = watches.due();
     for (const w of dueNow) {
-      const cost = unitsPerAnalysis({
+      const shape = {
         contentType: w.input.contentType,
         deepScan: w.input.deepScan,
         channelMode: Boolean(w.input.channelId),
-      });
-      const { remaining } = quotaStatus();
+      };
 
-      if (remaining < cost) {
+      if (!canAfford(shape)) {
         // Try again after the Pacific-midnight reset rather than failing.
         watches.defer(w.id, 60);
-        console.warn(`[scheduler] deferring watch "${w.label}": needs ${cost} units, ${remaining} left today`);
+        const q = quotaStatus(shape);
+        console.warn(`[scheduler] deferring watch "${w.label}": needs ${q.unitsPerAnalysis} units + ${q.searchCallsPerAnalysis} searches, ${q.remaining} units + ${q.searchRemaining} searches left today`);
         continue;
       }
 

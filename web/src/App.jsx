@@ -130,7 +130,7 @@ export default function App() {
       if (push) pushReportUrl(runId, savedMode);
     } catch (err) {
       if (seq !== requestSeq.current) return;
-      setError({ title: 'Could not load that report', message: err.message });
+      setError({ title: err.code === 'RUN_EXPIRED' ? 'This report has expired' : 'Could not load that report', message: err.message });
       setPhase(null);
     }
   }, []);
@@ -256,13 +256,14 @@ export default function App() {
           {quota && (
             <div
               className="nums shrink-0 rounded-lg border border-ink-200 px-3 py-2 text-right dark:border-ink-800"
-              title={`YouTube Data API units used today, resetting at midnight US Pacific. One fresh analysis costs ${quota.unitsPerAnalysis} units; cached results cost nothing.`}
+              title={`YouTube Data API quota used today, resetting at midnight US Pacific. Search calls and other API units are separate daily budgets; a fresh analysis makes ${quota.searchCallsPerAnalysis ?? 1} search call(s) and uses about ${quota.unitsPerAnalysis} units. Cached results cost nothing.`}
             >
               <div className="text-xs font-semibold text-ink-700 dark:text-ink-200">
                 {quota.analysesLeft} analyses left today
               </div>
               <div className="text-[11px] text-ink-400">
-                {quota.used.toLocaleString()} / {quota.budget.toLocaleString()} API units
+                {quota.searchBudget != null && <>{quota.searchUsed} / {quota.searchBudget} searches · </>}
+                {quota.used.toLocaleString()} / {quota.budget.toLocaleString()} units
               </div>
             </div>
           )}

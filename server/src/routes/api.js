@@ -179,6 +179,12 @@ router.get('/runs', (req, res) => {
  */
 router.get('/runs/:runId', (req, res) => {
   const result = store.readRun(req.params.runId);
+  if (!result && store.wasExpired(req.params.runId)) {
+    return res.status(410).json({
+      error: `This report was removed: YouTube data is kept for ${config.store.maxDataDays} days. Run the search again to see current numbers.`,
+      code: 'RUN_EXPIRED',
+    });
+  }
   if (!result) return res.status(404).json({ error: 'Report not found or pruned.', code: 'RUN_NOT_FOUND' });
   res.json({ status: 'done', persisted: true, result });
 });

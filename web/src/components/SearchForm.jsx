@@ -204,7 +204,7 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
                 Doubles the candidate pool with a second pass sorted by upload date instead of
                 view count. Without it the pool is the top 50 by <em>absolute</em> views, which
                 quietly filters out the breakout small channel that views-per-subscriber scoring
-                is meant to find. Costs one extra 100-unit search per format.
+                is meant to find. Costs one extra search call per format (of 100 a day).
               </span>
             </span>
           </label>

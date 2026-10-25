@@ -14,12 +14,15 @@ export const config = {
     channelUploadPages: 6,
     apiKey: process.env.YOUTUBE_API_KEY,
     base: 'https://www.googleapis.com/youtube/v3',
-    // Documented unit costs. search.list is the expensive one by 100x, which is
-    // why a run spends as few of them as the request allows (see lib/searchPlan.js)
-    // and batches everything else. playlistItems is what makes channel mode cheap:
-    // walking a channel's uploads costs 1 unit where searching costs 100.
-    cost: { search: 100, videos: 1, channels: 1, commentThreads: 1, playlistItems: 1 },
+    // Documented unit costs. Since 2026-06-01 search.list is charged to its own
+    // bucket (1 unit per call, 100 calls a day by default) rather than 100 units
+    // of the shared 10,000 -- lib/quota.js keeps the two apart. Search calls are
+    // still the scarce resource, which is why a run makes as few as the request
+    // allows (see lib/searchPlan.js) and channel mode, which never searches, is cheap.
+    cost: { search: 1, videos: 1, channels: 1, commentThreads: 1, playlistItems: 1 },
     dailyUnitBudget: num(process.env.YOUTUBE_DAILY_UNIT_BUDGET, 9000),
+    // Under the default 100, leaving headroom for calls made outside this app.
+    searchDailyCalls: num(process.env.YOUTUBE_SEARCH_DAILY_CALLS, 95),
     maxCommentVideos: num(process.env.MAX_COMMENT_VIDEOS, 25),
     commentsPerVideo: num(process.env.COMMENTS_PER_VIDEO, 50),
   },
@@ -63,7 +66,12 @@ export const config = {
   // a run linkable after the 3h cache expires; the per-niche gap history is what
   // recurrence detection compares against, and is kept far longer because a long
   // baseline is the entire point of it.
-  store: { maxRuns: num(process.env.STORE_MAX_RUNS, 500) },
+  store: {
+    maxRuns: num(process.env.STORE_MAX_RUNS, 500),
+    // YouTube API data may be kept 30 days at most (Developer Policies III.E.4),
+    // so this can be lowered but never raised past 30.
+    maxDataDays: Math.min(30, Math.max(1, num(process.env.YOUTUBE_DATA_MAX_DAYS, 30))),
+  },
 
   // Fuzzy matching for gap recurrence (lib/recurrence.js). Gaps are re-phrased
   // by the model every run, so the same demand never comes back as the same

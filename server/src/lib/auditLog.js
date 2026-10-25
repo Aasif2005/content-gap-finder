@@ -329,6 +329,28 @@ export function readRunLog(runId) {
   return fs.readFileSync(file, 'utf8');
 }
 
+/**
+ * Deletes run logs older than `cutoffMs`, and their index lines. A log quotes
+ * video titles and comments, so it falls under the same 30-day limit as a report.
+ */
+export function sweepLogs(cutoffMs) {
+  let n = 0;
+  try {
+    for (const f of fs.readdirSync(RUNS_DIR)) {
+      const p = path.join(RUNS_DIR, f);
+      try {
+        if (fs.statSync(p).mtimeMs < cutoffMs) { fs.unlinkSync(p); n += 1; }
+      } catch { /* raced with another delete */ }
+    }
+    const lines = fs.readFileSync(INDEX_FILE, 'utf8').split('\n').filter(Boolean);
+    const keep = lines.filter((l) => {
+      try { return !(new Date(JSON.parse(l).startedAt).getTime() < cutoffMs); } catch { return false; }
+    });
+    if (keep.length !== lines.length) fs.writeFileSync(INDEX_FILE, keep.map((l) => `${l}\n`).join(''));
+  } catch { /* no logs yet */ }
+  return n;
+}
+
 export function logDir() {
   return LOG_DIR;
 }

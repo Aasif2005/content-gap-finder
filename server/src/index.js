@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { config, assertConfig } from './config.js';
 import { router } from './routes/api.js';
 import * as scheduler from './services/scheduler.js';
+import * as retention from './services/retention.js';
 
 assertConfig();
 
@@ -40,9 +41,10 @@ app.use((err, _req, res, _next) => {
 // Saved watches re-run themselves; see services/scheduler.js for why it is
 // deliberately conservative about quota and concurrency.
 scheduler.start();
+retention.start();
 
 app.listen(config.port, () => {
   console.log(`  Content Gap Finder API  http://localhost:${config.port}`);
   console.log(`  models: ${config.deepseek.analysisModel} (analysis)`);
-  console.log(`  youtube budget: ${config.youtube.dailyUnitBudget} units/day (~${Math.floor(config.youtube.dailyUnitBudget / 100)} searches)`);
+  console.log(`  youtube budget: ${config.youtube.searchDailyCalls} searches + ${config.youtube.dailyUnitBudget} units/day; data kept ${config.store.maxDataDays} days`);
 });

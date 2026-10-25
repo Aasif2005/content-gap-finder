@@ -35,6 +35,23 @@ export function set(key, value) {
   fs.renameSync(tmp, file(key)); // atomic swap so a crash can't leave a half-written entry
 }
 
+/**
+ * Deletes entries stored before `cutoffMs`. An expired entry is never served,
+ * but it still sat on disk holding YouTube data past the 30-day limit.
+ */
+export function sweep(cutoffMs) {
+  let n = 0;
+  try {
+    for (const f of fs.readdirSync(CACHE_DIR)) {
+      const p = path.join(CACHE_DIR, f);
+      try {
+        if (fs.statSync(p).mtimeMs < cutoffMs) { fs.unlinkSync(p); n += 1; }
+      } catch { /* raced with another delete */ }
+    }
+  } catch { /* no cache directory yet */ }
+  return n;
+}
+
 export function stats() {
   try {
     const files = fs.readdirSync(CACHE_DIR).filter((f) => f.endsWith('.json'));

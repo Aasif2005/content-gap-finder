@@ -45,7 +45,7 @@ export function ThinPoolNotice({ thinPool, query, busy, onRerun }) {
     !channelMode && !query.deepScan && {
       label: 'Deep scan',
       patch: { deepScan: true },
-      title: 'Doubles the candidate pool with a second date-ordered search pass. Costs one extra 100-unit search.',
+      title: 'Doubles the candidate pool with a second date-ordered search pass. Costs one extra search call (of 100 a day).',
     },
   ].filter(Boolean);
   const escapes = cause === 'filters' ? [...filterEscapes, ...widenEscapes] : [...widenEscapes, ...filterEscapes];
