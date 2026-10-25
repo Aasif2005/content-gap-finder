@@ -12,35 +12,61 @@ import { runPipeline } from './pipeline.js';
  * bug -- a scheduled run that populated the cache but not the report store, say,
  * would leave a watch whose digests referenced reports nobody could open.
  */
+// Identical analyses already running, by cache key. A double-click or a second
+// tab used to start a second full run: twice the quota, and two near-identical
+// rows in the gap history that made every gap look like repeat demand.
+const inFlight = new Map();
+
+/** The running job for this input, if there is one. */
+export function runningJobFor(key) {
+  const id = inFlight.get(key);
+  return id && jobs.get(id)?.status === 'running' ? id : null;
+}
+
+// onFinish is the scheduler's hook. If it throws, that must not turn a finished
+// run into a failed one, or call it a second time with an error.
+function notify(onFinish, err, result) {
+  if (!onFinish) return;
+  try { onFinish(err, result); } catch (e) { console.error('[runner] onFinish failed:', e.message); }
+}
+
 export function startAnalysis(input, { force = false, onFinish } = {}) {
   const key = cache.cacheKey(input);
 
   if (!force) {
     const hit = cache.get(key);
-    if (hit) return { status: 'done', cached: true, cacheAgeSeconds: hit.ageSeconds, result: hit.value };
+    // A cached result whose report was pruned would hand out a dead link.
+    if (hit && (!hit.value?.runId || store.readRun(hit.value.runId))) {
+      return { status: 'done', cached: true, cacheAgeSeconds: hit.ageSeconds, result: hit.value };
+    }
   }
 
+  // An interactive request joins an identical run already in progress. A
+  // scheduled run (onFinish) needs its own completion, so it never joins.
+  const running = !onFinish && runningJobFor(key);
+  if (running) return { status: 'running', jobId: running, cached: false, joined: true };
+
   const id = jobs.create(input);
+  inFlight.set(key, id);
 
   runPipeline(input, jobs.reporter(id), id)
-    .then((result) => {
-      cache.set(key, result);
-      // The cache expires in hours; this is what keeps the report addressable.
-      // Guarded so a storage failure can never lose someone a run they paid
-      // quota for -- the in-memory job still holds it either way.
-      try {
-        store.saveRun(result);
-      } catch (err) {
-        console.error(`[job ${id}] could not persist report:`, err.message);
+    .then(
+      (result) => {
+        // Both writes are guarded so a storage failure can never lose someone a
+        // run they paid quota for -- the in-memory job still holds it either way.
+        try { cache.set(key, result); } catch (err) { console.error(`[job ${id}] could not cache report:`, err.message); }
+        // The cache expires in hours; this is what keeps the report addressable.
+        try { store.saveRun(result); } catch (err) { console.error(`[job ${id}] could not persist report:`, err.message); }
+        jobs.finish(id, result);
+        notify(onFinish, null, result);
+      },
+      (err) => {
+        console.error(`[job ${id}] failed:`, err.message);
+        jobs.fail(id, err);
+        notify(onFinish, err, null);
       }
-      jobs.finish(id, result);
-      onFinish?.(null, result);
-    })
-    .catch((err) => {
-      console.error(`[job ${id}] failed:`, err.message);
-      jobs.fail(id, err);
-      onFinish?.(err, null);
-    });
+    )
+    .finally(() => { if (inFlight.get(key) === id) inFlight.delete(key); });
 
   return { status: 'running', jobId: id, cached: false };
 }

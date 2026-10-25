@@ -1,4 +1,8 @@
-const num = (v, d) => (v === undefined || v === '' || Number.isNaN(Number(v)) ? d : Number(v));
+// " " is Number(" ") === 0, which made a blank DEEPSEEK_TIMEOUT_MS time every call out at once.
+export const num = (v, d) => {
+  const t = typeof v === 'string' ? v.trim() : v;
+  return t === undefined || t === null || t === '' || Number.isNaN(Number(t)) ? d : Number(t);
+};
 
 export const config = {
   port: num(process.env.PORT, 8787),
@@ -72,6 +76,13 @@ export const config = {
     // that two questions are the same question, however short they are.
     minSharedTokens: num(process.env.RECURRENCE_MIN_SHARED_TOKENS, 2),
   },
+  // Off unless set: with it always on, a forged X-Forwarded-For header gave
+  // every request a fresh IP and walked straight past the rate limiter.
+  // Set to the number of proxies in front of the server (e.g. 1 behind nginx).
+  trustProxy: num(process.env.TRUST_PROXY, 0),
+  // Origins allowed to call the API from a browser. Empty = same origin only;
+  // the built app and the Vite dev proxy are both same-origin.
+  corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean),
   rateLimit: {
     perHour: num(process.env.RATE_LIMIT_PER_HOUR, 10),
     // "Make it" briefs cost one DeepSeek call and no YouTube quota.
@@ -87,6 +98,9 @@ export const config = {
     // to drain the day's YouTube quota by accident.
     minIntervalHours: num(process.env.SCHEDULER_MIN_INTERVAL_HOURS, 6),
     maxWatches: num(process.env.SCHEDULER_MAX_WATCHES, 20),
+    // A watch interval past a year overflowed the next-run date and crashed the process.
+    maxIntervalHours: 24 * 365,
+    runTimeoutMinutes: num(process.env.SCHEDULER_RUN_TIMEOUT_MINUTES, 20),
   },
 
   // --- Heat score weights (open design decision #1) ----------------------

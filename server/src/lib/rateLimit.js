@@ -6,12 +6,22 @@ import { config } from '../config.js';
 // A factory so different spends get independent allowances: an analysis costs
 // YouTube quota, a brief costs only a DeepSeek call, and one shouldn't eat the
 // other's budget.
+const WINDOW_MS = 60 * 60 * 1000;
+
 export function createRateLimit({ perHour, noun }) {
   const hits = new Map();
-  return function rateLimit(req, res, next) {
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  let lastSweep = Date.now();
+  // Entries for IPs with nothing in the last hour are dead weight; without this
+  // the map only ever grew.
+  const sweep = (now = Date.now()) => {
+    for (const [ip, times] of hits) if (!times.some((t) => now - t < WINDOW_MS)) hits.delete(ip);
+    lastSweep = now;
+  };
+  function rateLimit(req, res, next) {
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
     const now = Date.now();
-    const windowMs = 60 * 60 * 1000;
+    if (now - lastSweep > 10 * 60 * 1000) sweep(now);
+    const windowMs = WINDOW_MS;
     const recent = (hits.get(ip) ?? []).filter((t) => now - t < windowMs);
 
     if (recent.length >= perHour) {
@@ -26,7 +36,11 @@ export function createRateLimit({ perHour, noun }) {
     recent.push(now);
     hits.set(ip, recent);
     next();
-  };
+  }
+  rateLimit.sweep = sweep;
+  rateLimit.size = () => hits.size;
+  rateLimit.record = (ip, t) => hits.set(ip, [...(hits.get(ip) ?? []), t]);
+  return rateLimit;
 }
 
 export const rateLimit = createRateLimit({ perHour: config.rateLimit.perHour, noun: 'analyses' });

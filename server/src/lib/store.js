@@ -139,15 +139,19 @@ export function listRuns({ limit = 30, nicheKey: key, channelId, channelMode } =
  * actually needs to survive long-term -- it is far smaller.
  */
 function pruneRuns() {
-  const rows = readIndex();
-  const max = config.store.maxRuns;
-  if (rows.length <= max) return;
-
-  const sorted = rows.sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt));
-  const keep = sorted.slice(0, max);
-  const drop = sorted.slice(max);
-
+  // Read, filter and rewrite under ONE lock: reading outside it lost any index
+  // line another writer appended in between.
+  let drop = [];
   withLock(RUN_INDEX, () => {
+    const rows = readIndex();
+    const max = config.store.maxRuns;
+    if (rows.length <= max) return;
+    // A report a watch points to is its latest digest; deleting it left the
+    // watch saying "no completed run".
+    const pinned = pinnedRunIds();
+    const sorted = rows.sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt));
+    const keep = [];
+    for (const [i, r] of sorted.entries()) (i < max || pinned.has(r.runId) ? keep : drop).push(r);
     writeAtomic(RUN_INDEX, keep.map((r) => `${JSON.stringify(r)}\n`).join(''));
   });
   for (const r of drop) {
@@ -156,6 +160,18 @@ function pruneRuns() {
     try {
       for (const f of fs.readdirSync(BRIEFS_DIR)) if (f.startsWith(`${r.runId}-`)) fs.unlinkSync(path.join(BRIEFS_DIR, f));
     } catch { /* no briefs directory yet */ }
+  }
+}
+
+// Read straight from watches.json rather than importing lib/watches.js, which
+// keeps the store free of a dependency on the scheduler's data model.
+function pinnedRunIds() {
+  try {
+    const data = JSON.parse(fs.readFileSync(path.join(STATE_DIR, 'watches.json'), 'utf8'));
+    const list = Array.isArray(data) ? data : data.watches ?? [];
+    return new Set(list.map((w) => w.lastRunId).filter(Boolean));
+  } catch {
+    return new Set();
   }
 }
 

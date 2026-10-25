@@ -120,7 +120,10 @@ export function classifyRecurrence(currentGaps, history, {
       if (!skippedRunIds.has(row.runId)) { skippedRunIds.add(row.runId); recentSkipped++; }
       continue;
     }
-    if (!byRun.has(row.runId)) byRun.set(row.runId, { runId: row.runId, generatedAt: row.generatedAt, t, gaps: [], comments: row.comments });
+    // filtersKnown: the row says which filters it was mined under. Rows from
+    // before that was recorded still count as sightings, but are not trusted to
+    // say a gap went away (a 24h run "resolved" 10 gaps from an old 90d run).
+    if (!byRun.has(row.runId)) byRun.set(row.runId, { runId: row.runId, generatedAt: row.generatedAt, t, gaps: [], comments: row.comments, filtersKnown: row.window !== undefined });
     // A marker row records that a run happened (and how many comments it mined) without a gap.
     if (!row.marker) byRun.get(row.runId).gaps.push(row);
   }
@@ -130,8 +133,8 @@ export function classifyRecurrence(currentGaps, history, {
   const pastRuns = [];
   for (const r of runsSorted) {
     const last = pastRuns[pastRuns.length - 1];
-    if (last && r.t - last.t < minHours * 3600 * 1000) last.gaps.push(...r.gaps);
-    else pastRuns.push({ runId: r.runId, generatedAt: r.generatedAt, t: r.t, gaps: [...r.gaps] });
+    if (last && r.t - last.t < minHours * 3600 * 1000) { last.gaps.push(...r.gaps); last.filtersKnown &&= r.filtersKnown; }
+    else pastRuns.push({ runId: r.runId, generatedAt: r.generatedAt, t: r.t, gaps: [...r.gaps], filtersKnown: r.filtersKnown });
   }
 
   const currentTokens = currentGaps.map((g) => gapTokens(g.question));
@@ -183,7 +186,7 @@ export function classifyRecurrence(currentGaps, history, {
   // simply old news, and reporting it forever would bury the useful signal.
   const latest = pastRuns[pastRuns.length - 1];
   // With no comments mined this time, absence proves nothing.
-  const resolved = !latest || noComments
+  const resolved = !latest || noComments || (filters && !latest.filtersKnown)
     ? []
     : latest.gaps
         .filter((h) => !currentTokens.some((t) => matches(t, gapTokens(h.question))))

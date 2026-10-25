@@ -667,6 +667,15 @@ export async function repairLanguage(raw, language) {
 }
 
 const inFlight = new Map();
+// Normalised like the store's file key, so "Tamil" and "tamil" are one draft, not two paid calls.
+const briefKey = (runId, index, language) => `${runId}:${index}:${String(language ?? '').trim().toLowerCase()}`;
+
+/** Cheap pre-check for the route: does the gap exist, and is a draft already running? */
+export function peekBrief(runId, index, language = '') {
+  const run = store.readRun(runId);
+  if (!run?.gaps?.[index]) return { missing: true };
+  return { missing: false, jobId: inFlight.get(briefKey(runId, index, language)) ?? null };
+}
 
 /**
  * Starts (or returns) the brief for one gap in one language. A saved brief is
@@ -687,7 +696,7 @@ export function startBrief(runId, index, { force = false, language = '', format:
     if (saved) return { status: 'done', cached: true, brief: saved };
   }
 
-  const key = `${runId}:${index}:${language}`;
+  const key = briefKey(runId, index, language);
   if (inFlight.has(key)) return { status: 'running', jobId: inFlight.get(key), cached: false };
 
   const id = jobs.create({ kind: 'brief', runId, index, language });

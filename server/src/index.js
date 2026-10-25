@@ -1,4 +1,5 @@
 import express from 'express';
+import { securityHeaders, corsOriginAllowed } from './lib/security.js';
 import cors from 'cors';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -10,8 +11,14 @@ import * as scheduler from './services/scheduler.js';
 assertConfig();
 
 const app = express();
-app.set('trust proxy', 1); // so req.ip is the real client behind a proxy
-app.use(cors());
+// Only trust X-Forwarded-For when a proxy is really in front (TRUST_PROXY=1).
+app.set('trust proxy', config.trustProxy);
+app.disable('x-powered-by');
+app.use(securityHeaders);
+// No CORS by default: the built app and the Vite dev proxy are same-origin, and
+// an open cors() let any website make your browser start analyses or delete
+// watches. CORS_ORIGINS opts specific origins in.
+if (config.corsOrigins.length) app.use(cors({ origin: (origin, cb) => cb(null, corsOriginAllowed(origin)) }));
 app.use(express.json({ limit: '128kb' }));
 
 app.use('/api', router);

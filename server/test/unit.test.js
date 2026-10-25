@@ -27,6 +27,10 @@ import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurre
 // DOM dependency at module scope, and CSV quoting is exactly the kind of thing
 // that silently corrupts an export until someone opens it in a spreadsheet.
 import { requestBody } from '../src/services/deepseek.js';
+import { num } from '../src/config.js';
+import { createRateLimit } from '../src/lib/rateLimit.js';
+import { corsOriginAllowed } from '../src/lib/security.js';
+import { clampLimit, validInterval } from '../src/routes/api.js';
 import { gapsToCsv, reportToMarkdown, exportStem } from '../../web/src/lib/export.js';
 
 describe('parseDuration', () => {
@@ -1942,6 +1946,12 @@ describe('audit: recurrence counts occasions, not clicks', () => {
     assert.equal(r.resolved.length, 0);
     assert.equal(r.runsCompared, 1);
   });
+  test('old history without recorded filters counts as a sighting but resolves nothing', () => {
+    const history = [row('a', '2026-10-10T10:00:00Z', 'Some old question about lye baths and rust')];
+    const r = classifyRecurrence([{ question: q, demandScore: 6 }], history, { now, filters: { window: '7d' } });
+    assert.equal(r.runsCompared, 1);
+    assert.equal(r.resolved.length, 0);
+  });
   test('history from another language filter is not compared', () => {
     const history = [row('a', '2026-10-10T10:00:00Z', q, { relevanceLanguage: 'ta', regionCode: '', gapMode: 'inclusive' })];
     const r = classifyRecurrence([{ question: q, demandScore: 6 }], history, { now, filters: { relevanceLanguage: 'en', regionCode: '', gapMode: 'inclusive' } });
@@ -1973,5 +1983,35 @@ describe('audit: YouTube errors and model output', () => {
     assert.deepEqual(arrayOf({}), []);
     assert.deepEqual(arrayOf('abc'), []);
     assert.deepEqual(arrayOf([{ a: 1 }, 'x', null]), [{ a: 1 }]);
+  });
+});
+
+describe('audit: server input and limits', () => {
+  test('limit is clamped to 1..max', () => {
+    assert.equal(clampLimit('-1', 30, 200), 1);
+    assert.equal(clampLimit('abc', 30, 200), 30);
+    assert.equal(clampLimit('5000', 30, 200), 200);
+  });
+  test('watch intervals have a ceiling', () => {
+    assert.equal(validInterval(24), true);
+    assert.equal(validInterval(1e20), false);
+    assert.equal(validInterval(1), false);
+  });
+  test('num() treats blank as unset', () => {
+    assert.equal(num(' ', 120000), 120000);
+    assert.equal(num(' 15 ', 1), 15);
+    assert.equal(num('0', 5), 0);
+  });
+  test('the rate limiter forgets IPs idle for an hour', () => {
+    const rl = createRateLimit({ perHour: 3, noun: 'x' });
+    rl.record('1.1.1.1', Date.now() - 2 * 3600 * 1000);
+    rl.record('2.2.2.2', Date.now());
+    rl.sweep();
+    assert.equal(rl.size(), 1);
+  });
+  test('CORS allows same-origin and listed origins only', () => {
+    assert.equal(corsOriginAllowed(undefined, []), true);
+    assert.equal(corsOriginAllowed('https://evil.example', []), false);
+    assert.equal(corsOriginAllowed('http://localhost:5173', ['http://localhost:5173']), true);
   });
 });

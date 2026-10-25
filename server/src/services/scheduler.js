@@ -49,27 +49,40 @@ async function tick() {
       }
 
       console.log(`[scheduler] running watch "${w.label}" (every ${w.intervalHours}h)`);
-      await new Promise((resolve) => {
+      // A run that never reports back (a hung request) must not freeze every
+      // other watch behind it, so the wait is bounded.
+      let timeout;
+      await Promise.race([new Promise((resolve) => {
         // force: true -- a watch needs a genuinely new data point, not the
         // cached copy of the last one. See the note above.
         startAnalysis(w.input, {
           force: true,
           onFinish: (err, result) => {
-            if (err) {
-              watches.recordRun(w.id, { error: err.message });
-              console.error(`[scheduler] watch "${w.label}" failed:`, err.message);
-            } else {
-              watches.recordRun(w.id, { runId: result.runId });
-              const newGaps = (result.gaps ?? []).filter((g) => g.recurrence?.status === 'new').length;
-              const recurring = (result.gaps ?? []).filter((g) => g.recurrence?.status === 'recurring').length;
-              console.log(
-                `[scheduler] watch "${w.label}" done: ${result.gaps.length} gaps (${newGaps} new, ${recurring} recurring), ${result.resolvedGaps?.length ?? 0} closed`
-              );
+            try {
+              if (err) {
+                watches.recordRun(w.id, { error: err.message });
+                console.error(`[scheduler] watch "${w.label}" failed:`, err.message);
+              } else {
+                watches.recordRun(w.id, { runId: result.runId });
+                const newGaps = (result.gaps ?? []).filter((g) => g.recurrence?.status === 'new').length;
+                const recurring = (result.gaps ?? []).filter((g) => g.recurrence?.status === 'recurring').length;
+                console.log(
+                  `[scheduler] watch "${w.label}" done: ${(result.gaps ?? []).length} gaps (${newGaps} new, ${recurring} recurring), ${result.resolvedGaps?.length ?? 0} closed`
+                );
+              }
+            } finally {
+              resolve();
             }
-            resolve();
           },
         });
-      });
+      }), new Promise((resolve) => {
+        timeout = setTimeout(() => {
+          console.error(`[scheduler] watch "${w.label}" did not finish within ${config.scheduler.runTimeoutMinutes} min; moving on.`);
+          resolve();
+        }, config.scheduler.runTimeoutMinutes * 60 * 1000);
+        timeout.unref?.();
+      })]);
+      clearTimeout(timeout);
     }
   } catch (err) {
     // A scheduler that dies takes every watch with it silently.

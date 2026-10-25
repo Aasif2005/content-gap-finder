@@ -147,15 +147,22 @@ router.get('/quota', (req, res) => {
  * Report history, newest first. One row per persisted run with the counts and
  * relevance summary, so the list is useful without opening any of them.
  */
+// ?limit=-1 used to return everything (slice(0, -1)).
+export const clampLimit = (v, d, max) => Math.max(1, Math.min(Math.floor(Number(v)) || d, max));
+// ?niche=a&niche=b arrives as an array and crashed nicheKey with a 500.
+const firstParam = (v) => (Array.isArray(v) ? v[0] : v) == null ? undefined : String(Array.isArray(v) ? v[0] : v);
+// No upper bound let 1e20 overflow the next-run date and crash the scheduler.
+export const validInterval = (h) => Number.isFinite(h) && h >= config.scheduler.minIntervalHours && h <= config.scheduler.maxIntervalHours;
+
 router.get('/runs', (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 30, 200);
+  const limit = clampLimit(req.query.limit, 30, 200);
   res.json({
     runs: store.listRuns({
       limit,
       // Same key derivation the pipeline and the store use, so "runs of this
       // subject" means one thing everywhere.
       nicheKey: req.query.niche || req.query.channelId
-        ? store.subjectKey({ niche: req.query.niche, channelId: req.query.channelId })
+        ? store.subjectKey({ niche: firstParam(req.query.niche), channelId: firstParam(req.query.channelId) })
         : undefined,
       // Scopes history to one page's mode (niche explorer vs channel analyzer)
       // when the caller isn't already asking for one specific subject.
@@ -202,6 +209,14 @@ router.post('/runs/:runId/gaps/:i/brief', (req, res, next) => {
     // Saved briefs and joins of a running job cost nothing, so they skip the limiter.
     const free = !force && (store.readBrief(req.params.runId, index, language) || null);
     if (free) return res.json({ status: 'done', cached: true, brief: free });
+    // Joining a draft already running, and asking for a gap that does not exist,
+    // cost nothing, so neither is charged to the hourly allowance.
+    const peek = brief.peekBrief(req.params.runId, index, language);
+    if (peek.missing) return res.status(404).json({ error: 'That gap was not found in this report.', code: 'GAP_NOT_FOUND' });
+    if (peek.jobId) {
+      if (force) return res.status(409).json({ error: 'A draft of this brief is already running. Wait for it, then redraft.', code: 'BRIEF_RUNNING', jobId: peek.jobId });
+      return res.status(202).json({ status: 'running', jobId: peek.jobId, cached: false });
+    }
     briefRateLimit(req, res, () => {
       try {
         const started = brief.startBrief(req.params.runId, index, { force, language, format, style, targetMinutes, core: req.body?.core === true,
@@ -244,11 +259,11 @@ router.post('/watches', (req, res, next) => {
     }
 
     const intervalHours = Number(req.body.intervalHours ?? 24 * 7);
-    if (!Number.isFinite(intervalHours) || intervalHours < config.scheduler.minIntervalHours) {
+    if (!validInterval(intervalHours)) {
       // A floor, not a preference: each run spends real quota unattended, and a
       // watch on a 1-hour interval would drain the day's budget while nobody
       // was looking.
-      throw bad(`intervalHours must be at least ${config.scheduler.minIntervalHours}.`);
+      throw bad(`intervalHours must be between ${config.scheduler.minIntervalHours} and ${config.scheduler.maxIntervalHours}.`);
     }
 
     // The same subject watched twice would just double-spend quota to append
@@ -271,8 +286,8 @@ router.patch('/watches/:id', (req, res, next) => {
     if (req.body?.label !== undefined) patch.label = String(req.body.label).slice(0, 120);
     if (req.body?.intervalHours !== undefined) {
       const h = Number(req.body.intervalHours);
-      if (!Number.isFinite(h) || h < config.scheduler.minIntervalHours) {
-        throw bad(`intervalHours must be at least ${config.scheduler.minIntervalHours}.`);
+      if (!validInterval(h)) {
+        throw bad(`intervalHours must be between ${config.scheduler.minIntervalHours} and ${config.scheduler.maxIntervalHours}.`);
       }
       patch.intervalHours = h;
     }
@@ -306,7 +321,7 @@ router.get('/watches/:id/digest', (req, res) => {
  * so drift is visible without opening every log.
  */
 router.get('/logs', (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 30, 100);
+  const limit = clampLimit(req.query.limit, 30, 100);
   res.json({ runs: listAuditRuns(limit) });
 });
 

@@ -58,7 +58,7 @@ export function get(id) {
 export function create({ input, intervalHours, label }) {
   const watch = {
     id: crypto.randomUUID(),
-    label: label || input.channelId || input.niche,
+    label: String(label || input.channelId || input.niche || '').slice(0, 120),
     input,
     intervalHours,
     enabled: true,
