@@ -1,5 +1,5 @@
-import { compact } from '../lib/format.js';
-import { Card, Rank, Badge } from './Bits.jsx';
+import { CommentQuote } from './CommentQuote.jsx';
+import { Card, Rank, Badge, Derived, DERIVED_NOTE } from './Bits.jsx';
 import { VideoStrip } from './VideoStrip.jsx';
 import { BriefPanel } from './BriefPanel.jsx';
 
@@ -33,8 +33,8 @@ export function GapCard({ gap, rank, runId, index }) {
             <Badge title="Distinct comments citing this, across how many different videos">
               {gap.evidenceCount} comments · {gap.distinctVideos} video{gap.distinctVideos === 1 ? '' : 's'}
             </Badge>
-            <Badge title="Demand score: comment count, spread across videos, and how many likes those comments got">
-              score {gap.demandScore}
+            <Badge title={`Demand score: comment count, spread across videos, and how many likes those comments got. ${DERIVED_NOTE}`}>
+              score {gap.demandScore} <Derived />
             </Badge>
             {gap.nicheRelevant === false && (
               <Badge
@@ -98,15 +98,11 @@ export function GapCard({ gap, rank, runId, index }) {
             </p>
             <ul className="mt-1.5 space-y-1.5">
               {gap.evidence.slice(0, 4).map((e, i) => (
-                <li
+                <CommentQuote
                   key={i}
+                  comment={e}
                   className="rounded-lg border-l-2 border-ink-300 bg-ink-50 py-1.5 pl-3 pr-2 text-sm text-ink-700 dark:border-ink-600 dark:bg-ink-800/60 dark:text-ink-200"
-                >
-                  <span className="italic">“{e.text}”</span>
-                  <span className="nums ml-2 whitespace-nowrap text-xs text-ink-400">
-                    ♥ {compact(e.likes)}
-                  </span>
-                </li>
+                />
               ))}
             </ul>
             {gap.evidence.length > 4 && (
@@ -136,9 +132,9 @@ export function GapCard({ gap, rank, runId, index }) {
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <Badge
                     tone={gap.titleLint.score >= 70 ? 'good' : gap.titleLint.score >= 50 ? 'warm' : 'bad'}
-                    title="Deterministic title lint (length, shouting, vague words, figures, thumbnail overlap). A checklist, not a click prediction."
+                    title={`Deterministic title lint (length, shouting, vague words, figures, thumbnail overlap). A checklist, not a click prediction. ${DERIVED_NOTE}`}
                   >
-                    title check {gap.titleLint.score}/100
+                    title check {gap.titleLint.score}/100 <Derived />
                   </Badge>
                   {gap.titleLint.issues.map(([kind, msg]) => (
                     <Badge key={kind} tone={kind === 'ungrounded-number' ? 'bad' : kind === 'no-number' ? 'neutral' : 'warm'} title={msg}>

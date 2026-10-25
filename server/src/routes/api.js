@@ -130,6 +130,11 @@ router.get('/jobs/:id', (req, res) => {
   });
 });
 
+/** Facts the Privacy Policy and Terms pages print, kept in .env with everything else. */
+router.get('/site', (_req, res) => {
+  res.json({ contactEmail: config.site.contactEmail || null, dataMaxDays: config.store.maxDataDays });
+});
+
 router.get('/quota', (req, res) => {
   res.json({
     ...quotaStatus({

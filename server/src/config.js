@@ -66,6 +66,11 @@ export const config = {
   // a run linkable after the 3h cache expires; the per-niche gap history is what
   // recurrence detection compares against, and is kept far longer because a long
   // baseline is the entire point of it.
+  // Shown on the Privacy Policy and Terms. YouTube's policies want a contact
+  // method there; without one, YouTube may give users the developer email from
+  // the Cloud console instead.
+  site: { contactEmail: (process.env.CONTACT_EMAIL ?? '').trim() },
+
   store: {
     maxRuns: num(process.env.STORE_MAX_RUNS, 500),
     // YouTube API data may be kept 30 days at most (Developer Policies III.E.4),

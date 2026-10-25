@@ -20,7 +20,12 @@ import {
   pushQueryUrl,
   modeFromPath,
   basePathFor,
+  legalPageFromPath,
 } from './lib/urlState.js';
+import { useConsent } from './lib/consent.jsx';
+import { VideoTitlesProvider } from './components/CommentQuote.jsx';
+import { ReportProvenance } from './components/Attribution.jsx';
+import { Footer } from './components/Footer.jsx';
 
 // Niche search is exploratory (broad discovery across many creators, content
 // ideas for something you don't own yet); channel analysis is diagnostic (one
@@ -103,6 +108,7 @@ export default function App() {
   // Bumped by every new run / report open / page switch; anything that resolves
   // under an older number is stale and must not touch the page.
   const requestSeq = useRef(0);
+  const fromLegal = useRef(Boolean(legalPageFromPath()));
 
   const refreshQuota = useCallback(() => {
     getQuota().then(setQuota).catch(() => {});
@@ -142,6 +148,10 @@ export default function App() {
     else setMode(modeFromPath());
 
     const onPop = () => {
+      // The shell shows the Privacy/Terms page over this one. Going there and
+      // back must leave the report, or a run in progress, exactly as it was.
+      if (legalPageFromPath()) { fromLegal.current = true; return; }
+      if (fromLegal.current) { fromLegal.current = false; return; }
       const id = runIdFromPath();
       if (id) openRun(id, { push: false });
       else {
@@ -168,7 +178,12 @@ export default function App() {
     window.history.pushState({}, '', basePathFor(next) || '/');
   }, [mode]);
 
+  const ensureConsent = useConsent();
+
   const run = useCallback(async (input, { force = false } = {}) => {
+    // A run reads YouTube data on the visitor's behalf; the Terms (which bind
+    // them to YouTube's) and the Privacy Policy must be accepted first.
+    if (!(await ensureConsent())) return;
     const seq = ++requestSeq.current;
     const stale = () => seq !== requestSeq.current;
     lastInput.current = input;
@@ -209,7 +224,7 @@ export default function App() {
       setPhase(null);
       refreshQuota();
     }
-  }, [refreshQuota, mode]);
+  }, [refreshQuota, mode, ensureConsent]);
 
   const busy = Boolean(phase);
   const counts = result
@@ -290,6 +305,7 @@ export default function App() {
         )}
 
         {result && (
+          <VideoTitlesProvider result={result}>
           <div className="rise space-y-6">
             {/* Channel mode reports on a specific channel, so name it -- otherwise
                 the report reads as if it were about a niche. */}
@@ -344,6 +360,8 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            <ReportProvenance generatedAt={result.generatedAt} />
 
             {/* A thin pool is not a warning among warnings -- it undermines every
                 number below it, so it gets its own callout with one-click ways
@@ -526,12 +544,15 @@ export default function App() {
               )}
             </footer>
           </div>
+          </VideoTitlesProvider>
         )}
 
         {!busy && !result && !error && (
           <EmptyState title={page.emptyTitle}>{page.emptyBody}</EmptyState>
         )}
       </div>
+
+      <Footer />
     </div>
   );
 }

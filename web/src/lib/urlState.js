@@ -76,3 +76,22 @@ export function pushQueryUrl(input, mode = 'niche') {
   const base = basePathFor(mode) || '/';
   window.history.replaceState({}, '', `${base}${queryToSearch(input)}`);
 }
+
+/**
+ * The Privacy Policy and Terms are their own pages, reachable from every page's
+ * footer -- YouTube's API policies require the privacy policy to be
+ * "prominently displayed and easily accessible to users at all times".
+ */
+export function legalPageFromPath(pathname = window.location.pathname) {
+  const m = /^\/(privacy|terms)\/?$/.exec(pathname);
+  return m ? m[1] : null;
+}
+
+/** Client-side navigation: listeners for popstate (the shell, the explorer) re-read the path. */
+export function navigate(href) {
+  // `inApp` lets a page tell "Back" will stay on this site from a visit that
+  // landed here directly, where history.back() would leave it.
+  window.history.pushState({ inApp: true }, '', href);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  window.scrollTo(0, 0);
+}

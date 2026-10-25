@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Badge } from './Bits.jsx';
 import { getBrief, makeBrief } from '../lib/api.js';
 import { copyToClipboard } from '../lib/export.js';
+import { useConsent } from '../lib/consent.jsx';
 
 const BAND_TONE = { STRONG: 'good', WORKABLE: 'warm', WEAK: 'neutral' };
 
@@ -459,7 +460,10 @@ export function BriefPanel({ runId, index, sensitive, gap }) {
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   target.current = `${runId}:${index}:${language}`;
 
+  const ensureConsent = useConsent();
+
   const run = async (opts = {}) => {
+    if (!(await ensureConsent())) return;
     const mine = target.current;
     const gone = () => !mounted.current || target.current !== mine;
     setState('working');

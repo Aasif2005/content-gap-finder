@@ -813,7 +813,17 @@ describe('export serializers', () => {
 
   test('CSV header and row column counts line up', () => {
     const [header] = gapsToCsv(result).split('\r\n');
-    assert.equal(header.split(",").length, 15);
+    assert.equal(header.split(",").length, 17);
+  });
+
+  test('exports say where the data came from, when, and which figures are ours', () => {
+    const [header, row] = gapsToCsv(result).split('\r\n');
+    assert.match(header, /,data_as_of,source$/);
+    assert.match(row, /2026-09-24 \d\d:\d\d UTC,"YouTube API Services; scores calculated by Content Gap Finder, not YouTube metrics"$/);
+    const md = reportToMarkdown(result);
+    assert.match(md, /YouTube data as of 2026-09-24/);
+    assert.match(md, /not YouTube metrics/);
+    assert.match(md, /not affiliated with or endorsed by YouTube/);
   });
 
   test('markdown keeps the evidence quotes, not just the model conclusion', () => {

@@ -16,9 +16,28 @@ export function Badge({ children, tone = 'neutral', title }) {
   );
 }
 
+/**
+ * Marks a figure we calculated ourselves. YouTube's API policies require our
+ * own metrics to be clearly told apart from YouTube's: views, likes and
+ * subscribers carry no mark; heat, demand, engagement % and the like do.
+ */
+export const DERIVED_NOTE = 'Calculated by Content Gap Finder from YouTube data. Not a YouTube metric.';
+
+export function Derived({ className = '' }) {
+  return (
+    <span
+      title={DERIVED_NOTE}
+      aria-label={DERIVED_NOTE}
+      className={`cursor-help font-normal opacity-60 ${className}`}
+    >
+      ⓘ
+    </span>
+  );
+}
+
 export function HeatBar({ value, label = 'Heat' }) {
   return (
-    <div className="flex items-center gap-2" title={`${label} ${value}/100 — relative to this result set`}>
+    <div className="flex items-center gap-2" title={`${label} ${value}/100, relative to this result set. ${DERIVED_NOTE}`}>
       <div className="h-1.5 w-20 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-800">
         <div
           className="h-full rounded-full transition-[width] duration-700 ease-out"
@@ -28,6 +47,7 @@ export function HeatBar({ value, label = 'Heat' }) {
       <span className="nums text-xs font-semibold tabular-nums" style={{ color: heatColor(value) }}>
         {value}
       </span>
+      <Derived className="text-xs text-ink-400" />
     </div>
   );
 }

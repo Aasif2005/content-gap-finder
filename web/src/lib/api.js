@@ -5,6 +5,7 @@ const json = async (res) => {
 };
 
 export const getQuota = () => fetch('/api/quota').then(json);
+export const getSite = () => fetch('/api/site').then(json);
 
 export const startAnalysis = (input) =>
   fetch('/api/analyze', {

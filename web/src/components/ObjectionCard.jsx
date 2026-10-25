@@ -1,4 +1,4 @@
-import { compact } from '../lib/format.js';
+import { CommentQuote } from './CommentQuote.jsx';
 import { Card, Rank, Badge } from './Bits.jsx';
 
 const SEVERITY = { high: 'bad', medium: 'warm', low: 'neutral' };
@@ -43,13 +43,11 @@ export function ObjectionCard({ objection, rank }) {
             </p>
             <ul className="mt-1.5 space-y-1.5">
               {objection.evidence.slice(0, 4).map((e, i) => (
-                <li
+                <CommentQuote
                   key={i}
+                  comment={e}
                   className="rounded-lg border-l-2 border-rose-300 bg-rose-50/60 py-1.5 pl-3 pr-2 text-sm text-ink-700 dark:border-rose-500/50 dark:bg-rose-500/10 dark:text-ink-200"
-                >
-                  <span className="italic">“{e.text}”</span>
-                  <span className="nums ml-2 whitespace-nowrap text-xs text-ink-400">♥ {compact(e.likes)}</span>
-                </li>
+                />
               ))}
             </ul>
             {objection.evidence.length > 4 && (

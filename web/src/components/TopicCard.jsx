@@ -1,5 +1,5 @@
 import { compact } from '../lib/format.js';
-import { Card, Rank, HeatBar, Badge } from './Bits.jsx';
+import { Card, Rank, HeatBar, Badge, Derived, DERIVED_NOTE } from './Bits.jsx';
 import { VideoStrip } from './VideoStrip.jsx';
 
 export function TopicCard({ topic, rank }) {
@@ -31,8 +31,8 @@ export function TopicCard({ topic, rank }) {
                 {topic.evidence.level === 'thin' ? 'single video' : 'one channel'}
               </Badge>
             )}
-            <Badge title="Median engagement rate across the topic's videos">
-              {(topic.medianEngagementRate * 100).toFixed(2)}% eng
+            <Badge title={`Median engagement rate across the topic's videos. ${DERIVED_NOTE}`}>
+              {(topic.medianEngagementRate * 100).toFixed(2)}% eng <Derived />
             </Badge>
             {topic.nicheRelevant === false && (
               <Badge

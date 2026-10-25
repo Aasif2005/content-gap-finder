@@ -19,6 +19,22 @@ const csvCell = (v) => {
 
 const csv = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
 
+// YouTube's API policies follow the data out of the app: an export still says
+// where the numbers came from, when, and which ones are ours, not YouTube's.
+export const SOURCE_NOTE = 'Data from YouTube API Services. Content Gap Finder is not affiliated with or endorsed by YouTube.';
+export const DERIVED_EXPORT_NOTE = 'Heat, demand score, engagement rate, title score and channel-median multiples are calculated by Content Gap Finder from YouTube data; they are not YouTube metrics.';
+const dataDate = (result) => {
+  const d = new Date(result?.generatedAt);
+  return Number.isNaN(d.getTime()) ? '' : `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+};
+const asOf = (result) => (dataDate(result) ? `YouTube data as of ${dataDate(result)}` : 'YouTube data');
+// CSV stays one record per row, so a spreadsheet import never trips on footer
+// lines: the provenance rides along as two trailing columns instead.
+const CSV_SOURCE = 'YouTube API Services; scores calculated by Content Gap Finder, not YouTube metrics';
+const withSource = (result, rows) => rows.map((r, i) => (i === 0 ? [...r, 'data_as_of', 'source'] : [...r, dataDate(result), CSV_SOURCE]));
+const watchUrl = (id) => `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+const quoteSource = (e) => (e.videoId ? ` ([video](${watchUrl(e.videoId)}))` : '');
+
 export function gapsToCsv(result) {
   const rows = [[
     'question', 'demand_strength', 'coverage', 'demand_score', 'evidence_comments',
@@ -45,7 +61,7 @@ export function gapsToCsv(result) {
       (g.evidence ?? []).slice(0, 3).map((e) => e.text).join(' | '),
     ]);
   }
-  return csv(rows);
+  return csv(withSource(result, rows));
 }
 
 export function topicsToCsv(result) {
@@ -58,7 +74,7 @@ export function topicsToCsv(result) {
       t.nicheRelevant === false ? 'FLAGGED' : 'ok',
     ]);
   }
-  return csv(rows);
+  return csv(withSource(result, rows));
 }
 
 // The labels the form shows, not the raw values ("format: long", "gaps: strict").
@@ -83,7 +99,7 @@ export function reportToMarkdown(result) {
     `# Content gaps — ${q.channelId ? (result.channel?.title ?? 'channel') : q.niche}`,
     '',
     `${filters}`,
-    `Analysed ${result.stats.videosAnalyzed} videos and ${result.stats.commentsAnalyzed} comments · ${new Date(result.generatedAt).toLocaleString()}`,
+    `Analysed ${result.stats.videosAnalyzed} videos and ${result.stats.commentsAnalyzed} comments · ${asOf(result)}`,
   ];
 
   if (result.thinPool) {
@@ -128,7 +144,7 @@ export function reportToMarkdown(result) {
       if (g.titleOptions?.length > 1) out.push('Other titles: ' + g.titleOptions.slice(1).map((o) => `"${o.title}"`).join(' · '), '');
       if (g.evidence?.length) {
         out.push('What viewers actually said:', '');
-        g.evidence.slice(0, 4).forEach((e) => out.push(`> "${e.text}"${likes(e)}`, ''));
+        g.evidence.slice(0, 4).forEach((e) => out.push(`> "${e.text}"${likes(e)}${quoteSource(e)}`, ''));
       }
     });
   }
@@ -138,7 +154,7 @@ export function reportToMarkdown(result) {
     result.objections.forEach((o, i) => {
       out.push(`### ${i + 1}. ${o.label}`, '', `*${o.severity} severity · ${o.evidenceCount} comments*`, '');
       if (o.fix) out.push(`**Do instead:** ${o.fix}`, '');
-      (o.evidence ?? []).slice(0, 3).forEach((e) => out.push(`> "${e.text}"${likes(e)}`, ''));
+      (o.evidence ?? []).slice(0, 3).forEach((e) => out.push(`> "${e.text}"${likes(e)}${quoteSource(e)}`, ''));
     });
   }
 
@@ -172,6 +188,7 @@ export function reportToMarkdown(result) {
     });
   }
 
+  out.push('', '---', '', `_${asOf(result)}. ${DERIVED_EXPORT_NOTE} ${SOURCE_NOTE}_`);
   return out.join('\n');
 }
 

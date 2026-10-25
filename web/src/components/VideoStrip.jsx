@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { compact, duration, ago } from '../lib/format.js';
-import { Badge } from './Bits.jsx';
+import { Badge, Derived, DERIVED_NOTE } from './Bits.jsx';
 
 /** Compact evidence row: the videos backing a topic or an avoid warning. */
 export function VideoStrip({ videos, limit = 4, showEngagement = false }) {
@@ -38,7 +38,7 @@ export function VideoStrip({ videos, limit = 4, showEngagement = false }) {
             </p>
             <p className="nums truncate text-xs text-ink-500 dark:text-ink-400">
               {v.channelTitle} · {compact(v.subscribers)} subs · {compact(v.views)} views · {ago(v.ageDays)}
-              {showEngagement && ` · ${(v.engagementRate * 100).toFixed(2)}% eng`}
+              {showEngagement && <> · {(v.engagementRate * 100).toFixed(2)}% eng <Derived /></>}
             </p>
           </div>
 
@@ -54,9 +54,9 @@ export function VideoStrip({ videos, limit = 4, showEngagement = false }) {
             {v.outlier?.multiple >= 2 && (
               <Badge
                 tone="good"
-                title={`${v.views.toLocaleString()} views vs. a median of ${v.outlier.median.toLocaleString()} across this channel's last ${v.outlier.baseline} ${v.isShort ? 'Shorts' : 'long videos'}. Ranks the video, not the channel's size.`}
+                title={`${v.views.toLocaleString()} views vs. a median of ${v.outlier.median.toLocaleString()} across this channel's last ${v.outlier.baseline} ${v.isShort ? 'Shorts' : 'long videos'}. Ranks the video, not the channel's size. ${DERIVED_NOTE}`}
               >
-                {v.outlier.multiple >= 100 ? '100×+' : `${v.outlier.multiple}×`} channel median
+                {v.outlier.multiple >= 100 ? '100×+' : `${v.outlier.multiple}×`} channel median <Derived />
               </Badge>
             )}
             {v.formula && (

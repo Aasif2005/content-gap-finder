@@ -1,4 +1,4 @@
-import { Card, Rank, Badge } from './Bits.jsx';
+import { Card, Rank, Badge, Derived, DERIVED_NOTE } from './Bits.jsx';
 import { VideoStrip } from './VideoStrip.jsx';
 
 const pct = (x) => `${((x ?? 0) * 100).toFixed(2)}%`;
@@ -16,7 +16,7 @@ function StatsBadge({ item }) {
     contradicted: ['good', 'our numbers disagree', `These videos' median engagement (${pct(item.medianEngagementRate)}) is above this run's median (${pct(item.runMedianEngagementRate)}). The audience responds to them; the model's warning is not backed by the data.`],
   };
   const [tone, text, title] = badges[level] ?? badges['model-only'];
-  return <Badge tone={tone} title={title}>{text}</Badge>;
+  return <Badge tone={tone} title={`${title} ${DERIVED_NOTE}`}>{text} <Derived /></Badge>;
 }
 
 export function AvoidCard({ item, rank }) {
@@ -53,6 +53,7 @@ export function AvoidCard({ item, rank }) {
               <p className="nums mt-1 text-xs text-ink-500 dark:text-ink-400">
                 Median engagement across these videos: {pct(item.medianEngagementRate)}
                 {item.runMedianEngagementRate != null && <> (this run&rsquo;s median: {pct(item.runMedianEngagementRate)})</>}
+                {' '}<Derived />
               </p>
             </div>
           )}
