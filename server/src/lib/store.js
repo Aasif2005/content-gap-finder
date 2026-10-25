@@ -13,8 +13,9 @@ import { withLock } from './fileLock.js';
  * run, and no extra service to run. The difference from lib/cache.js is what
  * the key MEANS. The cache is keyed by a hash of the query, so it answers
  * "have we run exactly this recently?" and expires in hours. This is keyed by
- * runId and never expires on a timer, so it answers "show me that report
- * again" -- which is what makes a report linkable at all. Before this, a
+ * runId and lives for the 30 days YouTube's policies allow (see sweepExpired),
+ * so it answers "show me that report again" -- which is what makes a report
+ * linkable at all. Before this, a
  * finished report lived only in React state and a 3-hour query-hash cache:
  * reloading the page lost it, and there was no way to send one to anyone.
  *

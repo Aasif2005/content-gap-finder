@@ -54,7 +54,7 @@ query, so the two subjects never show up mixed together in one list.
 ```
 niche + window + format                    channel URL / @handle / UC… id
    │                                          │
-   ├─ 1. search.list      100 units × slices  ├─ 1. channels.list     1 unit  → resolve + uploads playlist
+   ├─ 1. search.list      1 search × slices   ├─ 1. channels.list     1 unit  → resolve + uploads playlist
    │      (see lib/searchPlan.js)             └─ 1b. playlistItems    1 unit  → recent uploads, 50/page
    │                                          │
    ├─ 2. videos.list            1 unit    → stats + duration + audio language, batched 50/call
@@ -70,9 +70,10 @@ niche + window + format                    channel URL / @handle / UC… id
 A full run takes **60-120 seconds** (measured 76s and 92s on a 50-video niche; DeepSeek
 latency is the variable part), so `POST /api/analyze` returns a job id and the client polls
 `GET /api/jobs/:id` for phase-by-phase progress rather than holding the request open.
-Results are cached per query (3h default) and **persisted by run id indefinitely**, so a
+Results are cached per query (3h default) and **persisted by run id for 30 days**, so a
 report stays openable at `/r/<runId>` long after its cache entry expires. Cache hits and
-stored reports both cost nothing.
+stored reports both cost nothing. After 30 days the report is deleted (YouTube's data
+policies allow no longer) and its link answers `410 RUN_EXPIRED`.
 
 ### Channel mode: what *your* audience is asking for
 
@@ -453,24 +454,30 @@ videos about the niche now reads *asked under niche videos* instead of `⚠ chec
 
 ## Quota, in practice
 
-`search.list` costs 100 units against a default 10,000/day quota — everything else costs 1.
-A run's cost therefore depends on how many search slices it needs
-([`lib/searchPlan.js`](server/src/lib/searchPlan.js)), which is why `unitsPerAnalysis()`
-takes the run shape instead of returning a constant:
+Since 1 June 2026 YouTube meters `search.list` in **its own bucket: 100 calls a day, 1 unit
+each**, and every other method shares the 10,000-unit bucket. The ledger tracks both
+([`lib/quota.js`](server/src/lib/quota.js)); `YOUTUBE_SEARCH_DAILY_CALLS` (default 95) and
+`YOUTUBE_DAILY_UNIT_BUDGET` (default 9,000) keep headroom under Google's limits. A run's
+search calls depend on how many slices it needs ([`lib/searchPlan.js`](server/src/lib/searchPlan.js)),
+so cost takes the run shape instead of being a constant, and *analyses left* is whichever
+bucket runs out first:
 
-| Run shape | Units | Analyses/day on a 9,000 budget |
-|---|---|---|
-| Channel mode | **29** | ~310 |
-| Niche, both/shorts | 167 | 53 |
-| Niche, long-form | 267 | 33 |
-| Niche + deep scan | 267 | 33 |
-| Niche, long-form + deep scan | 467 | 19 |
+| Run shape | Searches | Units | Analyses/day (95 searches, 9,000 units) |
+|---|---|---|---|
+| Channel mode | 0 | **39** | ~230 |
+| Niche, both/shorts | 1 | 67 | 95 |
+| Niche, long-form | 2 | 67 | 47 |
+| Niche + deep scan | 2 | 67 | 47 |
+| Niche, long-form + deep scan | 4 | 67 | 23 |
 
-(Niche runs include ~40 units for the outlier baselines; `OUTLIER_CHANNELS=0` removes them
-and gives back the old 127/227/427.)
+(Niche runs include ~40 units for the outlier baselines; `OUTLIER_CHANNELS=0` removes them.)
+Measured live: one niche run moved the ledger by 1 search and 65 units.
 
-`GET /api/quota` returns that whole table, so the UI can price a toggle *before* someone
-flips it rather than halving their day's budget by surprise.
+For niche runs the search bucket is the limit, which is why more quota means asking Google
+for more `search.list` calls specifically (see [Publishing](#publishing-the-youtube-api-audit)).
+
+`GET /api/quota` returns both buckets and the per-shape table, so the UI can price a toggle
+*before* someone flips it.
 
 This is why a run spends as few search calls as the request allows, why `videos.list` and
 `channels.list` are batched 50 ids at a time, and why results are both cached and persisted.
@@ -486,6 +493,33 @@ server processes losing each other's increments. The more dangerous half was the
 itself: a torn ledger parsed as `used: 0`, which would have the app believe it had a full
 budget and keep hammering YouTube until YouTube started returning `quotaExceeded`. That path
 now logs loudly instead of failing silently.
+
+---
+
+## Publishing: the YouTube API audit
+
+There is no paid YouTube API plan. More quota comes only from Google's free
+[Audit and Quota Extension Form](https://support.google.com/youtube/contact/yt_api_form),
+after a compliance audit. The app is built to pass it:
+
+| Policy | What the app does |
+|---|---|
+| III.A: Terms bind users to the YouTube ToS; a Privacy Policy that is always reachable | `/terms` and `/privacy`, linked from a footer on every page; a consent dialog before the first analysis or draft |
+| III.A.2: the policy names YouTube API Services, links the Google Privacy Policy, says what is collected and shared | It does, including that comment text goes to DeepSeek. Set `CONTACT_EMAIL`, or the page shows a "not set" marker |
+| III.E.4: API data stored 30 days at most | A sweep on boot and every 6h deletes reports, briefs, cache and run logs past `YOUTUBE_DATA_MAX_DAYS` (capped at 30) |
+| III.E.4.h and the derived-metrics policy: our metrics are clearly not YouTube's | Heat, demand score, engagement %, channel-median multiples, title checks and avoid stats carry an ⓘ "calculated by Content Gap Finder" mark; exports say the same |
+| III.E.4.f: historical data shown in its time context | "YouTube data as of …" on every report and export |
+| III.F.2 and branding: attribution next to YouTube content | "Developed with YouTube" on reports and the footer; every quoted comment links to its video; "not affiliated with YouTube" |
+| III.E.5: transport encryption | HSTS in production; deploy behind https |
+| III.D.1: one project, key never shared | One key, server-side only, never committed |
+
+The answers for every form field, the quota justification and the screenshot checklist are
+in [`docs/youtube-api-audit.md`](docs/youtube-api-audit.md).
+
+For the official "developed with YouTube" artwork, download it from
+[brand.youtube](https://brand.youtube) into `web/public/brand/` and set `LOGO_SRC` in
+[`Attribution.jsx`](web/src/components/Attribution.jsx). The guidelines forbid redrawing it,
+so the app uses text until then.
 
 ---
 
@@ -521,7 +555,7 @@ Two wrinkles worth knowing:
 | `POST /api/analyze` | Start a run. Returns a cached result (`200`) or a job id (`202`). |
 | `GET /api/jobs/:id` | Poll phase, detail, progress, and the final result. |
 | `GET /api/runs` | Report history, newest first. Free. `?niche=` narrows to one subject. |
-| `GET /api/runs/:runId` | A persisted report. What makes `/r/<runId>` shareable. Free. |
+| `GET /api/runs/:runId` | A persisted report. What makes `/r/<runId>` shareable. Free. `410 RUN_EXPIRED` once the 30-day retention sweep has deleted it. |
 | `POST /api/runs/:runId/gaps/:i/brief` | "Make it": hooks, script beats and search text for one gap. One DeepSeek call, polled as a job; a saved brief is returned free, and a second click joins the running job. `{"force":true}` redrafts. |
 | `GET /api/runs/:runId/gaps/:i/brief` | A saved brief, or `brief: null`. Free. |
 | `GET /api/watches` | Saved watches, plus the interval floor and limit. |
@@ -529,7 +563,8 @@ Two wrinkles worth knowing:
 | `PATCH /api/watches/:id` | Pause, resume, relabel, or re-interval a watch. |
 | `DELETE /api/watches/:id` | Remove a watch. |
 | `GET /api/watches/:id/digest` | What the newest run found that the previous one didn't. Free. |
-| `GET /api/quota` | Units used/remaining today plus the per-shape cost table. |
+| `GET /api/quota` | Search calls and units used/remaining today, analyses left, and the per-shape cost table. |
+| `GET /api/site` | The contact email and retention period the Privacy Policy and Terms pages print. |
 | `GET /api/health` | Liveness, quota, cache and store sizes, phase list. |
 | `GET /api/logs` | Recent runs with their niche-relevance summary. |
 | `GET /api/logs/:runId` | The full audit log for one run, as plain text. |
