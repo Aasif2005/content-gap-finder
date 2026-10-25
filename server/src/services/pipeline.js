@@ -160,7 +160,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   if (!videos.length) {
     throw Object.assign(
       new Error(
-        `Found ${beforeFilter} videos for "${niche}", but none matched the ${contentType} / ${minViews}+ views filter. Loosen the filters.`
+        `Found ${beforeFilter} videos for "${subject}", but none matched the ${contentType} / ${minViews}+ views filter. Loosen the filters.`
       ),
       { status: 404, code: 'NO_RESULTS_AFTER_FILTER' }
     );

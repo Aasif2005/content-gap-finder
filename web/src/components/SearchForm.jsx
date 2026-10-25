@@ -123,15 +123,17 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
       </p>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <label className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
-          <span className="font-medium">Published</span>
-          <Pills name="Time window" options={WINDOWS} value={window} onChange={setWindow} disabled={busy} />
-        </label>
+        {/* Not <label>: a label forwards clicks to its first button, so clicking
+            the word "Published" silently switched the window to 24 hours. */}
+        <div className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
+          <span className="font-medium" aria-hidden="true">Published</span>
+          <Pills name="Published: time window" options={WINDOWS} value={window} onChange={setWindow} disabled={busy} />
+        </div>
 
-        <label className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
-          <span className="font-medium">Format</span>
-          <Pills name="Content type" options={TYPES} value={contentType} onChange={setContentType} disabled={busy} />
-        </label>
+        <div className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
+          <span className="font-medium" aria-hidden="true">Format</span>
+          <Pills name="Format: content type" options={TYPES} value={contentType} onChange={setContentType} disabled={busy} />
+        </div>
 
         {window === 'custom' && (
           <label className="rise flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">

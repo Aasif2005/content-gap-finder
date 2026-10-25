@@ -10,6 +10,8 @@ export const config = {
 
   youtube: {
     timeoutMs: num(process.env.YOUTUBE_TIMEOUT_MS, 30000),
+    // Pages of 50 walked from a channel's uploads playlist (services/youtube.js).
+    channelUploadPages: 6,
     apiKey: process.env.YOUTUBE_API_KEY,
     base: 'https://www.googleapis.com/youtube/v3',
     // Documented unit costs. search.list is the expensive one by 100x, which is

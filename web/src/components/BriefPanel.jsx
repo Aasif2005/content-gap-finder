@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from './Bits.jsx';
 import { getBrief, makeBrief } from '../lib/api.js';
 import { copyToClipboard } from '../lib/export.js';
@@ -408,7 +408,8 @@ function Script({ brief, busy, onRedraft }) {
                       ? '✓ in the title'
                       : q.inOpening
                         ? '✗ not in the title, only the description'
-                        : `✗ ${Math.round(q.coverage * 100)}% covered, missing: ${q.missing.join(', ')}`}
+                        // Briefs saved before coverage was measured have neither field.
+                        : q.missing ? `✗ ${Math.round((q.coverage ?? 0) * 100)}% covered, missing: ${q.missing.join(', ')}` : '✗ not in the title or description'}
                   </span>
                 )}
             </li>
@@ -450,13 +451,26 @@ export function BriefPanel({ runId, index, sensitive, gap }) {
     return () => { live = false; };
   }, [runId, index, language]);
 
+  // Which (run, gap, language) a draft was started for, and whether the panel is
+  // still on screen: a draft finishing after the report changed, or after the
+  // card unmounted, must not land here (or keep polling for four minutes).
+  const target = useRef('');
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  target.current = `${runId}:${index}:${language}`;
+
   const run = async (opts = {}) => {
+    const mine = target.current;
+    const gone = () => !mounted.current || target.current !== mine;
     setState('working');
     setError('');
     try {
-      setBrief(await makeBrief(runId, index, { language, ...opts }));
+      const b = await makeBrief(runId, index, { language, ...opts, isCancelled: gone });
+      if (gone()) return;
+      setBrief(b);
       setState('idle');
     } catch (err) {
+      if (err.cancelled || gone()) return;
       setError(err.message);
       setState('error');
     }
@@ -512,18 +526,21 @@ export function BriefPanel({ runId, index, sensitive, gap }) {
 
   return (
     <details className="group mt-3 rounded-lg border border-ink-200 p-3 dark:border-ink-700" open>
-      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
-        <span>Make it · brief</span>
-        <span className="flex flex-wrap items-center gap-2 normal-case tracking-normal">
+      {/* The summary holds only its title: a select and buttons inside a
+          <summary> are nested controls, and the select toggled the panel. */}
+      <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-wide text-ink-500">
+        Make it · brief <span className="font-normal normal-case text-ink-400 group-open:hidden">(show)</span>
+      </summary>
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
           {picker}
           <button
-            onClick={async (e) => { e.preventDefault(); setCopied(await copyToClipboard(briefToMarkdown(brief, gap))); setTimeout(() => setCopied(false), 1500); }}
+            onClick={async () => { setCopied(await copyToClipboard(briefToMarkdown(brief, gap))); setTimeout(() => setCopied(false), 1500); }}
             className="rounded border border-ink-300 px-2 py-0.5 text-[11px] font-medium text-ink-600 hover:bg-ink-100 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
           >
             {copied ? 'Copied' : 'Copy all'}
           </button>
           <button
-            onClick={(e) => { e.preventDefault(); redraft(); }}
+            onClick={() => redraft()}
             disabled={busy}
             className="rounded border border-ink-300 px-2 py-0.5 text-[11px] font-medium text-ink-600 hover:bg-ink-100 disabled:opacity-60 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
           >
@@ -531,7 +548,7 @@ export function BriefPanel({ runId, index, sensitive, gap }) {
           </button>
           {brief.essentials?.length > 0 && (
             <button
-              onClick={(e) => { e.preventDefault(); redraft({ planFrom: null }); }}
+              onClick={() => redraft({ planFrom: null })}
               disabled={busy}
               title="Redraft keeps the essentials. This decides them again from the comments, so the scope and length can change."
               className="rounded border border-ink-300 px-2 py-0.5 text-[11px] font-medium text-ink-600 hover:bg-ink-100 disabled:opacity-60 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
@@ -539,8 +556,7 @@ export function BriefPanel({ runId, index, sensitive, gap }) {
               New plan
             </button>
           )}
-        </span>
-      </summary>
+      </div>
       {state === 'error' && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
 
       <div className="mt-3 space-y-5 text-sm">

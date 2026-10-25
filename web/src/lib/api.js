@@ -16,13 +16,21 @@ export const startAnalysis = (input) =>
 export const getJob = (id) => fetch(`/api/jobs/${id}`).then(json);
 
 /** Polls a job to completion, reporting progress along the way. */
-export function pollJob(jobId, onTick, { intervalMs = 1500, timeoutMs = 300_000 } = {}) {
+// Thrown when the caller stopped caring (another report opened, page switched,
+// component unmounted). Callers ignore it rather than showing an error.
+export class Cancelled extends Error {
+  constructor() { super('cancelled'); this.cancelled = true; }
+}
+
+export function pollJob(jobId, onTick, { intervalMs = 1500, timeoutMs = 300_000, isCancelled = () => false } = {}) {
   const startedAt = Date.now();
 
   return new Promise((resolve, reject) => {
     const tick = async () => {
+      if (isCancelled()) return reject(new Cancelled());
       try {
         const job = await getJob(jobId);
+        if (isCancelled()) return reject(new Cancelled());
         onTick?.(job);
 
         if (job.status === 'done') return resolve(job.result);
@@ -89,12 +97,12 @@ export const getBrief = (runId, index, language = '') =>
   fetch(`/api/runs/${runId}/gaps/${index}/brief?language=${encodeURIComponent(language)}`).then(json).then((b) => b.brief);
 
 /** Drafts (or returns the saved) brief for one gap. Generating is one DeepSeek call, polled like a run. */
-export async function makeBrief(runId, index, { force = false, language = '', format = '', style = '', targetMinutes = null, core = false, planFrom = null } = {}) {
+export async function makeBrief(runId, index, { force = false, language = '', format = '', style = '', targetMinutes = null, core = false, planFrom = null, isCancelled } = {}) {
   const started = await fetch(`/api/runs/${runId}/gaps/${index}/brief`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ force, language, format, style, targetMinutes, core, planFrom }),
   }).then(json);
   if (started.status === 'done') return started.brief;
-  return pollJob(started.jobId, null, { timeoutMs: 240_000 });
+  return pollJob(started.jobId, null, { timeoutMs: 240_000, isCancelled });
 }

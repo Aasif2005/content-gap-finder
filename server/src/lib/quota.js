@@ -89,8 +89,12 @@ export function unitsPerAnalysis({ contentType = 'both', deepScan = false, chann
   // Channel mode walks the uploads playlist instead of searching: playlistItems
   // is 1 unit against search.list's 100, which is most of why it is so much
   // cheaper per run.
+  // Priced at the most a run can walk (getChannelUploads' page cap, and a
+  // videos.list batch per page of 50): priced at one page, a prolific channel
+  // over 90 days cost more than the scheduler budgeted and failed partway.
+  const pages = config.youtube.channelUploadPages;
   const discovery = channelMode
-    ? cost.playlistItems + cost.channels // resolve the channel, then list uploads
+    ? pages * cost.playlistItems + cost.channels + (pages - 1) * cost.videos // resolve, list uploads, detail each page
     : searchPlan({ contentType, deepScan }).length * cost.search;
   // Niche mode also reads the top channels' recent uploads as an outlier
   // baseline (services/youtube.js getChannelBaselines): a playlistItems page and

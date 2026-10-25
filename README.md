@@ -109,6 +109,21 @@ compares each run's gaps against every earlier run of the same subject:
 - **↑ rising / ↓ cooling** — demand score against last run's, so direction of travel is visible.
 - **closed** — open last run, gone now. Usually someone finally made the video.
 
+What counts as an earlier run was tightened after an audit of the saved reports. Three
+*cast iron restoration* runs made within ten minutes had marked gaps "recurring ×3": the same
+comments read three times, not demand voiced three times. Now:
+
+- runs from the last `RECURRENCE_MIN_HOURS` (default 24) are not compared at all, and the
+  report says how many were skipped;
+- older runs are grouped into **occasions** at least that far apart, and *recurring ×N* counts
+  occasions;
+- history is only compared within the same filters (language, region, gap mode, window,
+  format). A 24h run compared against 90d runs had "closed" 10 gaps that were simply outside
+  its window. Rows recorded before the filters were stored still count as sightings, but are
+  never used to call a gap closed;
+- a run that mined no comments (an outage, comments switched off) leaves a marker row, is not
+  an occasion, and closes nothing.
+
 Matching has to be fuzzy: the model rewrites every gap from scratch each run, so the same
 demand returns phrased differently ("why is my crumb gummy" / "how do I fix a dense, gummy
 crumb"). It uses stemmed-token Jaccard overlap with a floor on shared tokens, because on
@@ -410,7 +425,29 @@ for a creator: demand is proven and the bar is low.
 
 **Rate limiting** — 10 analyses per IP per hour, plus a hard daily YouTube unit budget
 (9,000 of the 10,000 default quota) tracked in `server/.state/quota.json`. The ledger
-resets on YouTube's own midnight-Pacific boundary, not UTC. Cache hits bypass both.
+resets on YouTube's own midnight-Pacific boundary, not UTC. Cache hits bypass both, and so
+does an identical request while one is running: it joins that job instead of paying for a
+second run (a double-click used to spend the quota twice and write the gap history twice).
+
+**Behind a proxy, and from other sites.** `X-Forwarded-For` is only trusted when
+`TRUST_PROXY` says how many proxies sit in front (it used to be trusted always, so a forged
+header gave every request a new IP and walked past the limiter). The API sends no CORS
+headers unless `CORS_ORIGINS` lists an origin: the built app and the Vite dev proxy are
+same-origin, and an open `cors()` let any website make a visitor's browser start analyses or
+delete watches. `x-powered-by` is off, with `nosniff`, `X-Frame-Options: DENY` and a
+same-origin referrer policy.
+
+**Avoid entries are checked against our own numbers.** Each entry is *confirmed* (at least
+half its videos have high views and bottom-tier engagement), *partly* (some do), *model signal
+only* (none do), or **our numbers disagree**: its median engagement is above the run's median
+on at least 500 views (in the saved reports, "Daily Nifty crash predictions" had 54% against
+3.65%). An entry resting on one video our numbers do not flag is dropped. Hidden like counts
+are not low engagement, and the model is told when likes are hidden.
+
+**Gap relevance looks at where the comment was written.** Viewers under a cast-iron video
+ask "how often do I re-season my pan?" without typing "cast iron", so a check on the words
+alone flagged 34 saved gaps, most of them core questions. A gap whose comments all sit under
+videos about the niche now reads *asked under niche videos* instead of `⚠ check relevance`.
 
 ---
 

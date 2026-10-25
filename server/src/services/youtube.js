@@ -324,7 +324,7 @@ export async function resolveChannel(ref) {
  * inside a 90-day window is not a channel this tool can usefully analyse in one
  * request anyway.
  */
-export async function getChannelUploads({ uploadsPlaylistId, publishedAfter, maxPages = 6 }) {
+export async function getChannelUploads({ uploadsPlaylistId, publishedAfter, maxPages = config.youtube.channelUploadPages }) {
   const cutoff = new Date(publishedAfter).getTime();
   const hits = [];
   let pageToken;

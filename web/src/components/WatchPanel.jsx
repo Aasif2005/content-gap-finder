@@ -35,7 +35,15 @@ export function WatchPanel({ currentQuery, onOpenRun, mode = 'niche' }) {
     getWatches().then(setState).catch((e) => setError(e.message));
   }, []);
 
-  useEffect(() => { if (open) load(); }, [open, load]);
+  // Loaded on mount (so the count shows before the panel is opened), again
+  // when a new report lands (a run may have been a watch's), and every minute
+  // while open (scheduled runs fire without anyone clicking).
+  useEffect(() => { load(); }, [load, currentQuery]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
+  }, [open, load]);
 
   const add = async (hours) => {
     setError(null);

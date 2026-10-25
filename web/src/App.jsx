@@ -94,8 +94,15 @@ export default function App() {
   const [copiedLink, setCopiedLink] = useState(false);
   // A query in the URL prefills the form but deliberately does not auto-run --
   // a run spends real quota, and a link that bills whoever opens it is a trap.
-  const [initialQuery] = useState(() => queryFromUrl());
+  // What the search form shows. Starts from the URL, and follows an opened
+  // report's query so "Find gaps" runs the same search the report shows (it
+  // used to keep the defaults, so Refresh and Find gaps ran different queries).
+  const [formQuery, setFormQuery] = useState(() => queryFromUrl());
+  const [formKey, setFormKey] = useState(0);
   const lastInput = useRef(null);
+  // Bumped by every new run / report open / page switch; anything that resolves
+  // under an older number is stale and must not touch the page.
+  const requestSeq = useRef(0);
 
   const refreshQuota = useCallback(() => {
     getQuota().then(setQuota).catch(() => {});
@@ -104,20 +111,26 @@ export default function App() {
 
   /** Opens a persisted report by id. Free -- a disk read of an already-paid run. */
   const openRun = useCallback(async (runId, { push = true } = {}) => {
+    const seq = ++requestSeq.current;
     setError(null);
     setResult(null);
     setCacheInfo(null);
+    setTab('topics');
     setPhase({ phase: 'searching', detail: 'Loading saved report…', progress: 50, elapsedMs: 0 });
     try {
       const { result: saved } = await getRun(runId);
+      if (seq !== requestSeq.current) return;
       const savedMode = saved.channelMode ? 'channel' : 'niche';
       setResult(saved);
       setMode(savedMode);
       lastInput.current = saved.query;
+      setFormQuery(saved.query ?? {});
+      setFormKey((k) => k + 1);
       setPhase(null);
       if (push) pushReportUrl(runId, savedMode);
     } catch (err) {
-      setError(`Could not load that report: ${err.message}`);
+      if (seq !== requestSeq.current) return;
+      setError({ title: 'Could not load that report', message: err.message });
       setPhase(null);
     }
   }, []);
@@ -132,6 +145,7 @@ export default function App() {
       const id = runIdFromPath();
       if (id) openRun(id, { push: false });
       else {
+        requestSeq.current++;
         setResult(null);
         setError(null);
         setMode(modeFromPath());
@@ -145,6 +159,7 @@ export default function App() {
   /** Switches page (nav click). Leaves the other page's in-progress report alone -- it just isn't shown. */
   const switchMode = useCallback((next) => {
     if (next === mode) return;
+    requestSeq.current++;
     setMode(next);
     setResult(null);
     setError(null);
@@ -154,6 +169,8 @@ export default function App() {
   }, [mode]);
 
   const run = useCallback(async (input, { force = false } = {}) => {
+    const seq = ++requestSeq.current;
+    const stale = () => seq !== requestSeq.current;
     lastInput.current = input;
     pushQueryUrl(input, mode); // so a reload or a shared link reopens the same search
     setError(null);
@@ -163,6 +180,7 @@ export default function App() {
 
     try {
       const started = await startAnalysis({ ...input, force });
+      if (stale()) return;
 
       if (started.status === 'done') {
         // Served straight from cache -- no quota spent, no waiting.
@@ -173,16 +191,21 @@ export default function App() {
         return;
       }
 
-      const final = await pollJob(started.jobId, (job) =>
-        setPhase({ phase: job.phase, detail: job.detail, progress: job.progress, elapsedMs: job.elapsedMs })
+      const final = await pollJob(
+        started.jobId,
+        (job) => setPhase({ phase: job.phase, detail: job.detail, progress: job.progress, elapsedMs: job.elapsedMs }),
+        { isCancelled: stale }
       );
+      if (stale()) return;
+      setTab('topics');
       setResult(final);
       setPhase(null);
       // Now the report has an id, so give it a URL worth sharing.
       pushReportUrl(final.runId, mode);
       refreshQuota();
     } catch (err) {
-      setError(err.message);
+      if (err.cancelled || stale()) return;
+      setError({ title: 'Analysis failed', message: err.message });
       setPhase(null);
       refreshQuota();
     }
@@ -246,11 +269,13 @@ export default function App() {
         </div>
       </header>
 
-      <SearchForm onSubmit={run} busy={busy} initial={initialQuery} mode={mode} />
+      <SearchForm key={`${mode}:${formKey}`} onSubmit={run} busy={busy} initial={formQuery} mode={mode} />
 
       <div className="mt-4 flex flex-wrap items-start gap-x-6">
         <HistoryPanel onOpen={openRun} currentRunId={result?.runId} mode={mode} />
-        <WatchPanel currentQuery={result?.query ?? lastInput.current} onOpenRun={openRun} mode={mode} />
+        {/* Only a query that actually produced a report can be watched: offering
+            the raw form input let a watch be saved for a channel that never resolved. */}
+        <WatchPanel currentQuery={result?.query ?? null} onOpenRun={openRun} mode={mode} />
       </div>
 
       <div className="mt-8">
@@ -258,8 +283,8 @@ export default function App() {
 
         {error && (
           <div className="rise rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-500/30 dark:bg-rose-500/10">
-            <p className="font-medium text-rose-800 dark:text-rose-300">Analysis failed</p>
-            <p className="mt-1 text-sm text-rose-700 dark:text-rose-400">{error}</p>
+            <p className="font-medium text-rose-800 dark:text-rose-300">{error.title}</p>
+            <p className="mt-1 text-sm text-rose-700 dark:text-rose-400">{error.message}</p>
           </div>
         )}
 
@@ -297,7 +322,7 @@ export default function App() {
                 {result.runId && (
                   <button
                     onClick={async () => {
-                      const url = `${window.location.origin}/r/${result.runId}`;
+                      const url = `${window.location.origin}${basePathFor(result.channelMode ? 'channel' : 'niche')}/r/${result.runId}`;
                       try { await navigator.clipboard.writeText(url); } catch { /* insecure context -- the URL bar still has it */ }
                       setCopiedLink(true);
                       setTimeout(() => setCopiedLink(false), 1600);
@@ -404,7 +429,7 @@ export default function App() {
 
                 {tab === 'gaps' &&
                   (result.gaps.length ? (
-                    result.gaps.map((g, i) => <GapCard key={g.question + i} gap={g} rank={i + 1} runId={result.runId} index={i} />)
+                    result.gaps.map((g, i) => <GapCard key={`${result.runId}:${i}`} gap={g} rank={i + 1} runId={result.runId} index={i} />)
                   ) : (
                     <EmptyState title="No unmet demand found">
                       Every recurring request in these comments is already answered by a strong video — a sign
@@ -440,6 +465,10 @@ export default function App() {
                     result.objections.map((o, i) => (
                       <ObjectionCard key={o.label + i} objection={o} rank={i + 1} />
                     ))
+                  ) : result.objections === undefined ? (
+                    <EmptyState title="Not computed for this report">
+                      This report was saved before complaints were extracted. Refresh it to get them.
+                    </EmptyState>
                   ) : (
                     <EmptyState title="No recurring complaints">
                       No criticism of the existing videos was raised by at least two separate

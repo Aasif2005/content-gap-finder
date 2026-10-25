@@ -24,11 +24,14 @@ export function HistoryPanel({ onOpen, currentRunId, mode = 'niche' }) {
 
   useEffect(() => {
     if (!open) return;
+    // Switching pages quickly could let the other page's list arrive last.
+    let live = true;
     setError(null);
     setRuns(null);
     getRuns({ limit: 40, mode })
-      .then((d) => setRuns(d.runs))
-      .catch((e) => setError(e.message));
+      .then((d) => live && setRuns(d.runs))
+      .catch((e) => live && setError(e.message));
+    return () => { live = false; };
   }, [open, currentRunId, mode]);
 
   return (

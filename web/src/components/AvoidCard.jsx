@@ -3,10 +3,12 @@ import { VideoStrip } from './VideoStrip.jsx';
 
 const pct = (x) => `${((x ?? 0) * 100).toFixed(2)}%`;
 
-// Reports saved before statsLevel existed only know confirmedByStats.
+// Reports saved before statsLevel existed carry only flaggedCount, whose old
+// "confirmed" meant any one flagged video; re-derive the level from the counts.
 function StatsBadge({ item }) {
   const n = item.videos.length;
-  const level = item.statsLevel ?? (item.confirmedByStats ? 'confirmed' : 'model-only');
+  const derived = item.flaggedCount > 0 && item.flaggedCount * 2 >= n ? 'confirmed' : item.flaggedCount > 0 ? 'partly' : 'model-only';
+  const level = item.statsLevel ?? derived;
   const badges = {
     confirmed: ['bad', `stats confirm (${item.flaggedCount} of ${n})`, `${item.flaggedCount} of these ${n} videos have high view counts but bottom-tier engagement.`],
     partly: ['warm', `stats partly agree (${item.flaggedCount} of ${n})`, `Only ${item.flaggedCount} of these ${n} videos have high views with bottom-tier engagement. A weak signal.`],

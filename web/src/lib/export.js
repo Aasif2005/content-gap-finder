@@ -37,9 +37,10 @@ export function gapsToCsv(result) {
       g.titleLint?.score ?? '',
       g.thumbnailText ?? '',
       g.suggestedFormat,
-      g.recurrence?.status ?? '',
-      g.recurrence?.timesSeen ?? '',
-      g.recurrence?.firstSeen ?? '',
+      // "unknown" means there was nothing to compare against: say n/a, not blank.
+      g.recurrence?.status ?? 'n/a',
+      g.recurrence?.status && g.recurrence.status !== 'unknown' ? g.recurrence.timesSeen : 'n/a',
+      g.recurrence?.firstSeen ?? 'n/a',
       g.nicheRelevant === false ? 'FLAGGED' : 'ok',
       (g.evidence ?? []).slice(0, 3).map((e) => e.text).join(' | '),
     ]);
@@ -60,15 +61,21 @@ export function topicsToCsv(result) {
   return csv(rows);
 }
 
+// The labels the form shows, not the raw values ("format: long", "gaps: strict").
+const FORMAT_LABEL = { both: 'Shorts + long-form', shorts: 'Shorts', long: 'Long-form' };
+const GAP_MODE_LABEL = { inclusive: 'uncovered + weakly covered', strict: 'uncovered only' };
+const AVOID_LABEL = { confirmed: 'stats confirm', partly: 'stats partly agree', 'model-only': 'model signal only', contradicted: 'our numbers disagree' };
+const likes = (e) => (Number.isFinite(e.likes) ? ` — ♥ ${e.likes}` : '');
+
 export function reportToMarkdown(result) {
   const q = result.query;
   const filters = [
     `window: ${q.window === 'custom' ? `since ${(q.customAfter ?? '').slice(0, 10)}` : q.window}`,
-    `format: ${q.contentType}`,
+    `format: ${FORMAT_LABEL[q.contentType] ?? q.contentType ?? 'Shorts + long-form'}`,
     q.regionCode && `region: ${q.regionCode}`,
     q.relevanceLanguage && `language: ${q.relevanceLanguage}`,
     q.minViews > 0 && `min views: ${q.minViews.toLocaleString()}`,
-    `gaps: ${q.gapMode}`,
+    `gaps: ${GAP_MODE_LABEL[q.gapMode] ?? q.gapMode ?? GAP_MODE_LABEL.inclusive}`,
     q.deepScan && 'deep scan',
   ].filter(Boolean).join(' · ');
 
@@ -98,6 +105,10 @@ export function reportToMarkdown(result) {
     out.push(`> Evidence: ${lowEvidence.map(([k, e]) => `${k} ${e.level}`).join(', ')}.`);
   }
 
+  if (result.warnings?.length) {
+    out.push('', '**Notes from this run:**', '', ...result.warnings.map((w) => `- ${w}`));
+  }
+
   if (result.gaps?.length) {
     out.push('', '## Content gaps', '');
     result.gaps.forEach((g, i) => {
@@ -108,6 +119,7 @@ export function reportToMarkdown(result) {
         g.recurrence?.status === 'recurring' && `recurring — seen in ${g.recurrence.timesSeen} runs since ${(g.recurrence.firstSeen ?? '').slice(0, 10)}`,
         g.recurrence?.status === 'new' && 'new this run',
         g.nicheRelevant === false && '⚠ check relevance',
+        g.relevance?.verdict === 'niche-videos' && 'asked under niche videos',
       ].filter(Boolean);
       out.push(`### ${i + 1}. ${g.question}`, '', `*${flags.join(' · ')}*`, '');
       if (g.explanation) out.push(g.explanation, '');
@@ -116,7 +128,7 @@ export function reportToMarkdown(result) {
       if (g.titleOptions?.length > 1) out.push('Other titles: ' + g.titleOptions.slice(1).map((o) => `"${o.title}"`).join(' · '), '');
       if (g.evidence?.length) {
         out.push('What viewers actually said:', '');
-        g.evidence.slice(0, 4).forEach((e) => out.push(`> "${e.text}" — ♥ ${e.likes}`, ''));
+        g.evidence.slice(0, 4).forEach((e) => out.push(`> "${e.text}"${likes(e)}`, ''));
       }
     });
   }
@@ -126,8 +138,13 @@ export function reportToMarkdown(result) {
     result.objections.forEach((o, i) => {
       out.push(`### ${i + 1}. ${o.label}`, '', `*${o.severity} severity · ${o.evidenceCount} comments*`, '');
       if (o.fix) out.push(`**Do instead:** ${o.fix}`, '');
-      (o.evidence ?? []).slice(0, 3).forEach((e) => out.push(`> "${e.text}" — ♥ ${e.likes}`, ''));
+      (o.evidence ?? []).slice(0, 3).forEach((e) => out.push(`> "${e.text}"${likes(e)}`, ''));
     });
+  }
+
+  if (result.resolvedGaps?.length) {
+    out.push('', '## No longer being asked', '', 'Open in the previous comparable run, absent from this one:', '');
+    result.resolvedGaps.forEach((g) => out.push(`- ${g.question} _(last seen ${(g.lastSeen ?? '').slice(0, 10)})_`));
   }
 
   if (result.topics?.length) {
@@ -147,7 +164,10 @@ export function reportToMarkdown(result) {
   if (result.avoid?.length) {
     out.push('', '## Avoid', '');
     result.avoid.forEach((a, i) => {
-      out.push(`### ${i + 1}. ${a.label}${a.confirmedByStats ? ' (stats confirm)' : ' (model signal only)'}`, '', a.reason, '');
+      const n = a.videos?.length ?? 0;
+      const derived = a.flaggedCount > 0 && a.flaggedCount * 2 >= n ? 'confirmed' : a.flaggedCount > 0 ? 'partly' : 'model-only';
+      const level = AVOID_LABEL[a.statsLevel ?? derived];
+      out.push(`### ${i + 1}. ${a.label} (${level})`, '', a.reason, '');
       if (a.counterEvidence) out.push(`*The numbers:* ${a.counterEvidence}`, '');
     });
   }

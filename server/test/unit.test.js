@@ -2015,3 +2015,34 @@ describe('audit: server input and limits', () => {
     assert.equal(corsOriginAllowed('http://localhost:5173', ['http://localhost:5173']), true);
   });
 });
+
+describe('audit: exports use the labels the UI shows', () => {
+  const base = { query: { niche: 'n', window: '7d', contentType: 'long', gapMode: 'strict' }, generatedAt: '2026-10-25T00:00:00Z', stats: { videosAnalyzed: 7, commentsAnalyzed: 60 }, topics: [] };
+  test('format and gap mode are labelled, missing likes are left out, avoid level is shown', () => {
+    const md = reportToMarkdown({
+      ...base,
+      warnings: ['1 run of this subject from the last 24 hours was not compared.'],
+      gaps: [{ question: 'Q?', demandStrength: 'low', coverage: 'none', demandScore: 3, evidence: [{ text: 'a comment' }], relevance: { verdict: 'niche-videos' } }],
+      avoid: [{ label: 'Nifty predictions', reason: 'r', statsLevel: 'contradicted', videos: [] }],
+      resolvedGaps: [{ question: 'Old ask', lastSeen: '2026-10-01T00:00:00Z' }],
+    });
+    assert.match(md, /format: Long-form/);
+    assert.match(md, /gaps: uncovered only/);
+    assert.doesNotMatch(md, /undefined/);
+    assert.match(md, /Nifty predictions \(our numbers disagree\)/);
+    assert.match(md, /asked under niche videos/);
+    assert.match(md, /No longer being asked[\s\S]*Old ask/);
+    assert.match(md, /Notes from this run/);
+  });
+  test('recurrence CSV cells say n/a when there was nothing to compare', () => {
+    const csv = gapsToCsv({ gaps: [{ question: 'Q', recurrence: { status: 'unknown', timesSeen: 1, firstSeen: null } }] });
+    assert.match(csv.split('\n')[1], /unknown,n\/a,n\/a/);
+  });
+});
+
+describe('audit: quota pricing', () => {
+  test('channel mode is priced at the pages it can walk', async () => {
+    const { unitsPerAnalysis } = await import('../src/lib/quota.js');
+    assert.ok(unitsPerAnalysis({ channelMode: true }) >= 6 + 5);
+  });
+});
