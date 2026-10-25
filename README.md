@@ -273,10 +273,28 @@ candidate has one.
 ### "Make it": from a gap to something you can film
 
 Each gap has a **Make it** button. It spends nothing until pressed, then makes one DeepSeek
-call (about 6-16k tokens, 30-90s) and returns an angle, hooks, a script or outline, and search
-text, using the prompts of `yt-script` and `yt-seo` from youtube-agent-skill. A language picker
-sits beside it ("the audience's language" by default, or any of a dozen); each language is its
-own saved brief.
+call (about 6-22k tokens, 30-90s) using the prompts of `yt-script` and `yt-seo` from
+youtube-agent-skill, and returns a brief in three sections:
+
+1. **Content opportunity: why make it.** Built from the gap in code, not by the model: how
+   many comments, videos and likes are behind the request, how well it is covered, and the
+   model's `angle` (labelled as inferred from the covering videos' *titles*, since that is all it
+   saw). A gap with at most `BRIEF_THIN_COMMENTS` comments and `BRIEF_THIN_LIKES` likes is
+   marked an **early signal**.
+2. **Creator research: before you film.** What to **verify** (facts the draft relies on that the
+   evidence lacks) and what to **prepare** (recordings, screens, examples), the covering videos
+   to watch first, the sensitive-case notice, and a one-line roll-up of what the checks found.
+3. **Ready-to-film script.** The length verdict, the essentials, five hooks, the beats, and the
+   title, description and tags.
+
+A language picker sits beside it ("the audience's language" by default, or any of a dozen);
+each language is its own saved brief. Long-form is written as a **full script** by default, so
+its runtime is measured from its words; **Switch to talking points** redrafts the body as notes
+(budgeted, not measured). The default changed after a live test: the model's own time estimates
+for the footprint brief summed to 4:59, and the full script it then wrote was 2:40 of speech. A
+measured script is therefore never called "rushed" against the model's estimate, and the banner
+notes that demonstrations add screen time beyond the spoken words. Optional essentials (one
+low-liked comment, not the request itself) give a **core cut** with its own redraft button.
 
 The model's only inputs are a handful of viewer comments and some video titles, so it cannot
 know the facts a payoff needs. The brief is built around that, and everything decidable in code
@@ -284,14 +302,24 @@ is decided in code — the model never grades its own writing:
 
 - **It says what it is assuming.** The draft lists `needs` (facts the script relies on that the
   evidence lacks) and writes `[NEEDS SOURCE: ...]` into the script instead of asserting them.
-  The UI puts them in a "Before you film: confirm these" box. Evidence is labelled by source
+  The UI lists them under Creator research, split into verify and prepare. Evidence is labelled by source
   (`[comment]`, `[video title]`, `[channel's own title]`) and a phrase quoted in a video title is
   never treated as an official statement. The first version of this called a title quote "the one
   family statement we have on record".
-- **Length follows format.** A Short is one minute of prose. A long-form brief targets
-  `BRIEF_LONG_MINUTES` (default 8): full prose for the turn, payoff and close, and *talking
-  points* with a time budget for the body, so the creator isn't handed eight minutes of invented
-  dialogue. The runtime says "budgeted" when it is an outline, and times prose by its words in
+- **As long as the topic needs, not as long as the model wants.** Told "about 8 minutes", the
+  model filled 8 minutes: a real footprint-chart brief ran 7:24 with a troubleshooting beat from
+  one comment and a practice-routine beat from none. Now it lists the **essentials** first (the
+  fewest things a viewer must leave with, each citing the comments it answers, with a teaching
+  time) and every body beat names the essential it teaches. `assessLength` then checks the
+  structure in code: a beat that teaches no essential is *not asked for*, a beat over 1.5x its
+  essential's time is *stretched*, an essential no comment is behind is *nobody asked*, and the
+  draft is judged against what the essentials need (+/-25% and a minute of slack): **fits**,
+  **padded** (with a *Redraft at ~5:00* button), **rushed**, or **wrong format** (long-form whose
+  essentials fit in a minute could be a Short; a Short that needs more says which essentials it
+  can hold). A 7:24 draft is kept when every section is earned. The per-essential times are the
+  model's estimate and the UI says so; what code catches is padding by structure.
+  `BRIEF_MAX_MINUTES` (default 15) is only a ceiling: past it the request is too broad for one
+  video. The runtime says "budgeted" when it is an outline, and times prose by its words in
   any script.
 - **Invented figures and names are flagged** in hooks, beats, the description and tags: digits
   *and spelled-out numbers* ("Nine days" once slipped past a digits-only check), and capitalised
@@ -300,8 +328,13 @@ is decided in code — the model never grades its own writing:
   other scripts the UI says so (digits are still checked).
 - **Five hooks**, scored by [`lib/hookScore.js`](server/src/lib/hookScore.js) (a port of
   `hookscore.py`: specificity, address, stakes, curiosity, brevity; verdict = 60% mean + 40%
-  weakest) and labelled with the closest of the 21 formulas by wording. The checklist is written
-  for English, so hooks in another script are marked *not scored* rather than called weak. The
+  weakest) and labelled with the closest of the 21 formulas by wording (or, when the English
+  wording match finds nothing, the formula the model says it used, validated against the list and
+  marked as the model's label). The scorer is written for English, so hooks in another script get
+  a language-neutral *partial check* instead (one breath, a question left open, the viewer
+  addressed early, no announcement opener) rather than being called weak. A hook that opens by
+  announcing the video ("In this video...", "இந்த வீடியோவில்...", "इस वीडियो में...") is demoted in
+  any language: in the footprint brief it had been ranked best because nothing could score Tamil. The
   original author measured that it separates deliberately bad hooks from real ones but barely
   separates a creator's own hits from misses, so the UI calls it a checklist, not a prediction.
 - **Each beat serves the request**, and an `angle` says what this video adds that the covering
@@ -310,6 +343,13 @@ is decided in code — the model never grades its own writing:
 - **The query test** reports, for each of the three searches a person would type, whether the
   title has its words, how much of it the title plus description opening cover, and which words
   are missing. The description opening is asked to contain the words of at least two queries.
+  A "query" that reads like a request to a creator ("orderflow parthi video", "please make a
+  video") was copied from a comment, not imagined as a search, and is marked as such. When the
+  searches' words are mostly missing from the title, the brief may suggest a `title_fix`; it is
+  shown only if it carries more of those words than the current title and passes the same
+  invented-number and accusation checks. The gap's title is never replaced silently.
+- `[NEEDS SOURCE]` markers are counted with or without a colon (the model writes a bare one
+  about half the time, and a colon-only pattern counted those as zero).
 - Saved by (report, gap, language) so re-opening costs nothing, and limited separately from
   analyses (`BRIEF_RATE_LIMIT_PER_HOUR`, default 30) since it costs no YouTube quota.
 

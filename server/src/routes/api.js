@@ -193,13 +193,18 @@ router.post('/runs/:runId/gaps/:i/brief', (req, res, next) => {
   const index = Number(req.params.i);
   const force = req.body?.force === true;
   const language = String(req.body?.language ?? '').trim().slice(0, 40);
+  // Redraft options. Anything unrecognised is ignored rather than rejected.
+  const format = ['short', 'long-form'].includes(req.body?.format) ? req.body.format : '';
+  const style = ['points', 'script'].includes(req.body?.style) ? req.body.style : '';
+  const minutes = Number(req.body?.targetMinutes);
+  const targetMinutes = Number.isInteger(minutes) && minutes >= 1 && minutes <= config.brief.maxMinutes ? minutes : null;
   try {
     // Saved briefs and joins of a running job cost nothing, so they skip the limiter.
     const free = !force && (store.readBrief(req.params.runId, index, language) || null);
     if (free) return res.json({ status: 'done', cached: true, brief: free });
     briefRateLimit(req, res, () => {
       try {
-        const started = brief.startBrief(req.params.runId, index, { force, language });
+        const started = brief.startBrief(req.params.runId, index, { force, language, format, style, targetMinutes, core: req.body?.core === true });
         res.status(started.status === 'done' ? 200 : 202).json(started);
       } catch (err) {
         next(err);

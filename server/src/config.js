@@ -97,8 +97,14 @@ export const config = {
 
   // "Make it" briefs (services/brief.js).
   brief: {
-    // Target length of a long-form outline. A Short is always under a minute.
-    longMinutes: num(process.env.BRIEF_LONG_MINUTES, 8),
+    // There is no target length: a brief runs as long as the things viewers asked
+    // for take to teach (see assessLength). This is only the ceiling past which a
+    // request is too broad for one video. A Short is always under a minute.
+    maxMinutes: num(process.env.BRIEF_MAX_MINUTES, 15),
+    // A gap resting on this few comments or likes is an early signal: the brief
+    // still drafts, and suggests testing with a Short before a long video.
+    thinComments: num(process.env.BRIEF_THIN_COMMENTS, 3),
+    thinLikes: num(process.env.BRIEF_THIN_LIKES, 5),
   },
 
   // Median-multiple outliers (lib/outlier.js, from youtube-agent-skill's yt-viral).

@@ -89,11 +89,11 @@ export const getBrief = (runId, index, language = '') =>
   fetch(`/api/runs/${runId}/gaps/${index}/brief?language=${encodeURIComponent(language)}`).then(json).then((b) => b.brief);
 
 /** Drafts (or returns the saved) brief for one gap. Generating is one DeepSeek call, polled like a run. */
-export async function makeBrief(runId, index, { force = false, language = '' } = {}) {
+export async function makeBrief(runId, index, { force = false, language = '', format = '', style = '', targetMinutes = null, core = false } = {}) {
   const started = await fetch(`/api/runs/${runId}/gaps/${index}/brief`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force, language }),
+    body: JSON.stringify({ force, language, format, style, targetMinutes, core }),
   }).then(json);
   if (started.status === 'done') return started.brief;
   return pollJob(started.jobId, null, { timeoutMs: 240_000 });

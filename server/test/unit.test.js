@@ -10,10 +10,10 @@ import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatin
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
 import { withLock } from '../src/lib/fileLock.js';
-import { FORMULAS, classifyFormula, formulaHint } from '../src/lib/hookFormulas.js';
-import { scoreHook, band } from '../src/lib/hookScore.js';
-import { finalizeBrief, queryTest, briefPrompt, formulaList, systemPrompt } from '../src/services/brief.js';
-import { lintTitle, ungroundedNumbers, rankTitleOptions, unverifiedNames, unverifiedTags, impliesAccusation } from '../src/lib/titleLint.js';
+import { FORMULAS, classifyFormula, formulaHint, normalizeFormulaId } from '../src/lib/hookFormulas.js';
+import { scoreHook, band, weakOpener, partialHookCheck } from '../src/lib/hookScore.js';
+import { finalizeBrief, queryTest, briefPrompt, formulaList, systemPrompt, assessLength, buildOpportunity, titleCoverage } from '../src/services/brief.js';
+import { lintTitle, ungroundedNumbers, rankTitleOptions, unverifiedNames, unverifiedTags, impliesAccusation, requestPhrase } from '../src/lib/titleLint.js';
 import { detectSensitive, assessSensitivity } from '../src/lib/sensitive.js';
 import { ExclusionLedger, REASONS } from '../src/lib/exclusions.js';
 import { assessEvidence, assessTopic, explainShortfall, thinPoolFrom, suggestionsFor, rankSwing } from '../src/lib/confidence.js';
@@ -1326,8 +1326,9 @@ describe('make-it brief v2', () => {
     assert.match(short, /under 60 seconds/);
     assert.doesNotMatch(short, /talking points, in the order/);
     const long = systemPrompt({ format: 'long-form', language: 'Tamil', sensitive: { level: 'high', reasons: ['legal process mentioned (custody)'] } });
-    assert.match(long, /about 8 minutes/);
-    assert.match(long, /write the hooks, script, queries, description and tags in Tamil/);
+    assert.match(long, /There is NO target length/);
+    assert.doesNotMatch(long, /about \d+ minutes/);
+    assert.match(long, /write the essentials, needs, hooks, script, queries, description and tags in Tamil/);
     assert.match(long, /SENSITIVE CASE/);
     assert.match(long, /CONFIRMED/);
     assert.doesNotMatch(systemPrompt({ format: 'long-form' }), /SENSITIVE CASE/);
@@ -1560,5 +1561,227 @@ describe('markdown export carries the funnel', () => {
     });
     assert.match(md, /14 found, 7 scored; left out: 7 a short, with long-form selected/);
     assert.match(md, /Evidence: heat small\./);
+  });
+});
+
+describe('make-it v3: hooks, markers and formula labels', () => {
+  test('a bare [NEEDS SOURCE] marker is counted and its words are not checked as names', () => {
+    const r = finalizeBrief({ beats: [{ beat: 'body', covers: 1, seconds: 60, points: ['Delta is a summary [NEEDS SOURCE]', 'and [NEEDS SOURCE: Platform docs]'] }] }, { title: 'T', corpus: 'delta' });
+    assert.equal(r.beats[0].needsSource, 2);
+    assert.deepEqual(r.beats[0].unverifiedNames, []);
+    assert.equal(r.checks.needsSource, 2);
+  });
+  test('claimed formula ids are validated, forgiving one stray "the-" prefix', () => {
+    assert.equal(normalizeFormulaId('the-contrarian-flip').id, 'contrarian-flip');
+    assert.equal(normalizeFormulaId('warning').id, 'the-warning');
+    assert.equal(normalizeFormulaId('not-a-formula'), null);
+    assert.equal(normalizeFormulaId(null), null);
+  });
+  test('a Tamil hook with no wording match shows the model\'s validated label, not "Unclassified"', () => {
+    const r = finalizeBrief({ hooks: [{ text: 'ஒரு footprint cell-ஐ எடுத்து அப்படியே உடைக்கிறேன் — எந்த விலையில் bid ஓடிச்சு என்று காட்டுகிறேன்.', formula_id: 'the-teardown' }] }, { title: 'T' });
+    assert.equal(r.hooks[0].formula, 'The Teardown');
+    assert.equal(r.hooks[0].formulaSource, 'model');
+  });
+  test('weak openers are caught in English, Tamil, Tanglish and Hindi', () => {
+    assert.equal(weakOpener('In this video I will show you how to read a footprint'), true);
+    assert.equal(weakOpener('“இந்த வீடியோவில் footprint chart-ஐ காட்டுகிறேன்'), true);
+    assert.equal(weakOpener('Indha videola naan solren'), true);
+    assert.equal(weakOpener('इस वीडियो में हम देखेंगे'), true);
+    assert.equal(weakOpener('You read footprint charts wrong, and the tape proves it?'), false);
+  });
+  test('the partial checklist matches Tamil second person by prefix, Latin words whole', () => {
+    const p = partialHookCheck('நீங்கள் footprint chart-ஐ வெறும் volume bar-ஆ பார்க்கிறீர்கள் — அதன் உண்மையான தகவல் என்ன?');
+    assert.equal(p.checks.find((c) => c.id === 'address').pass, true);
+    assert.equal(p.checks.find((c) => c.id === 'question').pass, true);
+    assert.equal(partialHookCheck('We need a better way to read the tape today friends').checks.find((c) => c.id === 'address').pass, false);
+  });
+  test('an "In this video" opener ranks below a hook that starts with the thing itself, scored or not', () => {
+    const r = finalizeBrief({ hooks: [
+      { text: 'இந்த வீடியோவில் footprint chart-ஐ cell-க்கு cell எப்படிப் படிக்கிறது என்று காட்டுகிறேன்.' },
+      { text: 'நீங்கள் footprint chart-ஐ வெறும் volume bar-ஆ பார்க்கிறீர்கள் — அதன் உண்மையான தகவல் என்ன?' },
+    ] }, { title: 'T' });
+    assert.match(r.bestHooks[0].hook, /^நீங்கள்/);
+    assert.equal(r.hooks[1].weakOpener, true);
+    assert.ok(r.hooks[0].partial.passed > r.hooks[1].partial.passed);
+  });
+});
+
+describe('make-it v3: length from essentials', () => {
+  const ess = (secs) => secs.map((s, i) => ({ point: `essential ${i + 1}`, answers: [1], seconds: s }));
+  const body = (covers, seconds) => ({ beat: 'body', covers, seconds, points: ['p'] });
+  const frame = [{ beat: 'turn', seconds: 20, points: ['t'] }, { beat: 'payoff', seconds: 20, points: ['p'] }, { beat: 'close', seconds: 10, points: ['c'] }];
+  const run = (essentials, beats, opts = {}) => finalizeBrief({ essentials, beats }, { title: 'T', corpus: '', evidenceCount: 3, ...opts });
+
+  test('a draft that teaches what was asked, at about its budget, fits', () => {
+    const r = run(ess([90, 120, 90]), [frame[0], body(1, 90), body(2, 120), body(3, 100), frame[1], frame[2]]);
+    assert.equal(r.length.verdict, 'fits');
+    assert.equal(r.length.offerRedraft, false);
+    assert.deepEqual(r.essentials.map((e) => e.coveredBy), [[2], [3], [4]]);
+  });
+  test('beats nobody asked for make it padded, name the beat, and offer the shorter cut', () => {
+    // 3 essentials (5:00 with the frame) drafted at 7:24 with two extra beats.
+    const r = run(ess([80, 90, 80]), [frame[0], body(1, 80), body(2, 90), body(3, 80), body(null, 70), body(9, 74), frame[1], frame[2]]);
+    assert.equal(r.length.verdict, 'padded');
+    assert.equal(r.length.draft, 444);
+    assert.equal(r.length.needed, 300);
+    assert.equal(r.length.suggestedMinutes, 5);
+    assert.equal(r.length.offerRedraft, true);
+    assert.equal(r.beats[4].offPlan, true);
+    assert.equal(r.beats[5].offPlan, true);
+    assert.ok(r.length.reasons.some((x) => /Beat 5 teaches nothing/.test(x)));
+  });
+  test('a beat far longer than its essential is stretched', () => {
+    const r = run(ess([60, 60]), [frame[0], body(1, 200), body(2, 60), frame[1]]);
+    assert.equal(r.beats[1].stretched, true);
+    assert.equal(r.length.verdict, 'padded');
+  });
+  test('a draft well under what its essentials need is rushed', () => {
+    const r = run(ess([200, 200, 200]), [frame[0], body(1, 100), body(2, 100), body(3, 100), frame[1]]);
+    assert.equal(r.length.verdict, 'rushed');
+  });
+  test('an essential citing no real comment is unrequested; one no beat teaches is reported', () => {
+    const r = run([{ point: 'asked', answers: [2], seconds: 60 }, { point: 'nobody asked', answers: [7, 'x'], seconds: 60 }, { point: 'the request', answers: ['q'], seconds: 60 }],
+      [frame[0], body(1, 60), body(2, 60), frame[1]]);
+    assert.equal(r.essentials[1].unrequested, true);
+    assert.deepEqual(r.essentials[2].answers, ['q']);
+    assert.equal(r.essentials[2].unrequested, false);
+    assert.ok(r.length.reasons.some((x) => /Essential 3 .* not taught/.test(x)));
+  });
+  test('long-form whose essentials fit in a minute could be a Short; a Short that needs more says so', () => {
+    assert.equal(run(ess([20]), [{ beat: 'turn', seconds: 10, points: ['t'] }, body(1, 20)]).length.verdict, 'wrong-format');
+    const s = run([{ point: 'a', answers: [1], seconds: 40 }, { point: 'b', answers: [1], seconds: 50 }], [body(1, 40), body(2, 50)], { format: 'Short' });
+    assert.equal(s.length.verdict, 'wrong-format');
+    assert.match(s.length.summary, /A Short can cover essential 1/);
+  });
+  test('thin demand adds the early-signal advice on long-form only', () => {
+    const opportunity = buildOpportunity({ question: 'q', evidence: [{ text: 'Footprint video', likes: 1, videoId: 'a' }, { text: 'x', likes: 0, videoId: 'a' }, { text: 'y', likes: 0, videoId: 'b' }] }, { thinComments: 3, thinLikes: 5 });
+    assert.equal(opportunity.earlySignal, true);
+    assert.equal(opportunity.videos, 2);
+    assert.equal(opportunity.likes, 1);
+    const r = run(ess([120, 120]), [frame[0], body(1, 120), body(2, 120), frame[1]], { opportunity });
+    assert.match(r.length.earlySignal, /3 comments and 1 like/);
+    assert.equal(buildOpportunity({ evidence: [{ text: 'x', likes: 400 }] }, { thinComments: 3, thinLikes: 5 }).earlySignal, false);
+  });
+  test('an old-shape brief (no essentials) has no length verdict and does not crash', () => {
+    const r = finalizeBrief({ beats: [{ beat: 'turn', say: 'hello there friends' }] }, { title: 'T' });
+    assert.equal(r.length, null);
+    assert.deepEqual(r.essentials, []);
+  });
+  test('needs default to verify; prepare is kept', () => {
+    const r = finalizeBrief({ needs: [{ claim: 'delta formula' }, { kind: 'Prepare', claim: 'a recorded session' }] }, { title: 'T' });
+    assert.deepEqual(r.needs.map((n) => n.kind), ['verify', 'prepare']);
+  });
+  test('the prompt has no length quota, and redraft options change it', () => {
+    const p = systemPrompt({ format: 'long-form' });
+    assert.match(p, /Never add a beat, example, tangent or recap to reach a length/);
+    assert.doesNotMatch(p, /4-6 body beats/);
+    assert.match(systemPrompt({ format: 'long-form', targetMinutes: 5 }), /fit it in about 5 minutes/);
+    assert.match(systemPrompt({ format: 'long-form', style: 'script' }), /EVERY beat, body beats included/);
+    assert.match(systemPrompt({ format: 'Short' }), /under 60 seconds/);
+  });
+});
+
+describe('make-it v3: search terms and the title suggestion', () => {
+  test('request phrasing is flagged as not a search', () => {
+    assert.equal(requestPhrase('orderflow parthi video'), true);
+    assert.equal(requestPhrase('footprint chart pathi video podunga'), true);
+    assert.equal(requestPhrase('please make a video on delta'), true);
+    assert.equal(requestPhrase('footprint chart tamil'), false);
+    assert.equal(requestPhrase('footprint chart epdi padikurathu'), false);
+  });
+  test('the query test marks request-shaped queries', () => {
+    const q = queryTest(['orderflow parthi video', 'footprint chart tamil'], 'T', '');
+    assert.deepEqual(q.map((x) => x.request), [true, false]);
+  });
+  test('a title fix is shown only when it carries more of the real search words', () => {
+    const seo = { queries: ['footprint chart tamil', 'orderflow parthi video', 'footprint chart epdi padikurathu'], description_opening: '', tags: [] };
+    const r = finalizeBrief({ seo, title_fix: 'Footprint Chart Tamil: epdi padikurathu' }, { title: 'Footprint Charts: Reading The Data', corpus: 'footprint chart' });
+    assert.equal(r.titleFix.title, 'Footprint Chart Tamil: epdi padikurathu');
+    assert.ok(r.titleFix.coverage > r.titleFix.originalCoverage);
+    const worse = finalizeBrief({ seo, title_fix: 'Order Flow Secrets' }, { title: 'Footprint Chart Tamil Guide', corpus: '' });
+    assert.equal(worse.titleFix, null);
+    const invented = finalizeBrief({ seo, title_fix: 'Footprint Chart Tamil: 5 Rules' }, { title: 'T', corpus: 'footprint chart' });
+    assert.equal(invented.titleFix, null);
+  });
+  test('titleCoverage averages the share of each query in the title', () => {
+    assert.equal(titleCoverage(['footprint chart tamil', 'delta bar'], 'Footprint Chart Tamil'), 0.5);
+  });
+});
+
+describe('make-it v3: the core cut and query words in any script', () => {
+  const frame = [{ beat: 'turn', seconds: 20, points: ['t'] }, { beat: 'payoff', seconds: 20, points: ['p'] }];
+  const body = (covers, seconds) => ({ beat: 'body', covers, seconds, points: ['p'] });
+  test('an essential one low-liked comment asked for is optional, and the core cut leaves it out', () => {
+    const r = finalizeBrief({
+      essentials: [
+        { point: 'what a footprint is', answers: [1, 2, 'q'], seconds: 120 },
+        { point: 'reading a row', answers: [1, 'q'], seconds: 180 },
+        { point: 'version lag', answers: [3], seconds: 130 },
+      ],
+      beats: [frame[0], body(1, 120), body(2, 180), body(3, 130), frame[1]],
+    }, { title: 'T', evidenceCount: 3, evidenceLikes: [1, 0, 0] });
+    assert.equal(r.length.verdict, 'fits');
+    assert.deepEqual(r.essentials.map((e) => e.thin), [false, false, true]);
+    assert.equal(r.length.core.seconds, 340);
+    assert.equal(r.length.core.minutes, 6);
+    assert.deepEqual(r.length.core.drop, [3]);
+    assert.match(r.length.core.note, /Essential 3 rests on a single comment/);
+  });
+  test('one comment with many likes is not optional', () => {
+    const r = finalizeBrief({ essentials: [{ point: 'a', answers: [1], seconds: 120 }, { point: 'b', answers: [2], seconds: 120 }], beats: [body(1, 120), body(2, 120)] },
+      { title: 'T', evidenceCount: 2, evidenceLikes: [300, 0] });
+    assert.deepEqual(r.essentials.map((e) => e.thin), [false, true]);
+  });
+  test('the core cut prompt drops single-comment side-topics', () => {
+    assert.match(systemPrompt({ format: 'long-form', core: true, targetMinutes: 6 }), /CORE CUT.*Aim for about 6 minutes/s);
+  });
+  test('Tamil query words count, and match across a suffix', () => {
+    const [q] = queryTest(['footprint chart எப்படி படிக்கலாம்'], 'Footprint Chart: Reading The Data', '');
+    assert.equal(q.coverage, 0.5);
+    assert.deepEqual(q.missing, ['எப்படி', 'படிக்கலாம்']);
+    const [q2] = queryTest(['footprint chart படிக்கலாம்'], 'Footprint Chart படிக்க', '');
+    assert.equal(q2.inTitle, true);
+  });
+});
+
+describe('make-it v3: small false positives', () => {
+  test("contractions of I are not names", () => {
+    assert.deepEqual(unverifiedNames("So here, I'm going to show what I've found and Ramesh said.", ''), ['Ramesh']);
+  });
+  test('the language rule covers essentials and needs too', () => {
+    assert.match(systemPrompt({ format: 'long-form', language: 'Tamil' }), /write the essentials, needs, hooks/);
+  });
+});
+
+describe('make-it v3: a measured script is judged by its words, not the model guess', () => {
+  const prose = (n) => Array(n).fill('word').join(' ');
+  test('full prose beats are measured, never "rushed" against inflated estimates, and the core cut uses the measured time', () => {
+    const r = finalizeBrief({
+      essentials: [
+        { point: 'what it is', answers: [1, 'q'], seconds: 120, demo: true },
+        { point: 'reading a row', answers: [1, 2], seconds: 170, demo: true },
+        { point: 'version lag', answers: [3], seconds: 130 },
+      ],
+      beats: [
+        { beat: 'turn', say: prose(40) },
+        { beat: 'body', covers: 1, say: prose(150) },
+        { beat: 'body', covers: 2, say: prose(150) },
+        { beat: 'body', covers: 3, say: prose(150) },
+        { beat: 'payoff', say: prose(50) },
+      ],
+    }, { title: 'T', evidenceCount: 3, evidenceLikes: [1, 0, 0] });
+    assert.equal(r.length.basis, 'measured');
+    assert.equal(r.length.draft, 216);
+    assert.equal(r.length.best, 216);
+    assert.equal(r.length.verdict, 'fits');
+    assert.match(r.length.summary, /of speech, plus the screen time the demonstrations take/);
+    assert.equal(r.length.core.seconds, 156);
+    assert.equal(r.runtime.estimated, false);
+  });
+  test('long-form defaults to a full script; talking points are the option', () => {
+    assert.match(systemPrompt({ format: 'long-form' }), /EVERY beat, body beats included/);
+    assert.match(systemPrompt({ format: 'long-form', style: 'points' }), /3-5 short talking points/);
+    assert.equal(finalizeBrief({}, { title: 'T' }).style, 'script');
+    assert.equal(finalizeBrief({}, { title: 'T', style: 'points' }).style, 'points');
   });
 });

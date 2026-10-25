@@ -124,7 +124,8 @@ export function unverifiedNames(text, corpus) {
     sentence.split(/\s+/).filter(Boolean).forEach((tok, i) => {
       if (i === 0) return;
       const w = tok.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
-      if (w.length < 3 || !/^[A-Z][a-z'\u2019-]+$/.test(w) || NAME_ALLOW.has(w)) return;
+      // "I'm", "I've", "I'll" are capitalised mid-sentence but are not names.
+      if (w.length < 3 || !/^[A-Z][a-z'\u2019-]+$/.test(w) || NAME_ALLOW.has(w) || /^I['\u2019]/.test(w)) return;
       const lw = w.toLowerCase().replace(/['\u2019]s$/, '');
       if (!known.has(lw)) out.add(w);
     });
@@ -139,6 +140,15 @@ export function unverifiedTags(tags, corpus) {
     words(tag).some((w) => /^[a-z]{4,}$/.test(w) && !known.has(w) && !GENERIC_TAG_WORDS.has(w))
   );
 }
+
+// Words that ask a creator for something ("pathi video podunga", "please make a
+// video on"). A comment is phrased like that; a search is not, so a "query"
+// containing one was copied from a comment rather than imagined as a search.
+const REQUEST =
+  /\b(podu|podunga|podungo|podunka|poduga|podugaa|pannunga|pannungo|pannuga|pathi|parthi|patthi|pls|plz|please|make a video|do a video|upload (a|the) video|sis|bro|anna|akka)\b|போடுங்க|போடு|பண்ணுங்க|பற்றி வீடியோ|बनाओ|बनाइए|बनाएं|डालो|डालिए|प्लीज/iu;
+
+/** True when a search query reads like a request to a creator instead of something a person types into search. */
+export const requestPhrase = (query) => REQUEST.test(query ?? '');
 
 const ACCUSATION =
   /\b(suspect(?:s|ed)?|guilty|culprits?|killers?|murderers?|fishy|framed|cover[- ]?up|did it|behind (?:it|this))\b|\u0b9a\u0ba8\u0bcd\u0ba4\u0bc7\u0b95|\u0b95\u0bc1\u0bb1\u0bcd\u0bb1\u0bb5\u0bbe\u0bb3\u0bbf|\u0b95\u0bca\u0bb2\u0bc8\u0baf\u0bbe\u0bb3\u0bbf/i;

@@ -88,6 +88,48 @@ export const FIX = {
 
 export const band = (v) => (v >= 72 ? 'STRONG' : v >= 55 ? 'WORKABLE' : 'WEAK');
 
+// "In this video I will show you..." spends the opening announcing the video
+// instead of starting it. The model reaches for it most in Tamil and Hindi,
+// where the English scorer cannot see it, so it is caught here in every script.
+const WEAK_OPENER = new RegExp([
+  String.raw`^(in (this|today'?s) video|today (i|we)('ll| will| are going to| am going to)|hey (guys|everyone)|hi (guys|everyone)|hello (guys|everyone|friends)|welcome (back )?to)\b`,
+  String.raw`^(indha|intha) video(la|vil|le)?\b`, String.raw`^vanakkam\b`, String.raw`^namaste\b`,
+  '^இந்த வீடியோ', '^இன்னைக்கு வீடியோ', '^இன்றைய வீடியோ', '^வணக்கம்',
+  '^इस वीडियो', '^आज के वीडियो', '^नमस्ते', '^नमस्कार',
+].join('|'), 'iu');
+
+const stripLead = (t) => String(t ?? '').trim().replace(/^[\s"'“”‘’«»(\[-]+/u, '');
+
+/** True when a hook opens by announcing the video ("In this video...") in any of the scripts we handle. */
+export const weakOpener = (text) => WEAK_OPENER.test(stripLead(text));
+
+// Second person, in the scripts the app's audiences write in. Tamil and Hindi
+// attach suffixes ("உங்களுக்கு", "आपको"), so those match as word prefixes;
+// Latin words match whole ("nee" must not match "need").
+const YOU_EXACT = new Set(['you', 'your', "you're", 'yourself', 'neenga', 'neengal', 'unga', 'ungal', 'nee', 'unakku', 'நீ', 'तू']);
+const YOU_PREFIX = ['நீங்க', 'உங்க', 'உனக்கு', 'உன்', 'आप', 'तुम'];
+const addressesViewer = (w) => YOU_EXACT.has(w) || YOU_PREFIX.some((p) => w.startsWith(p));
+const spoken = (t) => String(t).match(/[\p{L}\p{M}\p{N}'’]+/gu) ?? [];
+
+/**
+ * The part of the hook checklist that does not depend on English: one breath,
+ * a question left open, the viewer addressed early, no announcement opener.
+ * Used for hooks in a script the five-property scorer cannot read. It is a
+ * checklist, not a score, and the UI says so. 6-22 words rather than 9-24
+ * because Tamil and Hindi pack a suffix into what English spends a word on.
+ */
+export function partialHookCheck(text) {
+  const w = spoken(text);
+  const lower = w.slice(0, 6).map((x) => x.toLowerCase());
+  const checks = [
+    { id: 'brevity', label: 'one breath (6-22 words)', pass: w.length >= 6 && w.length <= 22 },
+    { id: 'question', label: 'leaves a question open', pass: /[?？]/.test(String(text)) },
+    { id: 'address', label: 'speaks to the viewer early', pass: lower.some(addressesViewer) },
+    { id: 'opener', label: 'starts the video instead of announcing it', pass: !weakOpener(text) },
+  ];
+  return { checks, passed: checks.filter((c) => c.pass).length, total: checks.length };
+}
+
 export function scoreHook(text) {
   const properties = Object.fromEntries(PROPS.map(([name, fn]) => [name, fn(text)]));
   const vals = Object.values(properties);

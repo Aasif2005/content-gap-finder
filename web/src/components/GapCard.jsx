@@ -159,7 +159,7 @@ export function GapCard({ gap, rank, runId, index }) {
             </div>
           )}
 
-          {gap.suggestedTitle && <BriefPanel runId={runId} index={index} sensitive={gap.sensitive} />}
+          {gap.suggestedTitle && <BriefPanel runId={runId} index={index} sensitive={gap.sensitive} gap={gap} />}
 
           {gap.coveringVideos?.length > 0 && (
             <details className="group mt-3">

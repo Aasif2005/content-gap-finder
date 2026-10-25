@@ -18,6 +18,21 @@ export function classifyFormula(text) {
   return best ? { id: best.id, name: best.name, hits } : { id: null, name: 'Unclassified', hits: 0 };
 }
 
+/**
+ * A formula id the model claimed, checked against the real list. Models drift
+ * on the prefix ("the-contrarian-flip" for "contrarian-flip"), so one stray or
+ * missing "the-" is forgiven; anything else is not a formula and returns null.
+ */
+export function normalizeFormulaId(id) {
+  const s = String(id ?? '').trim().toLowerCase().replace(/[\s_]+/g, '-');
+  if (!s) return null;
+  for (const c of [s, s.replace(/^the-/, ''), `the-${s}`]) {
+    const f = FORMULAS.find((x) => x.id === c);
+    if (f) return f;
+  }
+  return null;
+}
+
 /** One-line prompt hint naming the formulas outperforming in a niche, with their shape. */
 export function formulaHint(topFormulas = [], limit = 2) {
   const lines = topFormulas
