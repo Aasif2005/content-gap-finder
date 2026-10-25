@@ -81,10 +81,11 @@ export function scoreVideos(videos, channelMap) {
         viewPercentile,
         engagementPercentile,
         // The avoid signal: plenty of impressions, but the audience didn't care.
-        // Comments being disabled (comments === 0) is a publishing choice, not
-        // disinterest, so those videos are excluded from the flag.
+        // Comments being disabled (comments === 0) or likes being hidden is a
+        // publishing choice, not disinterest, so those videos are excluded from
+        // the flag: a 1.26M-view video with hidden likes was flagged as one.
         lowEngagementOutlier:
-          viewPercentile >= 0.6 && engagementPercentile <= 0.35 && v.comments > 0,
+          viewPercentile >= 0.6 && engagementPercentile <= 0.35 && v.comments > 0 && !v.likesHidden,
       };
     })
     .sort((a, b) => b.heat - a.heat);

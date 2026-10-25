@@ -3,7 +3,8 @@ import { scoreVideos, scoreTopic } from '../lib/heat.js';
 import { clusterTopics, mineGaps, selectComments, groundGaps, groundObjections, heatTier } from './analyze.js';
 import { config } from '../config.js';
 import { RunLogger } from '../lib/auditLog.js';
-import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, untrustedVideoIds } from '../lib/relevance.js';
+import { avoidVerdict, AVOID_ORDER } from '../lib/avoid.js';
+import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, untrustedVideoIds, nicheVideoIdSet } from '../lib/relevance.js';
 import { languageDecision } from '../lib/language.js';
 import { ExclusionLedger } from '../lib/exclusions.js';
 import { assessEvidence, assessTopic, explainShortfall, thinPoolFrom } from '../lib/confidence.js';
@@ -26,6 +27,7 @@ const publicVideo = (v) => ({
   isShort: v.isShort,
   views: v.views,
   likes: v.likes,
+  likesHidden: Boolean(v.likesHidden),
   comments: v.comments,
   heat: v.heat,
   tier: v.tier,
@@ -280,10 +282,18 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   const commentsByVideo = {};
   const ownerByVideo = {};
   let withComments = 0;
+  const unreadable = [];
 
   for (const [i, v] of commentTargets.entries()) {
     onProgress('comments', `Reading comments (${i + 1}/${commentTargets.length})`, 32 + Math.round((i / commentTargets.length) * 20));
-    const list = await yt.getComments(v.videoId, config.youtube.commentsPerVideo);
+    let list = [];
+    try {
+      list = await yt.getComments(v.videoId, config.youtube.commentsPerVideo);
+    } catch (err) {
+      if (err.code === 'QUOTA_EXHAUSTED') throw err;
+      unreadable.push(v);
+      continue;
+    }
     if (list.length) {
       commentsByVideo[v.videoId] = list;
       ownerByVideo[v.videoId] = v.channelId;
@@ -292,11 +302,17 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   }
   // Scored but never read: either beyond the top-N videos whose comments are
   // fetched (a per-video call each), or read and found empty.
-  for (const v of commentTargets) if (!commentsByVideo[v.videoId]) ledger.add(v, 'comments-disabled');
+  const unreadableIds = new Set(unreadable.map((v) => v.videoId));
+  for (const v of commentTargets) {
+    if (unreadableIds.has(v.videoId)) ledger.add(v, 'comments-unreadable');
+    else if (!commentsByVideo[v.videoId]) ledger.add(v, 'comments-disabled');
+  }
+  if (unreadable.length) {
+    warnings.push(`Could not read comments on ${unreadable.length} of ${commentTargets.length} videos (YouTube errors, retried once). Gaps from this run may be missing demand those videos held.`);
+  }
   ranked.slice(commentTargets.length).forEach((v, i) =>
     ledger.add(v, 'not-comment-read', `rank ${commentTargets.length + i + 1}; only the top ${commentTargets.length} are read`)
   );
-  const selected = selectComments(commentsByVideo, { ownerByVideo });
   const totalFetched = Object.values(commentsByVideo).reduce((a, c) => a + c.length, 0);
   if (!withComments) warnings.push('No comments were available on any top video, so the gap list will be empty.');
 
@@ -307,7 +323,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   });
 
   const byId = new Map(ranked.map((v) => [v.videoId, v]));
-  const resolve = (ids) => (ids ?? []).map((id) => byId.get(id)).filter(Boolean);
+  const resolve = (ids) => (Array.isArray(ids) ? ids : []).map((id) => byId.get(id)).filter(Boolean);
 
   const topics = rawTopics
     .map((t) => {
@@ -351,21 +367,24 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     .map((a) => {
       const members = resolve(a.video_ids);
       if (!members.length) return null;
-      const flagged = members.filter((v) => v.lowEngagementOutlier).length;
+      const verdict = avoidVerdict(members, ranked);
+      if (verdict.drop) return null;
       return {
         label: a.label,
         reason: a.reason ?? '',
         counterEvidence: a.counter_evidence ?? '',
         videos: members.map(publicVideo),
-        flaggedCount: flagged,
-        medianEngagementRate:
-          [...members.map((v) => v.signals.engagementRate)].sort((x, y) => x - y)[Math.floor(members.length / 2)] ?? 0,
-        // "Confirmed" means our own numbers agree with the model's warning.
-        confirmedByStats: flagged > 0,
+        flaggedCount: verdict.flaggedCount,
+        medianEngagementRate: verdict.medianEngagementRate,
+        runMedianEngagementRate: verdict.runMedianEngagementRate,
+        statsLevel: verdict.level,
+        // "Confirmed" means our own numbers agree with the model's warning --
+        // at least half the entry's videos, not any one of them.
+        confirmedByStats: verdict.level === 'confirmed',
       };
     })
     .filter(Boolean)
-    .sort((a, b) => b.flaggedCount - a.flaggedCount);
+    .sort((a, b) => AVOID_ORDER[a.statsLevel] - AVOID_ORDER[b.statsLevel] || b.flaggedCount - a.flaggedCount);
 
   // checkTopicRelevance is generic over {label, summary, whyHot, videos}, which
   // an avoid entry also has (reason/counterEvidence standing in for summary/whyHot).
@@ -388,17 +407,21 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     ...avoid.flatMap((a) => a.videos.map((v) => v.videoId)),
   ]);
   const untrusted = channelMode ? new Set() : untrustedVideoIds(ranked, confirmedRelevantVideoIds);
-  const gapComments = untrusted.size ? selected.filter((c) => !untrusted.has(c.videoId)) : selected;
+  // Untrusted videos are removed BEFORE the comment cap is applied, so their
+  // comments cannot use up slots that trusted videos' comments would have had.
+  const trustedByVideo = Object.fromEntries(Object.entries(commentsByVideo).filter(([id]) => !untrusted.has(id)));
+  const gapComments = selectComments(trustedByVideo, { ownerByVideo });
   for (const id of untrusted) if (commentsByVideo[id]) ledger.add(byId.get(id), 'untrusted-tag-only');
-  if (gapComments.length < selected.length) {
+  const droppedComments = [...untrusted].reduce((n, id) => n + (commentsByVideo[id]?.length ?? 0), 0);
+  if (droppedComments) {
     warnings.push(
-      `${selected.length - gapComments.length} comments excluded from gap mining -- they came from tag-hijacked videos clustering did not confirm as relevant.`
+      `${droppedComments} comments excluded from gap mining -- they came from tag-hijacked videos clustering did not confirm as relevant.`
     );
   }
 
   // 7. LLM pass B: gap mining, grounded back to real comments.
   const { gaps: rawGaps, objections: rawObjections, usage: gapUsage } = await mineGaps({
-    niche: subject, window: windowLabel, videos: ranked, comments: gapComments, topics: rawTopics, gapMode, channelMode, onProgress,
+    niche: subject, window: windowLabel, videos: ranked, comments: gapComments, topics, gapMode, channelMode, onProgress,
     formulaHint: outlierSummary ? formulaHint(outlierSummary.topFormulas) : '',
   });
   const gapsResolved = groundGaps(rawGaps, gapComments, { context: niche }).map((g) => ({
@@ -406,7 +429,8 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     coveringVideos: resolve(g.coveringVideoIds).map(publicVideo),
   }));
 
-  const gapRelevance = channelMode ? gapsResolved.map(() => neutral) : gapsResolved.map((g) => checkGapRelevance(niche, g));
+  const nicheVideoIds = channelMode ? null : nicheVideoIdSet(niche, ranked, confirmedRelevantVideoIds);
+  const gapRelevance = channelMode ? gapsResolved.map(() => neutral) : gapsResolved.map((g) => checkGapRelevance(niche, g, { nicheVideoIds }));
   log.logGaps(gapsResolved, gapRelevance);
 
   // Objections: recurring complaints about the EXISTING videos rather than
@@ -418,7 +442,11 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
 
   // Attach the verdict to each gap so the UI can warn on anything that still
   // slips through the filter above, instead of only the audit log seeing it.
-  const flaggedGaps = gapsResolved.map((g, i) => ({ ...g, nicheRelevant: gapRelevance[i].relevant }));
+  const flaggedGaps = gapsResolved.map((g, i) => ({
+    ...g,
+    nicheRelevant: gapRelevance[i].relevant,
+    relevance: { verdict: gapRelevance[i].verdict ?? 'on-niche', matched: gapRelevance[i].matched ?? [] },
+  }));
 
   // 8. Recurrence. Compare this run's gaps against every earlier run of the
   // same subject, so a gap that has been asked for four weeks running is
@@ -430,7 +458,14 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   const historyKey = channelMode ? `channel:${channel.channelId}` : niche;
   try {
     const history = store.readGapHistory(historyKey, { excludeRunId: runId });
-    const classified = classifyRecurrence(flaggedGaps, history);
+    // Only runs mined under the same filters are comparable.
+    // A 24h run compared against 90d runs reported 24 gaps "no longer showing
+    // up": different windows read different comments.
+    const historyFilters = {
+      relevanceLanguage: relevanceLanguage ?? '', regionCode: regionCode ?? '', gapMode: gapMode ?? '',
+      window: window === 'custom' ? 'custom' : window, contentType: contentType ?? 'both',
+    };
+    const classified = classifyRecurrence(flaggedGaps, history, { filters: historyFilters, noComments: gapComments.length === 0 });
     gaps = classified.gaps;
     resolvedGaps = classified.resolved;
     runsCompared = classified.runsCompared;
@@ -440,7 +475,10 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
         `Compared against ${runsCompared} earlier run${runsCompared === 1 ? '' : 's'} of this ${channelMode ? 'channel' : 'niche'}: ${recurring} of ${gaps.length} gaps have been asked for before${resolvedGaps.length ? `, and ${resolvedGaps.length} previously-open gap${resolvedGaps.length === 1 ? ' is' : 's are'} no longer showing up` : ''}.`
       );
     }
-    store.appendGapHistory(historyKey, runId, new Date().toISOString(), flaggedGaps);
+    if (classified.recentSkipped) {
+      warnings.push(`${classified.recentSkipped} run${classified.recentSkipped === 1 ? '' : 's'} of this subject from the last ${config.recurrence.minHours} hours ${classified.recentSkipped === 1 ? 'was' : 'were'} not compared: a re-run that soon reads the same comments, so it is not a second sighting of the demand.`);
+    }
+    store.appendGapHistory(historyKey, runId, new Date().toISOString(), flaggedGaps, { filters: historyFilters, comments: gapComments.length });
   } catch (err) {
     console.error(`[pipeline] recurrence comparison failed:`, err.message);
     warnings.push('Could not compare against earlier runs of this subject, so gaps are not marked new or recurring.');

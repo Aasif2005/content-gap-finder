@@ -15,7 +15,9 @@ async function call(endpoint, params, quotaKind, quotaTimes = 1) {
   }
   url.searchParams.set('key', apiKey);
 
-  const res = await fetch(url, { headers: { accept: 'application/json' } });
+  // A stalled socket with no timeout hung the whole job, and the scheduler
+  // awaiting it, until restart.
+  const res = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(config.youtube.timeoutMs) });
   if (!res.ok) {
     const body = await res.text();
     let reason = '';
@@ -24,6 +26,7 @@ async function call(endpoint, params, quotaKind, quotaTimes = 1) {
       `YouTube ${endpoint} failed (${res.status}${reason ? ` ${reason}` : ''}): ${body.slice(0, 300)}`
     );
     err.status = res.status;
+    err.reason = reason;
     err.code = reason === 'quotaExceeded' ? 'QUOTA_EXHAUSTED' : 'YOUTUBE_ERROR';
     throw err;
   }
@@ -136,6 +139,8 @@ export async function getVideoDetails(videoIds) {
         isShort: durationSeconds > 0 && durationSeconds <= 180,
         views: Number(v.statistics?.viewCount ?? 0),
         likes: Number(v.statistics?.likeCount ?? 0),       // 0 when the channel hides likes
+        // likeCount is absent (not "0") when likes are hidden, so 0 likes there is unknown, not disinterest.
+        likesHidden: v.statistics?.likeCount === undefined,
         comments: Number(v.statistics?.commentCount ?? 0), // 0 when comments are disabled
         // The spoken/audio language -- creator-set or YouTube-detected, BCP-47
         // (e.g. "ta", "en-GB"). Free: part=snippet already fetched. Near-
@@ -186,7 +191,20 @@ export async function getChannels(channelIds) {
  * order=relevance is YouTube's own engagement ranking; it is the closest proxy
  * we get to "top comments" since the API won't sort by like count.
  */
-export async function getComments(videoId, maxResults = 50) {
+/**
+ * What a comment-fetch error means. Only "this video has no readable comments"
+ * (comments turned off, video gone) is an empty list; a 5xx, a network error or
+ * a rate limit is a failure to READ, which used to be recorded as "comments
+ * disabled" and quietly empty the gap list.
+ */
+export function commentErrorKind(err) {
+  if (err?.code === 'QUOTA_EXHAUSTED') return 'quota';
+  if ((err?.status === 403 && /commentsDisabled|forbidden/i.test(err.reason ?? '')) || err?.status === 404) return 'none';
+  if (err?.status >= 500 || err?.name === 'TimeoutError' || err?.name === 'AbortError' || err?.status === undefined) return 'retry';
+  return 'fail';
+}
+
+export async function getComments(videoId, maxResults = 50, { attempt = 1 } = {}) {
   try {
     const data = await call('commentThreads', {
       part: 'snippet,replies',
@@ -212,10 +230,12 @@ export async function getComments(videoId, maxResults = 50) {
       };
     });
   } catch (err) {
-    // Comments disabled is a 403 on an otherwise fine video -- skip, don't fail
-    // the whole run. A hard quota error still propagates.
-    if (err.code === 'QUOTA_EXHAUSTED') throw err;
-    return [];
+    const kind = commentErrorKind(err);
+    if (kind === 'none') return [];
+    if (kind === 'retry' && attempt === 1) return getComments(videoId, maxResults, { attempt: 2 });
+    // Quota, or a read that failed twice: the caller decides (the pipeline
+    // records it as unreadable rather than as comments disabled).
+    throw err;
   }
 }
 

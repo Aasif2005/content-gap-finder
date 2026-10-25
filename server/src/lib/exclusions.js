@@ -21,6 +21,7 @@ export const REASONS = {
   region: { kind: 'excluded', label: 'Channel is in a different country', filter: 'regionCode' },
   'not-comment-read': { kind: 'unread', label: 'Scored, but outside the top videos whose comments are read', filter: null },
   'comments-disabled': { kind: 'unread', label: 'Comments disabled or empty', filter: null },
+  'comments-unreadable': { kind: 'unread', label: 'Comments could not be read (YouTube error)', filter: null },
   'untrusted-tag-only': { kind: 'unread', label: 'Comments set aside: the niche appears only in its tags', filter: null },
 };
 

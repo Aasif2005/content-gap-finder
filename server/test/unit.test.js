@@ -5,7 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
 import { parseCommentIndex, selectComments, groundGaps, groundObjections, truncate } from '../src/services/analyze.js';
-import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords } from '../src/lib/relevance.js';
+import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords, nicheVideoIdSet } from '../src/lib/relevance.js';
+import { avoidVerdict } from '../src/lib/avoid.js';
+import { commentErrorKind } from '../src/services/youtube.js';
+import { arrayOf } from '../src/services/analyze.js';
 import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage, namedLanguages, languageDecision, languageMismatch, languageCodeFor } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
@@ -1860,5 +1863,115 @@ describe('fix: thinking mode is explicit in the request', () => {
     assert.equal('thinking' in requestBody(base), false);
     assert.deepEqual(requestBody({ ...base, thinking: 'disabled' }).thinking, { type: 'disabled' });
     assert.equal(requestBody({ ...base, thinking: 'disabled' }).temperature, 0.2);
+  });
+});
+
+describe('audit: gap relevance counts where the comment was written', () => {
+  const videos = [
+    { videoId: 'v1', title: 'Restoring a 1890s cast iron skillet with electrolysis', channelTitle: 'Iron Guy', tags: [] },
+    { videoId: 'v2', title: 'Satisfying ASMR clean #castiron #restoration', channelTitle: 'Clips', tags: ['cast iron'] },
+  ];
+  const ids = nicheVideoIdSet('cast iron restoration', videos);
+  test('only videos whose prose names the niche (or that clustering vouched for) are niche videos', () => {
+    assert.deepEqual([...ids], ['v1']);
+    assert.deepEqual([...nicheVideoIdSet('cast iron restoration', videos, new Set(['v2']))].sort(), ['v1', 'v2']);
+  });
+  test('a core question under niche videos is relevant without repeating the niche words', () => {
+    const gap = { question: 'How do I set up an electrolysis tank, what anode and voltage?', evidence: [{ videoId: 'v1', text: 'what voltage do you run?' }] };
+    const r = checkGapRelevance('cast iron restoration', gap, { nicheVideoIds: ids });
+    assert.equal(r.relevant, true);
+    assert.equal(r.verdict, 'niche-videos');
+  });
+  test('the same question asked only under a tag-hijacked video stays off-niche', () => {
+    const gap = { question: 'How do I set up an electrolysis tank?', evidence: [{ videoId: 'v2', text: 'voltage?' }] };
+    assert.equal(checkGapRelevance('cast iron restoration', gap, { nicheVideoIds: ids }).verdict, 'off-niche');
+  });
+  test('words that match still read on-niche, and the old call shape still works', () => {
+    assert.equal(checkGapRelevance('cast iron restoration', { question: 'Can cast iron be welded?', evidence: [] }).verdict, 'on-niche');
+  });
+});
+
+describe('audit: avoid entries are judged against our own numbers', () => {
+  const v = (er, flagged, views = 10000) => ({ signals: { engagementRate: er }, lowEngagementOutlier: flagged, views });
+  const run = [v(0.02, false), v(0.03, false), v(0.04, false), v(0.05, false), v(0.01, true)];
+  test('1 flagged of 7 is "partly", not "confirmed"', () => {
+    const m = [v(0.005, true), ...Array(6).fill(0).map(() => v(0.01, false))];
+    assert.equal(avoidVerdict(m, run).level, 'partly');
+  });
+  test('half or more flagged is confirmed', () => {
+    assert.equal(avoidVerdict([v(0.005, true), v(0.006, false)], run).level, 'confirmed');
+  });
+  test('engagement above the run median, with real views, is contradicted', () => {
+    const r = avoidVerdict([v(0.54, false), v(0.5, false)], run);
+    assert.equal(r.level, 'contradicted');
+    assert.equal(r.runMedianEngagementRate, 0.03);
+  });
+  test('a tiny-view percentage never contradicts', () => {
+    assert.equal(avoidVerdict([v(0.54, false, 11), v(0.5, false, 19)], run).level, 'model-only');
+  });
+  test('one unflagged video is dropped', () => {
+    assert.equal(avoidVerdict([v(0.01, false)], run).drop, true);
+    assert.equal(avoidVerdict([v(0.01, true)], run).drop, false);
+  });
+  test('the entry median is the true median for even counts', () => {
+    assert.equal(avoidVerdict([v(0.01, true), v(0.03, true)], run).medianEngagementRate, 0.02);
+  });
+});
+
+describe('audit: recurrence counts occasions, not clicks', () => {
+  const now = Date.parse('2026-10-25T12:00:00Z');
+  const row = (runId, iso, question, extra = {}) => ({ runId, generatedAt: iso, question, demandScore: 5, coverage: 'none', ...extra });
+  const q = 'Can a cracked cast iron pot be welded and saved?';
+  test('runs minutes apart are one occasion, and a run from the last day is not compared', () => {
+    const history = [
+      row('a', '2026-10-20T10:00:00Z', q), row('b', '2026-10-20T10:05:00Z', q), row('c', '2026-10-20T10:10:00Z', q),
+      row('d', '2026-10-25T11:55:00Z', q),
+    ];
+    const r = classifyRecurrence([{ question: 'Can you weld a cracked cast iron pot and save it?', demandScore: 6 }], history, { now });
+    assert.equal(r.runsCompared, 1);
+    assert.equal(r.recentSkipped, 1);
+    assert.equal(r.gaps[0].recurrence.timesSeen, 2);
+  });
+  test('occasions days apart each count', () => {
+    const history = [row('a', '2026-10-10T10:00:00Z', q), row('b', '2026-10-17T10:00:00Z', q)];
+    assert.equal(classifyRecurrence([{ question: q, demandScore: 6 }], history, { now }).gaps[0].recurrence.timesSeen, 3);
+  });
+  test('a run with no comments resolves nothing, and an outage run is not an occasion', () => {
+    const history = [row('a', '2026-10-10T10:00:00Z', q, { comments: 200 }), { runId: 'b', generatedAt: '2026-10-17T10:00:00Z', marker: true, comments: 0 }];
+    const r = classifyRecurrence([], history, { now, noComments: true });
+    assert.equal(r.resolved.length, 0);
+    assert.equal(r.runsCompared, 1);
+  });
+  test('history from another language filter is not compared', () => {
+    const history = [row('a', '2026-10-10T10:00:00Z', q, { relevanceLanguage: 'ta', regionCode: '', gapMode: 'inclusive' })];
+    const r = classifyRecurrence([{ question: q, demandScore: 6 }], history, { now, filters: { relevanceLanguage: 'en', regionCode: '', gapMode: 'inclusive' } });
+    assert.equal(r.runsCompared, 0);
+    assert.equal(r.gaps[0].recurrence.status, 'unknown');
+  });
+});
+
+describe('audit: YouTube errors and model output', () => {
+  test('only disabled or missing comments are an empty list', () => {
+    assert.equal(commentErrorKind({ status: 403, reason: 'commentsDisabled' }), 'none');
+    assert.equal(commentErrorKind({ status: 404 }), 'none');
+    assert.equal(commentErrorKind({ status: 503 }), 'retry');
+    assert.equal(commentErrorKind({ name: 'TimeoutError' }), 'retry');
+    assert.equal(commentErrorKind({ code: 'QUOTA_EXHAUSTED', status: 403 }), 'quota');
+    assert.equal(commentErrorKind({ status: 400, reason: 'badRequest' }), 'fail');
+  });
+  test('a hidden like count is not low engagement', () => {
+    const day = (n) => new Date(Date.now() - n * 86_400_000).toISOString();
+    const vids = [
+      { videoId: 'a', channelId: 'c', publishedAt: day(1), views: 50_000, likes: 6_000, comments: 900 },
+      { videoId: 'b', channelId: 'c', publishedAt: day(1), views: 60_000, likes: 5_000, comments: 700 },
+      { videoId: 'h', channelId: 'c', publishedAt: day(2), views: 1_260_000, likes: 0, comments: 42, likesHidden: true },
+    ];
+    const scored = scoreVideos(vids, new Map([['c', { subscribers: 100_000 }]]));
+    assert.equal(scored.find((v) => v.videoId === 'h').lowEngagementOutlier, false);
+  });
+  test('arrayOf turns malformed model output into an empty list', () => {
+    assert.deepEqual(arrayOf({}), []);
+    assert.deepEqual(arrayOf('abc'), []);
+    assert.deepEqual(arrayOf([{ a: 1 }, 'x', null]), [{ a: 1 }]);
   });
 });

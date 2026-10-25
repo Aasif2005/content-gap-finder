@@ -130,10 +130,20 @@ export function checkTopicRelevance(niche, topic) {
   };
 }
 
-/** Same idea, applied to a gap's question/explanation/evidence quotes. */
-export function checkGapRelevance(niche, gap) {
+/**
+ * Same idea, applied to a gap's question/explanation/evidence quotes -- plus
+ * WHERE the comments were written. Viewers under a cast-iron video ask "how
+ * often do I re-season my pan?" without ever typing "cast iron"; judged on the
+ * words alone, 20 real gaps were flagged off-niche, most of them core questions.
+ * So a gap whose cited comments all sit under niche videos (`nicheVideoIds`:
+ * the title or channel names the niche, or clustering vouched for it) is
+ * relevant as "asked under niche videos", even when its words do not match.
+ *
+ * verdict: 'on-niche' (the words match) | 'niche-videos' | 'off-niche'.
+ */
+export function checkGapRelevance(niche, gap, { nicheVideoIds = null } = {}) {
   const keywords = nicheKeywords(niche);
-  if (!keywords.length) return { relevant: true, matched: [], score: 1 };
+  if (!keywords.length) return { relevant: true, verdict: 'on-niche', matched: [], score: 1 };
 
   // gap.explanation is deliberately excluded. It's the model's own framing
   // prose, not grounded audience demand, and it can name the niche while
@@ -146,11 +156,25 @@ export function checkGapRelevance(niche, gap) {
   const text = [gap.question, ...(gap.evidence ?? []).map((e) => e.text)].join(' ');
 
   const matched = matchKeywords(keywords, text);
+  const sources = [...new Set((gap.evidence ?? []).map((e) => e.videoId).filter(Boolean))];
+  const underNiche = matched.length === 0 && nicheVideoIds && sources.length > 0 && sources.every((id) => nicheVideoIds.has(id));
   return {
-    relevant: matched.length > 0,
+    relevant: matched.length > 0 || Boolean(underNiche),
+    verdict: matched.length > 0 ? 'on-niche' : underNiche ? 'niche-videos' : 'off-niche',
     matched,
     score: Math.round((matched.length / keywords.length) * 100) / 100,
   };
+}
+
+/**
+ * Videos that are demonstrably about the niche: the niche's words in the
+ * title's prose or channel name (not only in tags), or vouched for by
+ * clustering. Comments written under these are the niche audience talking.
+ */
+export function nicheVideoIdSet(niche, videos, confirmedIds = new Set()) {
+  return new Set(
+    videos.filter((v) => confirmedIds.has(v.videoId) || checkTagHijack(niche, v).inProse.length > 0).map((v) => v.videoId)
+  );
 }
 
 /**

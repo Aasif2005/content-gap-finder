@@ -39,9 +39,14 @@ export function GapCard({ gap, rank, runId, index }) {
             {gap.nicheRelevant === false && (
               <Badge
                 tone="bad"
-                title="No niche keyword appears anywhere in this gap's question or evidence comments. Its source video may be about something else entirely -- check the evidence below before trusting it."
+                title="No niche keyword appears in this gap's question or evidence comments, and the comments were not all written under videos about the niche. Check the evidence below before trusting it."
               >
                 ⚠ check relevance
+              </Badge>
+            )}
+            {gap.relevance?.verdict === 'niche-videos' && (
+              <Badge title="The question does not name the niche, but every comment behind it was written under a video about the niche: this audience asked it. It may be adjacent to the niche rather than inside it.">
+                asked under niche videos
               </Badge>
             )}
             {/* Recurrence is the strongest single signal on this card. A gap

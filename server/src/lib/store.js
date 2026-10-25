@@ -203,20 +203,24 @@ export function readBrief(runId, index, language = '') {
  * enough to keep for months, because the entire value of recurrence detection
  * comes from having a long baseline to compare against.
  */
-export function appendGapHistory(niche, runId, generatedAt, gaps) {
+export function appendGapHistory(niche, runId, generatedAt, gaps, { filters = {}, comments = null } = {}) {
   const key = nicheKey(niche);
   const file = path.join(NICHES_DIR, `${key}.jsonl`);
-  const lines = gaps.map((g) => JSON.stringify({
-    runId,
-    generatedAt,
-    question: g.question,
-    coverage: g.coverage,
-    demandStrength: g.demandStrength,
-    demandScore: g.demandScore,
-    evidenceCount: g.evidenceCount,
-    distinctVideos: g.distinctVideos,
-  }));
-  if (!lines.length) return;
+  // Every run leaves a row, even one with no gaps: a marker records that the
+  // run happened and how many comments it mined, so a later run can tell
+  // "nobody asked" from "nothing was read".
+  const base = { runId, generatedAt, ...filters, comments };
+  const lines = gaps.length
+    ? gaps.map((g) => JSON.stringify({
+      ...base,
+      question: g.question,
+      coverage: g.coverage,
+      demandStrength: g.demandStrength,
+      demandScore: g.demandScore,
+      evidenceCount: g.evidenceCount,
+      distinctVideos: g.distinctVideos,
+    }))
+    : [JSON.stringify({ ...base, marker: true })];
 
   withLock(file, () => {
     fs.mkdirSync(NICHES_DIR, { recursive: true });

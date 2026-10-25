@@ -5,6 +5,7 @@ export const config = {
   isProd: process.env.NODE_ENV === 'production',
 
   youtube: {
+    timeoutMs: num(process.env.YOUTUBE_TIMEOUT_MS, 30000),
     apiKey: process.env.YOUTUBE_API_KEY,
     base: 'https://www.googleapis.com/youtube/v3',
     // Documented unit costs. search.list is the expensive one by 100x, which is
@@ -63,7 +64,10 @@ export const config = {
   // string -- exact matching would report everything as new forever, which is
   // indistinguishable from the feature being broken.
   recurrence: {
-    minSimilarity: Number(process.env.RECURRENCE_MIN_SIMILARITY) || 0.4,
+    minSimilarity: num(process.env.RECURRENCE_MIN_SIMILARITY, 0.4),
+    // Runs closer together than this re-read the same comments, so they count
+    // as one sighting, and a run this recent is not compared against at all.
+    minHours: num(process.env.RECURRENCE_MIN_HOURS, 24),
     // One coincidentally shared word ("shorts", "beginner") is not evidence
     // that two questions are the same question, however short they are.
     minSharedTokens: num(process.env.RECURRENCE_MIN_SHARED_TOKENS, 2),

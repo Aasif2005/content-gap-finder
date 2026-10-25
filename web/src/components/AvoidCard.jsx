@@ -1,6 +1,22 @@
 import { Card, Rank, Badge } from './Bits.jsx';
 import { VideoStrip } from './VideoStrip.jsx';
 
+const pct = (x) => `${((x ?? 0) * 100).toFixed(2)}%`;
+
+// Reports saved before statsLevel existed only know confirmedByStats.
+function StatsBadge({ item }) {
+  const n = item.videos.length;
+  const level = item.statsLevel ?? (item.confirmedByStats ? 'confirmed' : 'model-only');
+  const badges = {
+    confirmed: ['bad', `stats confirm (${item.flaggedCount} of ${n})`, `${item.flaggedCount} of these ${n} videos have high view counts but bottom-tier engagement.`],
+    partly: ['warm', `stats partly agree (${item.flaggedCount} of ${n})`, `Only ${item.flaggedCount} of these ${n} videos have high views with bottom-tier engagement. A weak signal.`],
+    'model-only': ['neutral', 'model signal only', 'Flagged by the model, but our engagement stats do not independently confirm it. Treat as a soft signal.'],
+    contradicted: ['good', 'our numbers disagree', `These videos' median engagement (${pct(item.medianEngagementRate)}) is above this run's median (${pct(item.runMedianEngagementRate)}). The audience responds to them; the model's warning is not backed by the data.`],
+  };
+  const [tone, text, title] = badges[level] ?? badges['model-only'];
+  return <Badge tone={tone} title={title}>{text}</Badge>;
+}
+
 export function AvoidCard({ item, rank }) {
   return (
     <Card className="rise">
@@ -12,17 +28,8 @@ export function AvoidCard({ item, rank }) {
             <h3 className="text-base font-semibold leading-tight text-ink-900 dark:text-ink-50">
               {item.label}
             </h3>
-            {/* Separates "the model thinks so" from "our own numbers agree". */}
-            <Badge
-              tone={item.confirmedByStats ? 'bad' : 'neutral'}
-              title={
-                item.confirmedByStats
-                  ? `${item.flaggedCount} of these videos have high view counts but bottom-tier engagement.`
-                  : 'Flagged by the model, but our engagement stats do not independently confirm it. Treat as a soft signal.'
-              }
-            >
-              {item.confirmedByStats ? `stats confirm (${item.flaggedCount})` : 'model signal only'}
-            </Badge>
+            {/* Separates "the model thinks so" from "our own numbers agree" -- or disagree. */}
+            <StatsBadge item={item} />
             {item.nicheRelevant === false && (
               <Badge
                 tone="bad"
@@ -42,7 +49,8 @@ export function AvoidCard({ item, rank }) {
               </p>
               <p className="mt-0.5 text-sm text-ink-700 dark:text-ink-200">{item.counterEvidence}</p>
               <p className="nums mt-1 text-xs text-ink-500 dark:text-ink-400">
-                Median engagement across these videos: {(item.medianEngagementRate * 100).toFixed(2)}%
+                Median engagement across these videos: {pct(item.medianEngagementRate)}
+                {item.runMedianEngagementRate != null && <> (this run&rsquo;s median: {pct(item.runMedianEngagementRate)})</>}
               </p>
             </div>
           )}

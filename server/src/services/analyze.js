@@ -11,6 +11,9 @@ import { config } from '../config.js';
 // truncated at 240 chars and DeepSeek's own JSON parser rejected the request
 // with "unexpected end of hex escape". [...s] iterates by code point instead,
 // so a surrogate pair always stays whole.
+/** The model's list, or [] when it returned anything else. Items that are not objects are dropped. */
+export const arrayOf = (x) => (Array.isArray(x) ? x.filter((i) => i && typeof i === 'object') : []);
+
 export const truncate = (s, n) => {
   const t = (s ?? '').replace(/\s+/g, ' ').trim();
   const chars = [...t];
@@ -44,7 +47,7 @@ function videoDigest(videos) {
         `  title: ${truncate(v.title, 140)}`,
         `  channel: ${truncate(v.channelTitle, 40)} (${compact(v.signals.subscribers)} subs)`,
         `  format: ${v.isShort ? 'Short' : 'long-form'} ${Math.round(v.durationSeconds)}s`,
-        `  stats: ${compact(v.views)} views, ${compact(v.likes)} likes, ${compact(v.comments)} comments, ${v.signals.ageDays.toFixed(1)}d old`,
+        `  stats: ${compact(v.views)} views, ${v.likesHidden ? 'likes hidden by the channel' : `${compact(v.likes)} likes`}, ${compact(v.comments)} comments, ${v.signals.ageDays.toFixed(1)}d old`,
         v.lowEngagementOutlier
           ? `  FLAG: high views but bottom-tier engagement (${(v.signals.engagementRate * 100).toFixed(2)}%) -- strong avoid candidate`
           : null,
@@ -154,7 +157,8 @@ at most 3 suggested_angles each, and at most 4 avoid entries. Keep every string
 under 300 characters.`;
 
   const { data, usage } = await chatJSON({ system: channelMode ? CLUSTER_SYSTEM_CHANNEL : CLUSTER_SYSTEM, user });
-  return { topics: data.topics ?? [], avoid: data.avoid ?? [], usage };
+  // A malformed reply ("topics": {}) must not crash a run whose quota is spent.
+  return { topics: arrayOf(data?.topics), avoid: arrayOf(data?.avoid), usage };
 }
 
 // --- Comment selection ------------------------------------------------------
@@ -368,7 +372,7 @@ gaps and at most 6 objections. Quality over quantity -- an empty list is better
 than a list of vague filler.`;
 
   const { data, usage } = await chatJSON({ system: channelMode ? GAP_SYSTEM_CHANNEL : GAP_SYSTEM, user });
-  return { gaps: data.gaps ?? [], objections: data.objections ?? [], usage };
+  return { gaps: arrayOf(data?.gaps), objections: arrayOf(data?.objections), usage };
 }
 
 /**
@@ -394,7 +398,7 @@ export function groundGaps(gaps, comments, { context = '' } = {}) {
 
   return gaps
     .map((gap) => {
-      const evidence = (gap.evidence_comment_indexes ?? [])
+      const evidence = (Array.isArray(gap.evidence_comment_indexes) ? gap.evidence_comment_indexes : [])
         .map(parseCommentIndex)
         .filter((i) => i !== null)
         .map((i) => byIndex.get(i))
@@ -435,7 +439,7 @@ export function groundGaps(gaps, comments, { context = '' } = {}) {
         question: gap.question,
         explanation: gap.explanation ?? '',
         coverage: gap.coverage ?? 'weak',
-        coveringVideoIds: gap.covering_video_ids ?? [],
+        coveringVideoIds: Array.isArray(gap.covering_video_ids) ? gap.covering_video_ids : [],
         demandStrength: gap.demand_strength ?? 'medium',
         suggestedTitle: bestTitle?.title ?? '',
         titleLint: bestTitle ? { score: bestTitle.score, issues: bestTitle.issues, good: bestTitle.good } : null,
@@ -471,7 +475,7 @@ export function groundObjections(objections, comments) {
 
   return (objections ?? [])
     .map((o) => {
-      const evidence = (o.evidence_comment_indexes ?? [])
+      const evidence = (Array.isArray(o.evidence_comment_indexes) ? o.evidence_comment_indexes : [])
         .map(parseCommentIndex)
         .filter((i) => i !== null)
         .map((i) => byIndex.get(i))

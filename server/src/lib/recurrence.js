@@ -93,16 +93,46 @@ const matches = (a, b) => {
  * baseline go back months, which is the only thing that makes any of this
  * meaningful.
  */
-export function classifyRecurrence(currentGaps, history) {
-  // Group history by run so "how many runs has this been asked in" counts runs,
-  // not rows: one run can legitimately contain two near-identical gaps, and
-  // counting rows would inflate every streak.
-  const runs = new Map();
+export function classifyRecurrence(currentGaps, history, {
+  now = Date.now(),
+  minHours = config.recurrence.minHours,
+  filters = null,
+  noComments = false,
+} = {}) {
+  // Rows recorded under different filters (another language, region or gap
+  // mode) mined different comments; comparing against them would call every
+  // gap new and every old one resolved. Rows from before these fields were
+  // recorded carry none of them and still count.
+  const sameFilters = (row) => !filters || Object.entries(filters).every(([k, v]) => row[k] === undefined || (row[k] ?? '') === (v ?? ''));
+
+  // A re-run within `minHours` re-reads the same comments, so it is not a second
+  // sighting of the demand: three runs ten minutes apart marked gaps "recurring
+  // x3". Those runs are left out, and the rest are grouped into OCCASIONS at
+  // least `minHours` apart, so timesSeen counts occasions rather than clicks.
+  const cutoff = now - minHours * 3600 * 1000;
+  const byRun = new Map();
+  let recentSkipped = 0;
+  const skippedRunIds = new Set();
   for (const row of history) {
-    if (!runs.has(row.runId)) runs.set(row.runId, { runId: row.runId, generatedAt: row.generatedAt, gaps: [] });
-    runs.get(row.runId).gaps.push(row);
+    if (!sameFilters(row)) continue;
+    const t = new Date(row.generatedAt).getTime();
+    if (!(t <= cutoff)) {
+      if (!skippedRunIds.has(row.runId)) { skippedRunIds.add(row.runId); recentSkipped++; }
+      continue;
+    }
+    if (!byRun.has(row.runId)) byRun.set(row.runId, { runId: row.runId, generatedAt: row.generatedAt, t, gaps: [], comments: row.comments });
+    // A marker row records that a run happened (and how many comments it mined) without a gap.
+    if (!row.marker) byRun.get(row.runId).gaps.push(row);
   }
-  const pastRuns = [...runs.values()].sort((a, b) => new Date(a.generatedAt) - new Date(b.generatedAt));
+  // A run that mined no comments (an outage, comments switched off) says
+  // nothing about demand, so it is not an occasion.
+  const runsSorted = [...byRun.values()].filter((r) => r.comments !== 0).sort((a, b) => a.t - b.t);
+  const pastRuns = [];
+  for (const r of runsSorted) {
+    const last = pastRuns[pastRuns.length - 1];
+    if (last && r.t - last.t < minHours * 3600 * 1000) last.gaps.push(...r.gaps);
+    else pastRuns.push({ runId: r.runId, generatedAt: r.generatedAt, t: r.t, gaps: [...r.gaps] });
+  }
 
   const currentTokens = currentGaps.map((g) => gapTokens(g.question));
   const matchedHistoryRows = new Set();
@@ -152,10 +182,13 @@ export function classifyRecurrence(currentGaps, history) {
   // Only the latest run is considered: something absent for several runs is
   // simply old news, and reporting it forever would bury the useful signal.
   const latest = pastRuns[pastRuns.length - 1];
-  const resolved = !latest
+  // With no comments mined this time, absence proves nothing.
+  const resolved = !latest || noComments
     ? []
     : latest.gaps
         .filter((h) => !currentTokens.some((t) => matches(t, gapTokens(h.question))))
+        // An occasion merges several runs, so the same question can appear more than once.
+        .filter((h, i, all) => all.findIndex((x) => matches(gapTokens(x.question), gapTokens(h.question))) === i)
         .map((h) => ({
           question: h.question,
           lastSeen: h.generatedAt,
@@ -164,5 +197,5 @@ export function classifyRecurrence(currentGaps, history) {
           runId: h.runId,
         }));
 
-  return { gaps: annotated, resolved, runsCompared: pastRuns.length };
+  return { gaps: annotated, resolved, runsCompared: pastRuns.length, recentSkipped };
 }
