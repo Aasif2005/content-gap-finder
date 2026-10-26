@@ -39,6 +39,9 @@ export function modeFromPath(pathname = window.location.pathname) {
 
 export const basePathFor = (mode) => (mode === 'channel' ? '/channel' : '');
 
+/** Where a mode's search form lives (a report, by contrast, is `basePathFor(mode)/r/<id>`). */
+export const pagePathFor = (mode) => (mode === 'channel' ? '/channel' : '/explore');
+
 /** `/r/<runId>` or `/channel/r/<runId>` -> that run id, else null. */
 export function runIdFromPath(pathname = window.location.pathname) {
   const m = /^(?:\/channel)?\/r\/([a-zA-Z0-9_-]+)\/?$/.exec(pathname);
@@ -69,29 +72,13 @@ export function queryToSearch(input = {}) {
 /** Replaces the URL without a navigation, so a report becomes linkable in place. */
 export function pushReportUrl(runId, mode = 'niche') {
   if (!runId) return;
-  window.history.pushState({ runId }, '', `${basePathFor(mode)}/r/${runId}`);
+  window.history.pushState({ runId, inApp: true }, '', `${basePathFor(mode)}/r/${runId}`);
 }
 
 export function pushQueryUrl(input, mode = 'niche') {
-  const base = basePathFor(mode) || '/';
-  window.history.replaceState({}, '', `${base}${queryToSearch(input)}`);
+  // Keep whatever the entry already says (`inApp`), so Back still knows where it goes.
+  window.history.replaceState(window.history.state ?? {}, '', `${pagePathFor(mode)}${queryToSearch(input)}`);
 }
 
-/**
- * The Privacy Policy and Terms are their own pages, reachable from every page's
- * footer -- YouTube's API policies require the privacy policy to be
- * "prominently displayed and easily accessible to users at all times".
- */
-export function legalPageFromPath(pathname = window.location.pathname) {
-  const m = /^\/(privacy|terms)\/?$/.exec(pathname);
-  return m ? m[1] : null;
-}
-
-/** Client-side navigation: listeners for popstate (the shell, the explorer) re-read the path. */
-export function navigate(href) {
-  // `inApp` lets a page tell "Back" will stay on this site from a visit that
-  // landed here directly, where history.back() would leave it.
-  window.history.pushState({ inApp: true }, '', href);
-  window.dispatchEvent(new PopStateEvent('popstate'));
-  window.scrollTo(0, 0);
-}
+/** Client-side navigation lives in navigation.js; re-exported for the callers that import it from here. */
+export { navigate } from './navigation.js';

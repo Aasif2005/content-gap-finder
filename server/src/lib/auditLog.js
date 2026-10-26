@@ -270,7 +270,7 @@ export class RunLogger {
     };
 
     const header = [
-      `Content Gap Finder — analysis audit log`,
+      `Gapstronaut — analysis audit log`,
       `run id     : ${this.runId}`,
       `niche      : "${this.input.niche}"`,
       `window     : ${this.input.window}  |  format: ${this.input.contentType}  |  gapMode: ${this.input.gapMode}`,

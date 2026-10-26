@@ -21,8 +21,8 @@ const csv = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
 
 // YouTube's API policies follow the data out of the app: an export still says
 // where the numbers came from, when, and which ones are ours, not YouTube's.
-export const SOURCE_NOTE = 'Data from YouTube API Services. Content Gap Finder is not affiliated with or endorsed by YouTube.';
-export const DERIVED_EXPORT_NOTE = 'Heat, demand score, engagement rate, title score and channel-median multiples are calculated by Content Gap Finder from YouTube data; they are not YouTube metrics.';
+export const SOURCE_NOTE = 'Data from YouTube API Services. Gapstronaut is not affiliated with or endorsed by YouTube.';
+export const DERIVED_EXPORT_NOTE = 'Heat, demand score, engagement rate, title score and channel-median multiples are calculated by Gapstronaut from YouTube data; they are not YouTube metrics.';
 const dataDate = (result) => {
   const d = new Date(result?.generatedAt);
   return Number.isNaN(d.getTime()) ? '' : `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
@@ -30,7 +30,7 @@ const dataDate = (result) => {
 const asOf = (result) => (dataDate(result) ? `YouTube data as of ${dataDate(result)}` : 'YouTube data');
 // CSV stays one record per row, so a spreadsheet import never trips on footer
 // lines: the provenance rides along as two trailing columns instead.
-const CSV_SOURCE = 'YouTube API Services; scores calculated by Content Gap Finder, not YouTube metrics';
+const CSV_SOURCE = 'YouTube API Services; scores calculated by Gapstronaut, not YouTube metrics';
 const withSource = (result, rows) => rows.map((r, i) => (i === 0 ? [...r, 'data_as_of', 'source'] : [...r, dataDate(result), CSV_SOURCE]));
 const watchUrl = (id) => `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
 const quoteSource = (e) => (e.videoId ? ` ([video](${watchUrl(e.videoId)}))` : '');

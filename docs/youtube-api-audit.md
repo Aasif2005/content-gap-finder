@@ -1,7 +1,7 @@
 # YouTube API audit and quota extension: the submission packet
 
 Everything you need to fill in Google's **YouTube API Services: Audit and Quota Extension Form**
-(https://support.google.com/youtube/contact/yt_api_form) for Content Gap Finder.
+(https://support.google.com/youtube/contact/yt_api_form) for Gapstronaut.
 
 Text in `[brackets]` is for you to fill in. Everything else describes what the app does today.
 Before submitting, re-check it against the current code, and keep it honest: auditors compare it
@@ -46,7 +46,7 @@ timeline; reports range from a few weeks to a few months.
 
 **Describe your organization's work as it relates to YouTube** (100 to 5,000 characters):
 
-> Content Gap Finder is a research tool for YouTube creators. A creator enters a niche (for example
+> Gapstronaut is a research tool for YouTube creators. A creator enters a niche (for example
 > "cast iron restoration") or their own channel. The app reads public videos, statistics and comments
 > through the YouTube Data API, and shows three things:
 >
@@ -70,7 +70,7 @@ timeline; reports range from a few weeks to a few months.
 
 | Field | Answer |
 |---|---|
-| API client name | Content Gap Finder |
+| API client name | Gapstronaut |
 | Contains "YouTube"? | **No** |
 | Primary access URL | `[https://your-domain/]` |
 | Privacy Policy URL | `[https://your-domain/privacy]` |
@@ -91,7 +91,7 @@ timeline; reports range from a few weeks to a few months.
 ### Why we accept the derived-metrics amendment
 
 The app calculates figures from API data. Each is labelled in the UI with an ⓘ "Calculated by
-Content Gap Finder from YouTube data. Not a YouTube metric." mark, and in exports:
+Gapstronaut from YouTube data. Not a YouTube metric." mark, and in exports:
 
 - **Heat score (0–100):** a ranking of videos and topics within one result set. It is built from
   views per subscriber, views per day and engagement rate, falls under the policy's custom
@@ -194,7 +194,7 @@ Replace the target with your own estimate. The arithmetic is what reviewers want
 | III.E.1: no audiovisual content stored | ✅ None is stored | |
 | III.E.4: Non-Authorized Data kept 30 days at most | ✅ A sweep on boot and every 6h; expired links return 410 | `services/retention.js`, `lib/store.js` |
 | III.E.4.f: historical data shown with its time | ✅ "YouTube data as of …" | `Attribution.jsx`, exports |
-| III.E.4.h: derived metrics labelled | ✅ ⓘ marks and the export note; amendment accepted | `Bits.jsx` (`Derived`) |
+| III.E.4.h: derived metrics labelled | ✅ ⓘ marks and the export note; amendment accepted | `components/ui/Derived.jsx` |
 | III.E.5: transport security | ✅ HSTS in production; deploy behind TLS | `lib/security.js` |
 | III.E.6, III.I.14: no scraping | ✅ The API only | |
 | III.F.2: attribution and branding | ✅ "Developed with YouTube", per-comment video links, "not affiliated" | `Attribution.jsx`, `CommentQuote.jsx`, `Footer.jsx` |

@@ -1,20 +1,67 @@
-const json = async (res) => {
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(body.error || `Request failed (${res.status})`), { code: body.code });
-  return body;
-};
+/**
+ * Every call to our server goes through `request`. It adds the signed-in
+ * person's Firebase ID token (so protected routes accept the call), encodes
+ * JSON bodies, and turns a failed response into an Error carrying `code`,
+ * `status` and, for a used-up daily allowance, `resetsAt`.
+ *
+ * It never navigates. A 401 (AUTH_REQUIRED) is for the caller to act on; the
+ * route guard sends logged-out visitors to the login page.
+ */
 
-export const getQuota = () => fetch('/api/quota').then(json);
-export const getSite = () => fetch('/api/site').then(json);
+// The auth module registers how to fetch a token. Importing it here instead
+// would make api.js and auth.jsx import each other.
+let tokenGetter = async () => null;
+export const setTokenGetter = (fn) => { tokenGetter = fn; };
 
-export const startAnalysis = (input) =>
-  fetch('/api/analyze', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  }).then(json);
+async function request(path, { method = 'GET', body, headers } = {}) {
+  const h = { ...headers };
+  if (body !== undefined) h['Content-Type'] = 'application/json';
+  try {
+    const token = await tokenGetter();
+    if (token) h.Authorization = `Bearer ${token}`;
+  } catch { /* a token that cannot be read is the same as being logged out */ }
 
-export const getJob = (id) => fetch(`/api/jobs/${id}`).then(json);
+  let res;
+  try {
+    res = await fetch(path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
+  } catch {
+    throw Object.assign(new Error('Could not reach Gapstronaut. Check your connection and try again.'), { code: 'NETWORK' });
+  }
+
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `Request failed (${res.status})`);
+    err.code = data.code;
+    err.status = res.status;
+    if (data.resetsAt) err.resetsAt = data.resetsAt;
+    throw err;
+  }
+  return data;
+}
+
+// --- accounts ---------------------------------------------------------------
+
+/** The signed-in person: profile, today's usage, their limits, when they reset, and their watch count. */
+export const getMe = () => request('/api/me');
+
+/** Records that they accepted the Terms and Privacy Policy. Returns `{ ok, termsAcceptedAt }`. */
+export const acceptConsent = () => request('/api/me/consent', { method: 'POST' });
+
+/** Deletes everything held about the account on our server. The Firebase user is deleted by the browser. */
+export const deleteMe = () => request('/api/me', { method: 'DELETE' });
+
+/** The sample report shown on the homepage, or null when there is none yet. Public. */
+export const getFeatured = () => request('/api/featured').then((b) => b.featured ?? null);
+
+// --- analysis ----------------------------------------------------------------
+
+export const getQuota = () => request('/api/quota');
+export const getSite = () => request('/api/site');
+
+export const startAnalysis = (input) => request('/api/analyze', { method: 'POST', body: input });
+
+export const getJob = (id) => request(`/api/jobs/${id}`);
 
 /** Polls a job to completion, reporting progress along the way. */
 // Thrown when the caller stopped caring (another report opened, page switched,
@@ -51,7 +98,7 @@ export function pollJob(jobId, onTick, { intervalMs = 1500, timeoutMs = 300_000,
 }
 
 /** A persisted report by run id. Costs no quota -- a disk read of a paid-for run. */
-export const getRun = (runId) => fetch(`/api/runs/${runId}`).then(json);
+export const getRun = (runId) => request(`/api/runs/${runId}`);
 
 /**
  * Report history, newest first. `niche` narrows to one niche's runs; `mode`
@@ -61,49 +108,35 @@ export const getRuns = ({ limit = 30, niche, mode } = {}) => {
   const qs = new URLSearchParams({ limit: String(limit) });
   if (niche) qs.set('niche', niche);
   if (mode) qs.set('mode', mode);
-  return fetch(`/api/runs?${qs}`).then(json);
+  return request(`/api/runs?${qs}`);
 };
 
 // --- saved watches ---------------------------------------------------------
 
-export const getWatches = () => fetch('/api/watches').then(json);
+export const getWatches = () => request('/api/watches');
 
 export const createWatch = (input, intervalHours, label) =>
-  fetch('/api/watches', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...input, intervalHours, label }),
-  }).then(json);
+  request('/api/watches', { method: 'POST', body: { ...input, intervalHours, label } });
 
-export const updateWatch = (id, patch) =>
-  fetch(`/api/watches/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  }).then(json);
+export const updateWatch = (id, patch) => request(`/api/watches/${id}`, { method: 'PATCH', body: patch });
 
-export const deleteWatch = (id) =>
-  fetch(`/api/watches/${id}`, { method: 'DELETE' }).then((res) => {
-    if (!res.ok && res.status !== 204) throw new Error('Could not delete that watch.');
-    return true;
-  });
+export const deleteWatch = (id) => request(`/api/watches/${id}`, { method: 'DELETE' }).then(() => true);
 
 /** What a watch's newest run found that the previous one did not. Costs nothing. */
-export const getDigest = (id) => fetch(`/api/watches/${id}/digest`).then(json);
+export const getDigest = (id) => request(`/api/watches/${id}/digest`);
 
 // --- "Make it" briefs --------------------------------------------------------
 
 /** A previously drafted brief (in this language), or null. Costs nothing. */
 export const getBrief = (runId, index, language = '') =>
-  fetch(`/api/runs/${runId}/gaps/${index}/brief?language=${encodeURIComponent(language)}`).then(json).then((b) => b.brief);
+  request(`/api/runs/${runId}/gaps/${index}/brief?language=${encodeURIComponent(language)}`).then((b) => b.brief);
 
 /** Drafts (or returns the saved) brief for one gap. Generating is one DeepSeek call, polled like a run. */
 export async function makeBrief(runId, index, { force = false, language = '', format = '', style = '', targetMinutes = null, core = false, planFrom = null, isCancelled } = {}) {
-  const started = await fetch(`/api/runs/${runId}/gaps/${index}/brief`, {
+  const started = await request(`/api/runs/${runId}/gaps/${index}/brief`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force, language, format, style, targetMinutes, core, planFrom }),
-  }).then(json);
+    body: { force, language, format, style, targetMinutes, core, planFrom },
+  });
   if (started.status === 'done') return started.brief;
   return pollJob(started.jobId, null, { timeoutMs: 240_000, isCancelled });
 }

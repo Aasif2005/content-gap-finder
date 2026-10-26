@@ -1,4 +1,4 @@
-# Content Gap Finder
+# Gapstronaut
 
 Enter a niche. Get three ranked lists for YouTube creators deciding what to film next:
 
@@ -507,7 +507,7 @@ after a compliance audit. The app is built to pass it:
 | III.A: Terms bind users to the YouTube ToS; a Privacy Policy that is always reachable | `/terms` and `/privacy`, linked from a footer on every page; a consent dialog before the first analysis or draft |
 | III.A.2: the policy names YouTube API Services, links the Google Privacy Policy, says what is collected and shared | It does, including that comment text goes to DeepSeek. Set `CONTACT_EMAIL`, or the page shows a "not set" marker |
 | III.E.4: API data stored 30 days at most | A sweep on boot and every 6h deletes reports, briefs, cache and run logs past `YOUTUBE_DATA_MAX_DAYS` (capped at 30) |
-| III.E.4.h and the derived-metrics policy: our metrics are clearly not YouTube's | Heat, demand score, engagement %, channel-median multiples, title checks and avoid stats carry an ⓘ "calculated by Content Gap Finder" mark; exports say the same |
+| III.E.4.h and the derived-metrics policy: our metrics are clearly not YouTube's | Heat, demand score, engagement %, channel-median multiples, title checks and avoid stats carry an ⓘ "calculated by Gapstronaut" mark; exports say the same |
 | III.E.4.f: historical data shown in its time context | "YouTube data as of …" on every report and export |
 | III.F.2 and branding: attribution next to YouTube content | "Developed with YouTube" on reports and the footer; every quoted comment links to its video; "not affiliated with YouTube" |
 | III.E.5: transport encryption | HSTS in production; deploy behind https |
@@ -914,12 +914,18 @@ server/
   test/unit.test.js
 web/
   src/
-    App.jsx                page router (/ = Niche Explorer, /channel = Channel Analyzer),
-                           nav switcher, tabs, polling, URL state
+    main.jsx               providers: Auth > Me > Toast > Consent > Router > AppFrame
+    AppFrame.jsx           picks the shell (marketing / app / bare) and the auth guard per route
+    routes.jsx             the route table (path, title, shell, auth, element)
+    pages/                 Home, Login, Signup, ResetPassword, Dashboard, Profile, Legal, NotFound,
+                           Explorer (niche + channel pages, tabs, polling, URL state)
+    components/ui/         the UI kit built on the design tokens in index.css
+    components/shell/      AppShell (signed in) and MarketingShell (public)
     components/            SearchForm (mode fixed by the page, no toggle), ProgressRail,
                            Topic/Gap/Objection/Avoid cards, ThinPoolNotice,
                            HistoryPanel, WatchPanel (both mode-filtered), ExportMenu
-    lib/                   API client, formatters, URL state (mode ↔ path), export serializers
+    lib/                   API client (bearer token), Firebase auth + /api/me providers, router and
+                           route matching, consent, formatters, URL state, export serializers
 ```
 
 ## Known limits

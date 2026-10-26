@@ -44,7 +44,7 @@ scheduler.start();
 retention.start();
 
 app.listen(config.port, () => {
-  console.log(`  Content Gap Finder API  http://localhost:${config.port}`);
+  console.log(`  Gapstronaut API  http://localhost:${config.port}`);
   console.log(`  models: ${config.deepseek.analysisModel} (analysis)`);
   console.log(config.firebase.projectId
     ? `  accounts: Firebase project ${config.firebase.projectId}`

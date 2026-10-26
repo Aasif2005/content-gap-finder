@@ -1,39 +1,11 @@
 import { heatColor, compact } from '../lib/format.js';
+import { Derived, DERIVED_NOTE } from './ui/Derived.jsx';
 
-export function Badge({ children, tone = 'neutral', title }) {
-  const tones = {
-    neutral: 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300',
-    hot: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
-    warm: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-    cool: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
-    good: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
-    bad: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
-  };
-  return (
-    <span title={title} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${tones[tone]}`}>
-      {children}
-    </span>
-  );
-}
-
-/**
- * Marks a figure we calculated ourselves. YouTube's API policies require our
- * own metrics to be clearly told apart from YouTube's: views, likes and
- * subscribers carry no mark; heat, demand, engagement % and the like do.
- */
-export const DERIVED_NOTE = 'Calculated by Content Gap Finder from YouTube data. Not a YouTube metric.';
-
-export function Derived({ className = '' }) {
-  return (
-    <span
-      title={DERIVED_NOTE}
-      aria-label={DERIVED_NOTE}
-      className={`cursor-help font-normal opacity-60 ${className}`}
-    >
-      ⓘ
-    </span>
-  );
-}
+// Badge, Derived and Skeleton now live in the UI kit; re-exported so the report
+// components keep importing them from here until they are restyled.
+export { Badge } from './ui/Badge.jsx';
+export { Derived, DERIVED_NOTE } from './ui/Derived.jsx';
+export { Skeleton } from './ui/Skeleton.jsx';
 
 export function HeatBar({ value, label = 'Heat' }) {
   return (
@@ -75,10 +47,6 @@ export function Card({ children, className = '' }) {
       {children}
     </div>
   );
-}
-
-export function Skeleton({ className = '' }) {
-  return <div className={`shimmer relative overflow-hidden rounded bg-ink-200/70 dark:bg-ink-800 ${className}`} />;
 }
 
 export function EmptyState({ title, children }) {

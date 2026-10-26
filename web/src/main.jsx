@@ -1,10 +1,31 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import Shell from './Shell.jsx';
+// Self-hosted fonts: the privacy policy promises no requests to Google Fonts.
+import '@fontsource-variable/schibsted-grotesk';
+import '@fontsource-variable/geist-mono';
+import '@fontsource-variable/noto-sans-tamil';
+import '@fontsource-variable/noto-sans-devanagari';
 import './index.css';
+import { AuthProvider } from './lib/auth.jsx';
+import { MeProvider } from './lib/me.jsx';
+import { ToastProvider } from './components/ui/index.js';
+import { ConsentProvider } from './lib/consent.jsx';
+import { RouterProvider } from './lib/router.jsx';
+import AppFrame from './AppFrame.jsx';
+import routes from './routes.jsx';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <Shell />
+    <AuthProvider>
+      <MeProvider>
+        <ToastProvider>
+          <ConsentProvider>
+            <RouterProvider routes={routes}>
+              <AppFrame />
+            </RouterProvider>
+          </ConsentProvider>
+        </ToastProvider>
+      </MeProvider>
+    </AuthProvider>
   </React.StrictMode>
 );

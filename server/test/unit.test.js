@@ -32,6 +32,8 @@ import { createRateLimit } from '../src/lib/rateLimit.js';
 import { corsOriginAllowed, makeSecurityHeaders } from '../src/lib/security.js';
 import { clampLimit, validInterval } from '../src/routes/api.js';
 import { gapsToCsv, reportToMarkdown, exportStem } from '../../web/src/lib/export.js';
+import { matchRoute, normalizePath } from '../../web/src/lib/routes.js';
+import { authError } from '../../web/src/lib/authErrors.js';
 import { charge, analysesAffordable, searchCallsPerAnalysis, unitsPerAnalysis, nextQuotaReset, quotaDay } from '../src/lib/quota.js';
 import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet } from 'jose';
 import { verifyIdToken, normalizeUser } from '../src/lib/firebaseToken.js';
@@ -827,7 +829,7 @@ describe('export serializers', () => {
   test('exports say where the data came from, when, and which figures are ours', () => {
     const [header, row] = gapsToCsv(result).split('\r\n');
     assert.match(header, /,data_as_of,source$/);
-    assert.match(row, /2026-09-24 \d\d:\d\d UTC,"YouTube API Services; scores calculated by Content Gap Finder, not YouTube metrics"$/);
+    assert.match(row, /2026-09-24 \d\d:\d\d UTC,"YouTube API Services; scores calculated by Gapstronaut, not YouTube metrics"$/);
     const md = reportToMarkdown(result);
     assert.match(md, /YouTube data as of 2026-09-24/);
     assert.match(md, /not YouTube metrics/);
@@ -2574,5 +2576,88 @@ describe('email verification gate', () => {
 
   test('needsVerification is false when nobody is signed in', () => {
     assert.equal(needsVerification(null), false);
+  });
+});
+
+
+describe('web router: matchRoute', () => {
+  const table = [
+    { path: '/', name: 'home' },
+    { path: '/login', name: 'login' },
+    { path: '/explore', name: 'explore' },
+    { path: '/r/:id', name: 'report' },
+    { path: '/channel/r/:id', name: 'channel-report' },
+    { path: '/docs/*', name: 'docs' },
+    { path: '*', name: 'not-found' },
+  ];
+  const name = (p) => matchRoute(p, table)?.route.name;
+
+  test('matches a static path, and the root', () => {
+    assert.equal(name('/'), 'home');
+    assert.equal(name('/login'), 'login');
+    assert.deepEqual(matchRoute('/login', table).params, {});
+  });
+
+  test('captures :param segments, decoded', () => {
+    assert.deepEqual(matchRoute('/r/abc_123', table).params, { id: 'abc_123' });
+    assert.equal(name('/channel/r/xyz'), 'channel-report');
+    assert.deepEqual(matchRoute('/r/a%20b', table).params, { id: 'a b' });
+    // a stray % must not throw
+    assert.deepEqual(matchRoute('/r/100%', table).params, { id: '100%' });
+  });
+
+  test('a trailing slash, query or hash does not change the match', () => {
+    assert.equal(name('/login/'), 'login');
+    assert.equal(name('/login?next=%2Fdashboard'), 'login');
+    assert.equal(name('/explore#top'), 'explore');
+    assert.equal(normalizePath('/a/b///'), '/a/b');
+    assert.equal(normalizePath(''), '/');
+    assert.equal(normalizePath('//'), '/');
+  });
+
+  test('a :param needs a segment, and extra segments do not match', () => {
+    assert.equal(name('/r'), 'not-found');
+    assert.equal(name('/r/abc/extra'), 'not-found');
+    assert.equal(name('/login/extra'), 'not-found');
+  });
+
+  test('no match returns null when the table has no catch-all', () => {
+    assert.equal(matchRoute('/nope', table.slice(0, 4)), null);
+  });
+
+  test('a trailing * matches the rest, including nothing, and reports it', () => {
+    assert.equal(name('/docs'), 'docs');
+    assert.deepEqual(matchRoute('/docs/a/b', table).params, { '*': 'a/b' });
+    assert.deepEqual(matchRoute('/something/else', table).params, { '*': 'something/else' });
+  });
+
+  test('the first matching entry wins', () => {
+    assert.equal(matchRoute('/x', [{ path: '/:a', n: 1 }, { path: '/x', n: 2 }]).route.n, 1);
+  });
+});
+
+describe('web auth: plain-words errors', () => {
+  test('wrong password and unknown email share one message', () => {
+    const a = authError({ code: 'auth/wrong-password' });
+    const b = authError({ code: 'auth/user-not-found' });
+    const c = authError({ code: 'auth/invalid-credential' });
+    assert.equal(a.message, b.message);
+    assert.equal(a.message, c.message);
+    assert.equal(a.code, 'INVALID_CREDENTIALS');
+  });
+
+  test('no message ever shows a raw auth/ code', () => {
+    for (const code of ['auth/email-already-in-use', 'auth/weak-password', 'auth/popup-closed-by-user', 'auth/too-many-requests', 'auth/network-request-failed', 'auth/never-heard-of-it']) {
+      const e = authError({ code });
+      assert.doesNotMatch(e.message, /auth\//);
+      assert.ok(e.message.length > 10);
+    }
+    assert.equal(authError({ code: 'auth/email-already-in-use' }).code, 'EMAIL_IN_USE');
+    assert.equal(authError(new Error('boom')).message, 'Something went wrong. Please try again.');
+  });
+
+  test('an error of ours passes through untouched', () => {
+    const ours = Object.assign(new Error('Accounts are not set up on this server yet.'), { code: 'NOT_CONFIGURED' });
+    assert.equal(authError(ours), ours);
   });
 });

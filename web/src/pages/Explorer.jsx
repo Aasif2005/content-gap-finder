@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SearchForm } from './components/SearchForm.jsx';
-import { ProgressRail } from './components/ProgressRail.jsx';
-import { TopicCard } from './components/TopicCard.jsx';
-import { GapCard } from './components/GapCard.jsx';
-import { AvoidCard } from './components/AvoidCard.jsx';
-import { ObjectionCard } from './components/ObjectionCard.jsx';
-import { EmptyState, StatRow, Badge } from './components/Bits.jsx';
-import { ThinPoolNotice } from './components/ThinPoolNotice.jsx';
-import { EvidencePanel } from './components/EvidencePanel.jsx';
-import { ExportMenu } from './components/ExportMenu.jsx';
-import { HistoryPanel } from './components/HistoryPanel.jsx';
-import { WatchPanel } from './components/WatchPanel.jsx';
-import { startAnalysis, pollJob, getQuota, getRun } from './lib/api.js';
-import { compact } from './lib/format.js';
+import { SearchForm } from '../components/SearchForm.jsx';
+import { ProgressRail } from '../components/ProgressRail.jsx';
+import { TopicCard } from '../components/TopicCard.jsx';
+import { GapCard } from '../components/GapCard.jsx';
+import { AvoidCard } from '../components/AvoidCard.jsx';
+import { ObjectionCard } from '../components/ObjectionCard.jsx';
+import { EmptyState, StatRow, Badge } from '../components/Bits.jsx';
+import { ThinPoolNotice } from '../components/ThinPoolNotice.jsx';
+import { EvidencePanel } from '../components/EvidencePanel.jsx';
+import { ExportMenu } from '../components/ExportMenu.jsx';
+import { HistoryPanel } from '../components/HistoryPanel.jsx';
+import { WatchPanel } from '../components/WatchPanel.jsx';
+import { startAnalysis, pollJob, getQuota, getRun } from '../lib/api.js';
+import { compact } from '../lib/format.js';
 import {
   runIdFromPath,
   queryFromUrl,
@@ -20,12 +20,10 @@ import {
   pushQueryUrl,
   modeFromPath,
   basePathFor,
-  legalPageFromPath,
-} from './lib/urlState.js';
-import { useConsent } from './lib/consent.jsx';
-import { VideoTitlesProvider } from './components/CommentQuote.jsx';
-import { ReportProvenance } from './components/Attribution.jsx';
-import { Footer } from './components/Footer.jsx';
+} from '../lib/urlState.js';
+import { useConsent } from '../lib/consent.jsx';
+import { VideoTitlesProvider } from '../components/CommentQuote.jsx';
+import { ReportProvenance } from '../components/Attribution.jsx';
 
 // Niche search is exploratory (broad discovery across many creators, content
 // ideas for something you don't own yet); channel analysis is diagnostic (one
@@ -88,8 +86,12 @@ const TABS = [
 
 const relFrac = (r) => (r ? `${r.relevant}/${r.total}` : '—');
 
-export default function App() {
-  const [mode, setMode] = useState(() => modeFromPath());
+// Placeholder for the explorer rework: the pre-redesign page, mounted at /explore,
+// /channel and the shared-report URLs. `mode` is 'niche' | 'channel'; `routeRunId`
+// is the :id of /r/:id and /channel/r/:id. For now the page still reads the run id
+// straight from the URL, so `routeRunId` is not used yet.
+export function Explorer({ mode: modeProp = 'niche' }) {
+  const [mode, setMode] = useState(modeProp);
   const [phase, setPhase] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -108,7 +110,6 @@ export default function App() {
   // Bumped by every new run / report open / page switch; anything that resolves
   // under an older number is stale and must not touch the page.
   const requestSeq = useRef(0);
-  const fromLegal = useRef(Boolean(legalPageFromPath()));
 
   const refreshQuota = useCallback(() => {
     getQuota().then(setQuota).catch(() => {});
@@ -148,10 +149,6 @@ export default function App() {
     else setMode(modeFromPath());
 
     const onPop = () => {
-      // The shell shows the Privacy/Terms page over this one. Going there and
-      // back must leave the report, or a run in progress, exactly as it was.
-      if (legalPageFromPath()) { fromLegal.current = true; return; }
-      if (fromLegal.current) { fromLegal.current = false; return; }
       const id = runIdFromPath();
       if (id) openRun(id, { push: false });
       else {
@@ -165,18 +162,6 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  /** Switches page (nav click). Leaves the other page's in-progress report alone -- it just isn't shown. */
-  const switchMode = useCallback((next) => {
-    if (next === mode) return;
-    requestSeq.current++;
-    setMode(next);
-    setResult(null);
-    setError(null);
-    setPhase(null);
-    lastInput.current = null;
-    window.history.pushState({}, '', basePathFor(next) || '/');
-  }, [mode]);
 
   const ensureConsent = useConsent();
 
@@ -239,29 +224,12 @@ export default function App() {
   const page = PAGES[mode];
 
   return (
-    <div className="mx-auto min-h-full max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
-      <nav className="mb-6 inline-flex rounded-lg bg-ink-100 p-0.5 dark:bg-ink-800">
-        {Object.entries(PAGES).map(([key, p]) => (
-          <a
-            key={key}
-            href={basePathFor(key) || '/'}
-            onClick={(e) => { e.preventDefault(); switchMode(key); }}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
-              mode === key
-                ? 'bg-white text-ink-900 shadow-sm dark:bg-ink-600 dark:text-white'
-                : 'text-ink-500 hover:text-ink-800 dark:text-ink-400 dark:hover:text-ink-100'
-            }`}
-          >
-            {p.navLabel}
-          </a>
-        ))}
-      </nav>
-
+    <div className="mx-auto max-w-4xl">
       <header className="mb-8">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl dark:text-white">
-              Content Gap Finder <span className="font-normal text-ink-400 dark:text-ink-500">· {page.label}</span>
+              {page.label}
             </h1>
             <p className="mt-1 max-w-xl text-sm text-ink-500 dark:text-ink-400">
               {page.subtitle}
@@ -551,8 +519,8 @@ export default function App() {
           <EmptyState title={page.emptyTitle}>{page.emptyBody}</EmptyState>
         )}
       </div>
-
-      <Footer />
     </div>
   );
 }
+
+export default Explorer;

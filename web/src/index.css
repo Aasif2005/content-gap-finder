@@ -1,6 +1,143 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Semantic names, each with a light and a dark value, exposed to
+ * Tailwind below so `bg-bg`, `bg-surface`, `text-fg-2`, `border-line` just work.
+ *
+ * The app follows the OS. `.theme-night` forces the dark values (the marketing
+ * homepage lives on a night ground), `.theme-day` forces the light ones. Both
+ * work on any element, so a dark section can sit inside a light page.
+ */
+
+:root,
+.theme-day {
+  color-scheme: light;
+
+  --bg: #F5F7FA;
+  --surface: #FFFFFF;
+  --surface-2: #EEF2FA;
+  --hover: #EEF2FA;
+  --line: #E3E8F0;
+  --line-soft: #EEF1F6;
+  --line-strong: #C5CEDD; /* inputs and secondary buttons */
+
+  --fg: #0E1626;
+  --fg-2: #4A5670;
+  --fg-3: #667291;
+
+  --ink: #0A1220; /* primary button ground */
+  --on-ink: #FFFFFF;
+
+  --focus: #2F5FD0;
+  --mark: #F6C453; /* the amber highlighter: real viewer evidence only */
+  --mark-soft: #FBE7A8;
+  --mark-bg: var(--mark-soft); /* what an EvidenceMark paints behind its text */
+  --on-mark: var(--fg);
+
+  --good-bg: #E3F4EC; --good-fg: #1E6B4B;
+  --bad-bg: #FBE9E6;  --bad-fg: #9A2F22;
+  --warn-bg: #FBF1D6; --warn-fg: #7A5410;
+  --info-bg: #E6EEFC; --info-fg: #2850B0;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-1: 150ms;
+  --dur-2: 200ms;
+}
+
+/* Dark: the OS asked for it, unless a section has pinned itself to day. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.theme-day) {
+    color-scheme: dark;
+    --bg: #0A1220;
+    --surface: #0E182B;
+    --surface-2: #131F36;
+    --hover: #1B2A47;
+    --line: #1E2C4B;
+    --line-soft: #18243F;
+    --line-strong: #26355A;
+    --fg: #EEF2FA;
+    --fg-2: #AAB6CD;
+    --fg-3: #8190AB;
+    --ink: #EEF2FA;
+    --on-ink: #0A1220;
+    --focus: #7FA2F5;
+    --mark: #F6C453;
+    --mark-soft: #4A3A12; /* selection ground: amber, but quiet enough for light text */
+    --mark-bg: var(--mark);
+    --on-mark: #0A1220;
+    --good-bg: #12302A; --good-fg: #6FD0A0;
+    --bad-bg: #3A1B1E;  --bad-fg: #F19A8E;
+    --warn-bg: #3A2E12; --warn-fg: #F6C453;
+    --info-bg: #16264A; --info-fg: #9DB8F7;
+  }
+}
+
+/* The same dark values, forced. Kept in step with the block above. */
+.theme-night {
+  color-scheme: dark;
+  --bg: #0A1220;
+  --surface: #0E182B;
+  --surface-2: #131F36;
+  --hover: #1B2A47;
+  --line: #1E2C4B;
+  --line-soft: #18243F;
+  --line-strong: #26355A;
+  --fg: #EEF2FA;
+  --fg-2: #AAB6CD;
+  --fg-3: #8190AB;
+  --ink: #EEF2FA;
+  --on-ink: #0A1220;
+  --focus: #7FA2F5;
+  --mark: #F6C453;
+  --mark-soft: #4A3A12;
+  --mark-bg: var(--mark);
+  --on-mark: #0A1220;
+  --good-bg: #12302A; --good-fg: #6FD0A0;
+  --bad-bg: #3A1B1E;  --bad-fg: #F19A8E;
+  --warn-bg: #3A2E12; --warn-fg: #F6C453;
+  --info-bg: #16264A; --info-fg: #9DB8F7;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-ink: var(--ink);
+  --color-on-ink: var(--on-ink);
+  --color-focus: var(--focus);
+  --color-mark: var(--mark);
+  --color-mark-soft: var(--mark-soft);
+  --color-on-mark: var(--on-mark);
+  --color-good-bg: var(--good-bg);
+  --color-good-fg: var(--good-fg);
+  --color-bad-bg: var(--bad-bg);
+  --color-bad-fg: var(--bad-fg);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-fg: var(--warn-fg);
+  --color-info-bg: var(--info-bg);
+  --color-info-fg: var(--info-fg);
+}
+
 @theme {
+  /* Fontsource's variable packages name their families "... Variable"; the plain
+     names are kept in the stack in case a static build is ever swapped in. */
+  --font-sans: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', 'Noto Sans Tamil Variable', 'Noto Sans Tamil',
+    'Noto Sans Devanagari Variable', 'Noto Sans Devanagari', system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
+
+  --radius-panel: 14px;
+  --radius-control: 10px;
+  --shadow-panel: 0 1px 2px rgb(14 22 38 / 0.04);
+
+  /* The old neutral and heat scales. The report components still use them until
+     they are moved onto the semantic tokens above. */
   --color-ink-50:  #f6f7f9;
   --color-ink-100: #eceef2;
   --color-ink-200: #d5d9e2;
@@ -18,22 +155,77 @@
   --color-heat-high: #f43f5e;
 }
 
-:root { color-scheme: light dark; }
-
-html, body, #root { height: 100%; }
+html, body, #root { min-height: 100%; }
+html { scroll-behavior: smooth; }
 
 body {
-  @apply bg-ink-50 text-ink-900 antialiased;
-  font-feature-settings: "cv02", "cv03", "cv04", "tnum";
+  @apply bg-bg text-fg font-sans antialiased;
 }
 
-@media (prefers-color-scheme: dark) {
-  body { @apply bg-ink-950 text-ink-100; }
+/* Browser surfaces: selection, caret, focus, scrollbars. */
+::selection { background: var(--mark-soft); color: var(--fg); }
+input, textarea, [contenteditable] { caret-color: var(--focus); }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
-/* Tabular numerals everywhere stats are shown, so columns don't jitter. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Legal pages: bold run-in terms read as emphasis, not as a different colour. */
+.legal b { color: var(--fg); font-weight: 600; }
+
+/* Tabular numerals wherever stats are shown, so columns don't jitter. */
 .nums { font-variant-numeric: tabular-nums; }
 
+/* --- Motion -----------------------------------------------------------------
+   One authored moment (the evidence sweep), 150-200ms fades elsewhere, and
+   nothing moves inside app screens beyond state. */
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fade-in var(--dur-2) var(--ease-out) both; }
+
+/* The amber highlighter. Paints behind a run of viewer-written text. */
+.mark {
+  background-color: var(--mark-bg);
+  color: var(--on-mark);
+  padding: 2px 6px;
+  border-radius: 4px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* A highlighter drawn once, left to right, when the quote scrolls into view.
+   Before it runs the text keeps the page colour (night text on a night ground
+   would vanish); the ink swaps over as the amber arrives. */
+.evidence-sweep {
+  background-color: transparent;
+  background-image: linear-gradient(var(--mark-bg), var(--mark-bg));
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  background-size: 0% 100%;
+  color: var(--fg);
+}
+.evidence-sweep.in-view {
+  animation: evidence-sweep 700ms var(--ease-out) forwards;
+}
+@keyframes evidence-sweep {
+  0%   { background-size: 0% 100%;   color: var(--fg); }
+  35%  { color: var(--fg); }
+  100% { background-size: 100% 100%; color: var(--on-mark); }
+}
+
+/* Older report components still use these two. */
 @keyframes rise {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -46,7 +238,19 @@ body {
 .shimmer::after {
   content: "";
   position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.08), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--fg) 7%, transparent), transparent);
   transform: translateX(-100%);
   animation: shimmer 1.6s infinite;
+}
+
+/* Reduced motion: show every end state, run no animation. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .fade-in, .rise { animation: none; }
+  .shimmer::after { animation: none; display: none; }
+  .evidence-sweep {
+    animation: none !important;
+    background-size: 100% 100%;
+    color: var(--on-mark);
+  }
 }
