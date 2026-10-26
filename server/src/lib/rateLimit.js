@@ -8,7 +8,12 @@ import { config } from '../config.js';
 // other's budget.
 const WINDOW_MS = 60 * 60 * 1000;
 
-export function createRateLimit({ perHour, noun }) {
+// Signed-in people are limited as themselves, not by address: a shared office or
+// phone-carrier IP would otherwise pool strangers into one allowance, and a
+// person on a changing IP would get a fresh one every time.
+export const userOrIp = (req) => (req.user?.uid ? `u:${req.user.uid}` : req.ip || req.socket?.remoteAddress || 'unknown');
+
+export function createRateLimit({ perHour, noun, keyFn = userOrIp }) {
   const hits = new Map();
   let lastSweep = Date.now();
   // Entries for IPs with nothing in the last hour are dead weight; without this
@@ -18,7 +23,7 @@ export function createRateLimit({ perHour, noun }) {
     lastSweep = now;
   };
   function rateLimit(req, res, next) {
-    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    const ip = keyFn(req);
     const now = Date.now();
     if (now - lastSweep > 10 * 60 * 1000) sweep(now);
     const windowMs = WINDOW_MS;

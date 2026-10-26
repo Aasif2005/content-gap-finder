@@ -32,7 +32,15 @@ import { createRateLimit } from '../src/lib/rateLimit.js';
 import { corsOriginAllowed, makeSecurityHeaders } from '../src/lib/security.js';
 import { clampLimit, validInterval } from '../src/routes/api.js';
 import { gapsToCsv, reportToMarkdown, exportStem } from '../../web/src/lib/export.js';
-import { charge, analysesAffordable, searchCallsPerAnalysis, unitsPerAnalysis } from '../src/lib/quota.js';
+import { charge, analysesAffordable, searchCallsPerAnalysis, unitsPerAnalysis, nextQuotaReset, quotaDay } from '../src/lib/quota.js';
+import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet } from 'jose';
+import { verifyIdToken, normalizeUser } from '../src/lib/firebaseToken.js';
+import { bearerToken, shouldTouch, requireUser } from '../src/lib/auth.js';
+import { openDb, upsertUser, getUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../src/lib/db.js';
+import { ownRuns, featuredCandidates, trimFeatured } from '../src/lib/store.js';
+import { ownedBy, ownedWatch, atOwnerCap, hasDuplicate } from '../src/lib/watches.js';
+import { dailyLimitBody } from '../src/routes/api.js';
+import * as jobsRegistry from '../src/lib/jobs.js';
 
 describe('parseDuration', () => {
   test('parses the ISO-8601 forms YouTube actually returns', () => {
@@ -2128,5 +2136,418 @@ describe('security headers', () => {
     assert.match(headersFrom(true)['Strict-Transport-Security'], /max-age=\d+/);
     assert.equal(headersFrom(false)['Strict-Transport-Security'], undefined);
     assert.equal(headersFrom(false)['X-Frame-Options'], 'DENY');
+  });
+});
+
+// ------------------------------------------------------------- accounts ----
+
+describe('Firebase ID token verification', () => {
+  const PROJECT = 'gapstronaut-test';
+  const NOW = new Date('2026-10-26T12:00:00Z');
+  const nowS = Math.floor(NOW.getTime() / 1000);
+  let privateKey; let keySet; let otherKey;
+
+  // One key pair for the whole block: RSA generation is the slow part.
+  const setup = async () => {
+    if (privateKey) return;
+    const pair = await generateKeyPair('RS256');
+    privateKey = pair.privateKey;
+    otherKey = (await generateKeyPair('RS256')).privateKey;
+    const jwk = { ...(await exportJWK(pair.publicKey)), kid: 'k1', alg: 'RS256', use: 'sig' };
+    keySet = createLocalJWKSet({ keys: [jwk] });
+  };
+
+  const sign = async (claims = {}, { key = privateKey, alg = 'RS256', header = {} } = {}) => {
+    const { exp = nowS + 3600, iss = `https://securetoken.google.com/${PROJECT}`, aud = PROJECT, sub = 'uid-1', auth_time = nowS - 60, ...rest } = claims;
+    const jwt = new SignJWT({ auth_time, firebase: { sign_in_provider: 'google.com' }, email: 'Ada@Example.com', email_verified: true, name: 'Ada', picture: 'https://x/y.png', ...rest })
+      .setProtectedHeader({ alg, kid: 'k1', ...header })
+      .setIssuedAt(nowS - 60);
+    if (iss !== null) jwt.setIssuer(iss);
+    if (aud !== null) jwt.setAudience(aud);
+    if (sub !== null) jwt.setSubject(sub);
+    if (exp !== null) jwt.setExpirationTime(exp);
+    return jwt.sign(key);
+  };
+  const verify = (token) => verifyIdToken(token, { projectId: PROJECT, keySet, now: NOW });
+
+  test('a valid token yields the normalised user', async () => {
+    await setup();
+    assert.deepEqual(await verify(await sign()), {
+      uid: 'uid-1', email: 'ada@example.com', emailVerified: true, name: 'Ada', picture: 'https://x/y.png', provider: 'google.com',
+    });
+  });
+
+  test('a wrong issuer is rejected', async () => {
+    await setup();
+    await assert.rejects(verify(await sign({ iss: 'https://securetoken.google.com/someone-else' })), { code: 'INVALID_TOKEN' });
+    await assert.rejects(verify(await sign({ iss: 'https://accounts.google.com' })), { code: 'INVALID_TOKEN' });
+  });
+
+  test('a wrong audience is rejected', async () => {
+    await setup();
+    await assert.rejects(verify(await sign({ aud: 'someone-else' })), { code: 'INVALID_TOKEN' });
+  });
+
+  test('an expired token is rejected, one inside the clock tolerance is not', async () => {
+    await setup();
+    await assert.rejects(verify(await sign({ exp: nowS - 600 })), { code: 'INVALID_TOKEN' });
+    assert.equal((await verify(await sign({ exp: nowS - 5 }))).uid, 'uid-1');
+  });
+
+  test('a token with no expiry is rejected rather than treated as eternal', async () => {
+    await setup();
+    await assert.rejects(verify(await sign({ exp: null })), { code: 'INVALID_TOKEN' });
+  });
+
+  test('an auth_time in the future is rejected', async () => {
+    await setup();
+    await assert.rejects(verify(await sign({ auth_time: nowS + 3600 })), { code: 'INVALID_TOKEN' });
+  });
+
+  test('a missing or empty subject is rejected', async () => {
+    await setup();
+    await assert.rejects(verify(await sign({ sub: null })), { code: 'INVALID_TOKEN' });
+    await assert.rejects(verify(await sign({ sub: '' })), { code: 'INVALID_TOKEN' });
+  });
+
+  test('a token signed by a different key is rejected', async () => {
+    await setup();
+    await assert.rejects(verify(await sign({}, { key: otherKey })), { code: 'INVALID_TOKEN' });
+  });
+
+  test('unsigned, HS256 and garbage tokens are rejected', async () => {
+    await setup();
+    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const unsigned = `${b64({ alg: 'none', kid: 'k1' })}.${b64({ iss: `https://securetoken.google.com/${PROJECT}`, aud: PROJECT, sub: 'x', exp: nowS + 600, auth_time: nowS })}.`;
+    await assert.rejects(verify(unsigned), { code: 'INVALID_TOKEN' });
+    const hs = await new SignJWT({ auth_time: nowS }).setProtectedHeader({ alg: 'HS256', kid: 'k1' })
+      .setIssuer(`https://securetoken.google.com/${PROJECT}`).setAudience(PROJECT).setSubject('x').setIssuedAt().setExpirationTime(nowS + 600)
+      .sign(new TextEncoder().encode('secret-secret-secret-secret-secret'));
+    await assert.rejects(verify(hs), { code: 'INVALID_TOKEN' });
+    for (const junk of ['', 'not.a.jwt', 'abc', null, undefined, 42]) {
+      await assert.rejects(verify(junk), { code: 'INVALID_TOKEN' });
+    }
+  });
+
+  test('with no project id configured, verification is "not configured", not "invalid"', async () => {
+    await assert.rejects(verifyIdToken('x', { projectId: '', keySet }), { code: 'AUTH_NOT_CONFIGURED', status: 503 });
+  });
+
+  test('the provider is normalised and anonymous accounts are refused', async () => {
+    await setup();
+    assert.equal((await verify(await sign({ firebase: { sign_in_provider: 'password' } }))).provider, 'password');
+    assert.equal(normalizeUser({ sub: 'u', firebase: { sign_in_provider: 'google.com' } }).provider, 'google.com');
+    assert.equal(normalizeUser({ sub: 'u' }).provider, 'unknown');
+    assert.equal(normalizeUser({ sub: 'u', firebase: { sign_in_provider: 'password' } }).emailVerified, false);
+    await assert.rejects(verify(await sign({ firebase: { sign_in_provider: 'anonymous' } })), { code: 'INVALID_TOKEN' });
+  });
+});
+
+describe('auth middleware helpers', () => {
+  test('bearerToken reads only a well-formed Authorization header', () => {
+    const req = (authorization) => ({ headers: { authorization } });
+    assert.equal(bearerToken(req('Bearer abc.def.ghi')), 'abc.def.ghi');
+    assert.equal(bearerToken(req('bearer abc')), 'abc');
+    assert.equal(bearerToken(req('Basic abc')), null);
+    assert.equal(bearerToken(req('Bearer')), null);
+    assert.equal(bearerToken(req('Bearer a b')), null);
+    assert.equal(bearerToken({ headers: {} }), null);
+  });
+
+  test('last_seen_at is refreshed at most once a minute', () => {
+    assert.equal(shouldTouch(undefined, 1000), true);
+    assert.equal(shouldTouch(1000, 30_000), false);
+    assert.equal(shouldTouch(1000, 61_001), true);
+  });
+
+  test('requireUser: 503 with no Firebase project, never a misleading 401', () => {
+    // The test process has no FIREBASE_PROJECT_ID, so accounts are not configured.
+    let sent;
+    const res = { status(c) { sent = { status: c }; return this; }, json(b) { sent.body = b; } };
+    requireUser({ user: null }, res, () => assert.fail('must not pass'));
+    assert.equal(sent.status, 503);
+    assert.equal(sent.body.code, 'AUTH_NOT_CONFIGURED');
+  });
+});
+
+describe('accounts database', () => {
+  const DAY = '2026-10-26';
+  const user = (uid) => ({ uid, email: `${uid}@x.com`, name: uid, picture: null, provider: 'password', emailVerified: false });
+
+  test('upsertUser creates once, then refreshes the profile and keeps created_at', () => {
+    const db = openDb(':memory:');
+    const first = upsertUser(user('a'), db);
+    assert.equal(first.email, 'a@x.com');
+    assert.equal(first.termsAcceptedAt, null);
+    const again = upsertUser({ ...user('a'), name: 'New Name', emailVerified: true }, db);
+    assert.equal(again.name, 'New Name');
+    assert.equal(again.emailVerified, true);
+    assert.equal(again.createdAt, first.createdAt);
+    assert.equal(getUser('nobody', db), null);
+  });
+
+  test('acceptTerms stamps the account, and only an account that exists', () => {
+    const db = openDb(':memory:');
+    upsertUser(user('a'), db);
+    const at = acceptTerms('a', db);
+    assert.equal(getUser('a', db).termsAcceptedAt, at);
+    assert.equal(acceptTerms('ghost', db), null);
+  });
+
+  test('tryConsume allows the limit and refuses the next', () => {
+    const db = openDb(':memory:');
+    const results = [1, 2, 3, 4].map(() => tryConsume('a', DAY, 'analyses', 3, db));
+    assert.deepEqual(results.map((r) => r.ok), [true, true, true, false]);
+    assert.deepEqual(results.map((r) => r.used), [1, 2, 3, 3]);
+    assert.equal(results[3].limit, 3);
+    assert.equal(usageFor('a', DAY, db).analyses, 3);
+  });
+
+  test('kinds are counted separately, and a limit of 0 refuses everything', () => {
+    const db = openDb(':memory:');
+    assert.equal(tryConsume('a', DAY, 'briefs', 0, db).ok, false);
+    assert.equal(tryConsume('a', DAY, 'analyses', 1, db).ok, true);
+    assert.deepEqual(usageFor('a', DAY, db), { day: DAY, analyses: 1, briefs: 0 });
+    assert.throws(() => tryConsume('a', DAY, 'analyses; DROP TABLE usage', 1, db), /Unknown usage kind/);
+  });
+
+  test('a new day starts from zero; another person is unaffected', () => {
+    const db = openDb(':memory:');
+    for (let i = 0; i < 3; i++) tryConsume('a', DAY, 'analyses', 3, db);
+    assert.equal(tryConsume('a', DAY, 'analyses', 3, db).ok, false);
+    assert.equal(tryConsume('a', '2026-10-27', 'analyses', 3, db).ok, true);
+    assert.equal(tryConsume('b', DAY, 'analyses', 3, db).ok, true);
+  });
+
+  test('refund gives one back, never below zero, and only for that day', () => {
+    const db = openDb(':memory:');
+    for (let i = 0; i < 3; i++) tryConsume('a', DAY, 'analyses', 3, db);
+    refund('a', DAY, 'analyses', db);
+    assert.equal(usageFor('a', DAY, db).analyses, 2);
+    assert.equal(tryConsume('a', DAY, 'analyses', 3, db).ok, true);
+    refund('nobody', DAY, 'analyses', db);
+    refund('a', '2026-01-01', 'analyses', db);
+    for (let i = 0; i < 5; i++) refund('a', DAY, 'briefs', db);
+    assert.equal(usageFor('a', DAY, db).briefs, 0);
+  });
+
+  test('linkRun is idempotent, lists newest first, and ignores a deleted account', () => {
+    const db = openDb(':memory:');
+    upsertUser(user('a'), db);
+    assert.equal(linkRun('a', 'run-1', db), true);
+    assert.equal(linkRun('a', 'run-1', db), false);
+    linkRun('a', 'run-2', db);
+    assert.deepEqual(runIdsFor('a', db).sort(), ['run-1', 'run-2']);
+    assert.equal(linkRun('ghost', 'run-1', db), false); // no such account
+    assert.deepEqual(runIdsFor('ghost', db), []);
+  });
+
+  test('deleteUserData removes one account and leaves everyone else alone', () => {
+    const db = openDb(':memory:');
+    for (const uid of ['a', 'b']) {
+      upsertUser(user(uid), db);
+      linkRun(uid, 'shared-run', db);
+      tryConsume(uid, DAY, 'analyses', 3, db);
+    }
+    const gone = deleteUserData('a', db);
+    assert.deepEqual(gone, { users: 1, runs: 1, usage: 1 });
+    assert.equal(getUser('a', db), null);
+    assert.deepEqual(runIdsFor('a', db), []);
+    assert.equal(usageFor('a', DAY, db).analyses, 0);
+    assert.equal(getUser('b', db).email, 'b@x.com');
+    assert.deepEqual(runIdsFor('b', db), ['shared-run']);
+    assert.equal(usageFor('b', DAY, db).analyses, 1);
+  });
+
+  test('migrations are recorded and re-opening a file does not re-run them', () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gap-db-')), 'app.db');
+    const a = openDb(file);
+    upsertUser(user('a'), a);
+    a.close();
+    const b = openDb(file);
+    assert.equal(getUser('a', b).email, 'a@x.com');
+    assert.equal(b.prepare('PRAGMA user_version').get().user_version, 1);
+    b.close();
+  });
+});
+
+describe('daily reset time', () => {
+  test('is the next midnight in Los Angeles, as an ISO instant', () => {
+    // Winter (PST, UTC-8): 2026-01-15 12:00Z is 04:00 PST, next midnight is 2026-01-16 08:00Z.
+    assert.equal(nextQuotaReset(new Date('2026-01-15T12:00:00Z')), '2026-01-16T08:00:00.000Z');
+    // Summer (PDT, UTC-7).
+    assert.equal(nextQuotaReset(new Date('2026-07-15T12:00:00Z')), '2026-07-16T07:00:00.000Z');
+  });
+
+  test('is correct either side of the spring-forward change (2026-03-08)', () => {
+    // 20:00 PST on Mar 7: midnight is still PST.
+    assert.equal(nextQuotaReset(new Date('2026-03-08T04:00:00Z')), '2026-03-08T08:00:00.000Z');
+    // The 23-hour day: from midnight Mar 8 (08:00Z) the next midnight is PDT, 07:00Z on Mar 9.
+    assert.equal(nextQuotaReset(new Date('2026-03-08T08:00:00Z')), '2026-03-09T07:00:00.000Z');
+    assert.equal(nextQuotaReset(new Date('2026-03-08T15:00:00Z')), '2026-03-09T07:00:00.000Z');
+  });
+
+  test('is correct either side of the fall-back change (2026-11-01)', () => {
+    assert.equal(nextQuotaReset(new Date('2026-10-31T20:00:00Z')), '2026-11-01T07:00:00.000Z');
+    // The 25-hour day: midnight Nov 2 is PST, 08:00Z.
+    assert.equal(nextQuotaReset(new Date('2026-11-01T12:00:00Z')), '2026-11-02T08:00:00.000Z');
+  });
+
+  test('is strictly after now, and exactly at the instant it is read at midnight', () => {
+    const at = new Date('2026-01-16T08:00:00Z'); // midnight PST exactly
+    assert.equal(nextQuotaReset(at), '2026-01-17T08:00:00.000Z');
+    const t = new Date('2026-06-30T23:59:59Z');
+    assert.ok(new Date(nextQuotaReset(t)) > t);
+    // The day label flips at exactly that instant, so the allowance resets when it says it will.
+    const reset = new Date(nextQuotaReset(t));
+    assert.notEqual(quotaDay(new Date(reset.getTime() - 1000)), quotaDay(reset));
+  });
+
+  test('the daily-limit body names the limit, the reset, and the right noun', () => {
+    const body = dailyLimitBody(3, ['analysis', 'analyses'], new Date('2026-01-15T12:00:00Z'));
+    assert.equal(body.code, 'DAILY_LIMIT');
+    assert.match(body.error, /used your 3 analyses for today/);
+    assert.equal(body.resetsAt, '2026-01-16T08:00:00.000Z');
+    assert.match(dailyLimitBody(1, ['brief', 'briefs']).error, /your 1 brief for today/);
+  });
+});
+
+describe('job completion callbacks', () => {
+  test('whenSettled fires once on finish, with the result', () => {
+    const id = jobsRegistry.create({});
+    const calls = [];
+    jobsRegistry.whenSettled(id, (err, r) => calls.push([err, r]));
+    assert.equal(calls.length, 0);
+    jobsRegistry.finish(id, { runId: 'r1' });
+    assert.deepEqual(calls, [[null, { runId: 'r1' }]]);
+  });
+
+  test('whenSettled fires on failure, and immediately for a job already settled', () => {
+    const id = jobsRegistry.create({});
+    const seen = [];
+    jobsRegistry.whenSettled(id, (err) => seen.push(err?.message));
+    jobsRegistry.fail(id, new Error('boom'));
+    jobsRegistry.whenSettled(id, (err) => seen.push(`late:${err?.message}`));
+    assert.deepEqual(seen, ['boom', 'late:boom']);
+  });
+
+  test('a throwing callback does not stop the others or the job', () => {
+    const id = jobsRegistry.create({});
+    let second = false;
+    jobsRegistry.whenSettled(id, () => { throw new Error('bad callback'); });
+    jobsRegistry.whenSettled(id, () => { second = true; });
+    const orig = console.error; console.error = () => {};
+    try { jobsRegistry.finish(id, {}); } finally { console.error = orig; }
+    assert.equal(second, true);
+    assert.equal(jobsRegistry.get(id).status, 'done');
+  });
+});
+
+describe('per-account runs, featured sample and watches', () => {
+  const row = (runId, extra = {}) => ({ runId, niche: 'sourdough starter', nicheKey: nicheKey('sourdough starter'), channelMode: false, gapsFound: 3, generatedAt: '2026-10-25T00:00:00Z', ...extra });
+
+  test('ownRuns keeps only the caller\'s runs, in index order, from an array or a Set', () => {
+    const rows = [row('a'), row('b'), row('c')];
+    assert.deepEqual(ownRuns(rows, ['c', 'a']).map((r) => r.runId), ['a', 'c']);
+    assert.deepEqual(ownRuns(rows, new Set(['b'])).map((r) => r.runId), ['b']);
+    assert.deepEqual(ownRuns(rows, []), []);
+    assert.deepEqual(ownRuns([], ['a']), []);
+  });
+
+  const NOW = Date.parse('2026-10-26T12:00:00Z');
+  const daysAgo = (n) => new Date(NOW - n * 86_400_000).toISOString();
+  const pick = (rows, extra = {}) => featuredCandidates(rows, { now: NOW, niche: 'sourdough starter', maxDays: 30, ...extra }).map((r) => r.runId);
+
+  test('featured: prefers the niche, with at least 2 gaps, newest first', () => {
+    const rows = [
+      row('old-niche', { generatedAt: daysAgo(5) }),
+      row('new-niche', { generatedAt: daysAgo(1), gapsFound: 2 }),
+      row('other-niche', { niche: 'cast iron', nicheKey: nicheKey('cast iron'), generatedAt: daysAgo(0), gapsFound: 7 }),
+    ];
+    assert.deepEqual(pick(rows), ['new-niche', 'old-niche', 'other-niche']);
+  });
+
+  test('featured: a niche run with one gap is not good enough, and any run with 3+ gaps is the fallback', () => {
+    const rows = [
+      row('thin-niche', { gapsFound: 1, generatedAt: daysAgo(1) }),
+      row('rich-other', { niche: 'x', nicheKey: nicheKey('x'), gapsFound: 3, generatedAt: daysAgo(2) }),
+      row('thin-other', { niche: 'y', nicheKey: nicheKey('y'), gapsFound: 2, generatedAt: daysAgo(0) }),
+    ];
+    assert.deepEqual(pick(rows), ['rich-other']);
+  });
+
+  test('featured: runs past the retention window are never offered', () => {
+    const rows = [row('stale', { generatedAt: daysAgo(31) }), row('fresh', { generatedAt: daysAgo(29) }), row('undated', { generatedAt: 'nope' })];
+    assert.deepEqual(pick(rows), ['fresh']);
+    assert.deepEqual(pick([row('stale', { generatedAt: daysAgo(31) })]), []);
+    assert.deepEqual(pick(rows, { maxDays: 7 }), []);
+  });
+
+  test('featured: channel analyses never headline the homepage, and no rows means none', () => {
+    assert.deepEqual(pick([row('ch', { channelMode: true, nicheKey: nicheKey('sourdough starter'), generatedAt: daysAgo(1) })]), []);
+    assert.deepEqual(pick([]), []);
+  });
+
+  test('trimFeatured keeps only the top three of each, with titles for the evidence videos', () => {
+    const video = (id) => ({ videoId: id, title: `Title ${id}`, channelTitle: 'Ch', views: 10, url: `u/${id}`, thumbnail: `t/${id}`, secret: 'x' });
+    const run = {
+      runId: 'r', generatedAt: '2026-10-25T00:00:00Z', query: { niche: 'n', window: '7d', contentType: 'both', minViews: 5 },
+      stats: { videosFound: 9, gapsFound: 4, llmUsage: { total: 1 } },
+      topVideos: [video('v1'), video('v2')],
+      topics: [1, 2, 3, 4].map((i) => ({ label: `t${i}`, heatScore: i, summary: 's', whyHot: 'private', videos: [1, 2, 3, 4].map((j) => video(`tv${i}${j}`)) })),
+      gaps: [1, 2, 3, 4].map((i) => ({
+        question: `q${i}`, demandStrength: 'high', coverage: 'weak', evidenceCount: 9, distinctVideos: 2, demandScore: 50, suggestedTitle: 'T', explanation: 'private',
+        evidence: [{ text: 'a', likes: 1, videoId: 'v1', replyCount: 3 }, { text: 'b', likes: 2, videoId: 'v2' }, { text: 'c', likes: 3, videoId: 'gone' }, { text: 'd', likes: 4, videoId: 'v1' }],
+      })),
+    };
+    const out = trimFeatured(run);
+    assert.equal(out.gaps.length, 3);
+    assert.equal(out.topics.length, 3);
+    assert.equal(out.topics[0].videos.length, 3);
+    assert.equal(out.gaps[0].evidence.length, 3);
+    assert.deepEqual(Object.keys(out.gaps[0].evidence[0]).sort(), ['likes', 'text', 'videoId']);
+    assert.deepEqual(Object.keys(out.topics[0].videos[0]).sort(), ['channelTitle', 'thumbnail', 'title', 'url', 'videoId', 'views']);
+    assert.deepEqual(out.videoTitles, { v1: 'Title v1', v2: 'Title v2' }); // 'gone' has no known title
+    assert.deepEqual(out.query, { niche: 'n', window: '7d', contentType: 'both' });
+    assert.equal(out.stats.llmUsage, undefined);
+    assert.equal(JSON.stringify(out).includes('private'), false);
+  });
+
+  const W = (id, ownerUid, query = 'a') => ({ id, ownerUid, input: { niche: query, window: '7d', contentType: 'both', gapMode: 'inclusive', minViews: 0 } });
+
+  test('watches: the owner filter shows only your own, and legacy watches to nobody', () => {
+    const list = [W('1', 'u1'), W('2', 'u2'), W('3', undefined), W('4', null)];
+    assert.deepEqual(ownedBy(list, 'u1').map((w) => w.id), ['1']);
+    assert.deepEqual(ownedBy(list, undefined), []);
+    assert.deepEqual(ownedBy(list, 'nobody'), []);
+    assert.equal(ownedWatch(list, '1', 'u1').id, '1');
+    assert.equal(ownedWatch(list, '2', 'u1'), null); // someone else's looks missing
+    assert.equal(ownedWatch(list, '3', 'u1'), null);
+  });
+
+  test('watches: the duplicate check is per owner', () => {
+    const list = [W('1', 'u1', 'sourdough'), W('2', 'u2', 'kombucha')];
+    const input = (niche) => ({ niche, window: '7d', contentType: 'both', gapMode: 'inclusive', minViews: 0 });
+    assert.equal(hasDuplicate(list, 'u1', input('sourdough')), true);
+    assert.equal(hasDuplicate(list, 'u2', input('sourdough')), false); // another person may watch the same niche
+    assert.equal(hasDuplicate(list, 'u1', input('kombucha')), false);
+    assert.equal(hasDuplicate(list, 'u1', { ...input('sourdough'), window: '30d' }), false);
+  });
+
+  test('watches: the per-user cap counts only your own', () => {
+    const list = [W('1', 'u1'), W('2', 'u1'), W('3', 'u2')];
+    assert.equal(atOwnerCap(list, 'u1', 2), true);
+    assert.equal(atOwnerCap(list, 'u2', 2), false);
+    assert.equal(atOwnerCap(list, 'new', 2), false);
+    assert.equal(atOwnerCap(list, 'u1', 3), false);
+  });
+
+  test('the rate limiter can be keyed by account instead of address', () => {
+    const rl = createRateLimit({ perHour: 1, noun: 'x', keyFn: (req) => req.user?.uid ?? req.ip });
+    const res = () => { const r = { code: 0, status(c) { r.code = c; return r; }, set() {}, json() {} }; return r; };
+    const go = (req) => { let ok = false; const r = res(); rl(req, r, () => { ok = true; }); return ok; };
+    assert.equal(go({ ip: '1.1.1.1', user: { uid: 'a' } }), true);
+    assert.equal(go({ ip: '2.2.2.2', user: { uid: 'a' } }), false); // same person, new address
+    assert.equal(go({ ip: '1.1.1.1', user: { uid: 'b' } }), true); // same address, different person
   });
 });

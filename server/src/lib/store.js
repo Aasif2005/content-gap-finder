@@ -134,6 +134,105 @@ export function listRuns({ limit = 30, nicheKey: key, channelId, channelMode } =
 }
 
 /**
+ * Only the rows whose run id is in `ids` (an array or a Set): the caller's own
+ * history. The run index is shared by everyone, so ownership is a join against
+ * the user_runs table (lib/db.js), done here as a pure filter.
+ */
+export function ownRuns(rows, ids) {
+  const own = ids instanceof Set ? ids : new Set(ids);
+  return rows.filter((r) => own.has(r.runId));
+}
+
+// -------------------------------------------------------- featured sample ---
+
+/**
+ * Index rows that could be the homepage sample, best first: the newest niche
+ * run matching `niche` with at least 2 gaps, then the newest of any niche run
+ * with at least 3. Nothing older than `maxDays` is ever offered -- a sample is
+ * still YouTube data, on the same 30-day clock as every other report.
+ *
+ * Channel analyses are left out: they have no niche to headline a homepage with.
+ * Returns candidates rather than one row so the caller can step past a report
+ * whose file has since been pruned.
+ */
+export function featuredCandidates(rows, { now = Date.now(), niche, maxDays = config.store.maxDataDays } = {}) {
+  const cutoff = now - maxDays * DAY_MS;
+  const fresh = rows
+    .filter((r) => !r.channelMode && Number.isFinite(new Date(r.generatedAt).getTime()) && new Date(r.generatedAt).getTime() >= cutoff)
+    .sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt));
+  const key = niche ? nicheKey(niche) : null;
+  const matching = key ? fresh.filter((r) => r.nicheKey === key && (r.gapsFound ?? 0) >= 2) : [];
+  const anyRich = fresh.filter((r) => (r.gapsFound ?? 0) >= 3 && !matching.includes(r));
+  return [...matching, ...anyRich];
+}
+
+const top = (list, n) => (Array.isArray(list) ? list.slice(0, n) : []);
+
+/** The few fields of a report the marketing page shows, so a public endpoint hands out a sample, not the whole report. */
+export function trimFeatured(run) {
+  const gaps = top(run.gaps, 3).map((g) => ({
+    question: g.question,
+    demandStrength: g.demandStrength,
+    coverage: g.coverage,
+    evidenceCount: g.evidenceCount,
+    distinctVideos: g.distinctVideos,
+    demandScore: g.demandScore,
+    suggestedTitle: g.suggestedTitle,
+    evidence: top(g.evidence, 3).map((e) => ({ text: e.text, likes: e.likes, videoId: e.videoId })),
+  }));
+  const topics = top(run.topics, 3).map((t) => ({
+    label: t.label,
+    heatScore: t.heatScore,
+    summary: t.summary,
+    videos: top(t.videos, 3).map((v) => ({
+      videoId: v.videoId, title: v.title, channelTitle: v.channelTitle, views: v.views, url: v.url, thumbnail: v.thumbnail,
+    })),
+  }));
+  // Every video the run knows about, so a comment's source can be named.
+  const titles = new Map();
+  for (const v of [...(run.topVideos ?? []), ...(run.topics ?? []).flatMap((t) => t.videos ?? []), ...(run.gaps ?? []).flatMap((g) => g.coveringVideos ?? [])]) {
+    if (v?.videoId && v.title && !titles.has(v.videoId)) titles.set(v.videoId, v.title);
+  }
+  const videoTitles = {};
+  for (const g of gaps) for (const e of g.evidence) if (titles.has(e.videoId)) videoTitles[e.videoId] = titles.get(e.videoId);
+
+  const st = run.stats ?? {};
+  return {
+    runId: run.runId,
+    generatedAt: run.generatedAt,
+    query: { niche: run.query?.niche ?? '', window: run.query?.window, contentType: run.query?.contentType },
+    // Counts only: stats also carries token usage and search plumbing.
+    stats: {
+      videosFound: st.videosFound, videosAnalyzed: st.videosAnalyzed, videosWithComments: st.videosWithComments,
+      commentsFetched: st.commentsFetched, commentsAnalyzed: st.commentsAnalyzed,
+      topicsFound: st.topicsFound, gapsFound: st.gapsFound,
+    },
+    gaps,
+    topics,
+    videoTitles,
+  };
+}
+
+/**
+ * The report shown on the homepage, trimmed: FEATURED_RUN_ID when it is still
+ * on disk and inside the retention window, else the best candidate that can
+ * still be read. null when there is nothing to show.
+ */
+export function featuredReport({ now = Date.now() } = {}) {
+  const cutoff = now - config.store.maxDataDays * DAY_MS;
+  const fresh = (run) => run && new Date(run.generatedAt).getTime() >= cutoff;
+  if (config.featured.runId) {
+    const run = readRun(config.featured.runId);
+    if (fresh(run)) return trimFeatured(run);
+  }
+  for (const row of featuredCandidates(readIndex(), { now, niche: config.featured.niche })) {
+    const run = readRun(row.runId);
+    if (fresh(run)) return trimFeatured(run);
+  }
+  return null;
+}
+
+/**
  * Keeps the newest `config.store.maxRuns` reports on disk and drops the rest.
  * Reports are a few KB each, but an unbounded directory is still a slow leak on
  * a long-lived box, and the per-niche gap history (below) is the part that

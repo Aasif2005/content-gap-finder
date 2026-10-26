@@ -71,6 +71,27 @@ export const config = {
   // the Cloud console instead.
   site: { contactEmail: (process.env.CONTACT_EMAIL ?? '').trim() },
 
+  // Firebase Authentication (lib/firebaseToken.js). The server only verifies ID
+  // tokens, which needs the project id and nothing secret. Unset = accounts are
+  // "not configured": everyone is logged out and protected routes answer 503, so
+  // the server still starts for local work without a Firebase project.
+  firebase: { projectId: (process.env.FIREBASE_PROJECT_ID ?? '').trim() },
+
+  // Per-account allowances. Per-IP limits alone are trivially dodged and say
+  // nothing about who is spending the YouTube quota; these are what an account
+  // buys. Counted per Pacific day so they reset when the YouTube quota does.
+  users: {
+    dailyAnalyses: num(process.env.USER_DAILY_ANALYSES, 3),
+    dailyBriefs: num(process.env.USER_DAILY_BRIEFS, 20),
+    maxWatches: num(process.env.USER_MAX_WATCHES, 2),
+  },
+
+  // The sample report on the marketing homepage (store.pickFeatured).
+  featured: {
+    runId: (process.env.FEATURED_RUN_ID ?? '').trim(),
+    niche: (process.env.FEATURED_NICHE ?? '').trim() || 'sourdough starter',
+  },
+
   store: {
     maxRuns: num(process.env.STORE_MAX_RUNS, 500),
     // YouTube API data may be kept 30 days at most (Developer Policies III.E.4),

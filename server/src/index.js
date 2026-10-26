@@ -46,5 +46,8 @@ retention.start();
 app.listen(config.port, () => {
   console.log(`  Content Gap Finder API  http://localhost:${config.port}`);
   console.log(`  models: ${config.deepseek.analysisModel} (analysis)`);
+  console.log(config.firebase.projectId
+    ? `  accounts: Firebase project ${config.firebase.projectId}`
+    : '  accounts: NOT CONFIGURED (set FIREBASE_PROJECT_ID); analyses, briefs and watches answer 503');
   console.log(`  youtube budget: ${config.youtube.searchDailyCalls} searches + ${config.youtube.dailyUnitBudget} units/day; data kept ${config.store.maxDataDays} days`);
 });

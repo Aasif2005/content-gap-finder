@@ -1,7 +1,8 @@
 import { config } from '../config.js';
 import * as watches from '../lib/watches.js';
 import * as store from '../lib/store.js';
-import { quotaStatus, canAfford } from '../lib/quota.js';
+import { quotaStatus, canAfford, quotaDay, nextQuotaReset } from '../lib/quota.js';
+import { tryConsume, refund, linkRun } from '../lib/db.js';
 import { startAnalysis } from './runner.js';
 
 /**
@@ -48,6 +49,25 @@ async function tick() {
         continue;
       }
 
+      // A watch an account created spends THAT account's daily analyses, like a
+      // click would: otherwise two watches on a 6-hour interval would be eight
+      // free analyses a day, far past the allowance. Legacy watches (no owner)
+      // are not metered. Checked after canAfford so a day the quota cannot cover
+      // does not also cost the person an analysis they never got.
+      let consumed = null;
+      if (w.ownerUid) {
+        const day = quotaDay();
+        const got = tryConsume(w.ownerUid, day, 'analyses', config.users.dailyAnalyses);
+        if (!got.ok) {
+          // Allowances reset with the quota, so there is no point asking again before then.
+          const minutes = Math.ceil((Date.parse(nextQuotaReset()) - Date.now()) / 60_000) + 1;
+          watches.defer(w.id, minutes, `Skipped: your ${got.limit} analyses for today are used up. This watch tries again after the reset at midnight Pacific.`);
+          console.warn(`[scheduler] deferring watch "${w.label}": owner has used ${got.used}/${got.limit} analyses today`);
+          continue;
+        }
+        consumed = day;
+      }
+
       console.log(`[scheduler] running watch "${w.label}" (every ${w.intervalHours}h)`);
       // A run that never reports back (a hung request) must not freeze every
       // other watch behind it, so the wait is bounded.
@@ -60,10 +80,14 @@ async function tick() {
           onFinish: (err, result) => {
             try {
               if (err) {
+                // Same policy as an interactive run: a failure gives the analysis back.
+                if (consumed) refund(w.ownerUid, consumed, 'analyses');
                 watches.recordRun(w.id, { error: err.message });
                 console.error(`[scheduler] watch "${w.label}" failed:`, err.message);
               } else {
                 watches.recordRun(w.id, { runId: result.runId });
+                // Without this the owner's report history would never show what their watch found.
+                if (w.ownerUid) linkRun(w.ownerUid, result.runId);
                 const newGaps = (result.gaps ?? []).filter((g) => g.recurrence?.status === 'new').length;
                 const recurring = (result.gaps ?? []).filter((g) => g.recurrence?.status === 'recurring').length;
                 console.log(

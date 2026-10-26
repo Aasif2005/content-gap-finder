@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { withLock } from './fileLock.js';
+import { cacheKey } from './cache.js';
 
 /**
  * Saved subjects to re-analyse on a schedule.
@@ -55,9 +56,12 @@ export function get(id) {
  * /api/analyze takes. Storing it whole means a watch re-runs the exact query
  * that was saved, including filters, rather than a reconstruction of it.
  */
-export function create({ input, intervalHours, label }) {
+export function create({ input, intervalHours, label, ownerUid = null }) {
   const watch = {
     id: crypto.randomUUID(),
+    // Who made it. A watch with none predates accounts: it keeps running and is
+    // visible to nobody, so it cannot be edited or deleted through the API.
+    ownerUid,
     label: String(label || input.channelId || input.niche || '').slice(0, 120),
     input,
     intervalHours,
@@ -73,6 +77,38 @@ export function create({ input, intervalHours, label }) {
   };
   mutate((watches) => watches.push(watch));
   return watch;
+}
+
+// ---- ownership (pure, over a list, so they are testable without the file) ----
+
+export const ownedBy = (list, uid) => (uid ? list.filter((w) => w.ownerUid === uid) : []);
+
+/** The watch when `uid` owns it, else null -- the same answer for "missing" and "not yours". */
+export const ownedWatch = (list, id, uid) => ownedBy(list, uid).find((w) => w.id === id) ?? null;
+
+/** Per-person cap; the global cap in routes/api.js still applies on top. */
+export const atOwnerCap = (list, uid, max) => ownedBy(list, uid).length >= max;
+
+/**
+ * Whether `uid` already watches this exact query. Per owner: two people watching
+ * the same niche is fine (each pays their own allowance), one person doing it
+ * twice only double-spends it.
+ */
+export const hasDuplicate = (list, uid, input) => {
+  const key = JSON.stringify(cacheKey(input));
+  return ownedBy(list, uid).some((w) => JSON.stringify(cacheKey(w.input)) === key);
+};
+
+/** Deletes every watch an account owns; returns how many. */
+export function removeOwned(uid) {
+  let n = 0;
+  if (!uid) return 0;
+  mutate((watches) => {
+    for (let i = watches.length - 1; i >= 0; i--) {
+      if (watches[i].ownerUid === uid) { watches.splice(i, 1); n += 1; }
+    }
+  });
+  return n;
 }
 
 export function update(id, patch) {
@@ -118,6 +154,10 @@ export function recordRun(id, { runId, error }) {
  * exhausted daily quota, say -- so a skip doesn't reset the cadence or look
  * like a failure.
  */
-export function defer(id, minutes) {
-  return update(id, { nextRunAt: new Date(Date.now() + minutes * 60_000).toISOString() });
+export function defer(id, minutes, lastError) {
+  return update(id, {
+    nextRunAt: new Date(Date.now() + minutes * 60_000).toISOString(),
+    // Only set when the caller has a reason worth showing the owner.
+    ...(lastError ? { lastError } : {}),
+  });
 }

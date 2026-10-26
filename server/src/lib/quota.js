@@ -8,12 +8,49 @@ import { searchPlan } from './searchPlan.js';
 const STATE_DIR = path.resolve(fileURLToPath(new URL('../../.state', import.meta.url)));
 const LEDGER = path.join(STATE_DIR, 'quota.json');
 
-// YouTube resets project quota at midnight Pacific, not UTC.
-function quotaDay(d = new Date()) {
+// YouTube resets project quota at midnight Pacific, not UTC. Per-account
+// allowances (lib/db.js) use the same day so they reset together.
+const QUOTA_TZ = 'America/Los_Angeles';
+
+export function quotaDay(d = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Los_Angeles',
+    timeZone: QUOTA_TZ,
     year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(d);
+}
+
+/** Wall-clock parts of an instant in the quota time zone. */
+function pacificParts(d) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: QUOTA_TZ, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    }).formatToParts(d).map((p) => [p.type, p.value])
+  );
+  return { y: +parts.year, mo: +parts.month, d: +parts.day, h: +parts.hour, mi: +parts.minute };
+}
+
+/**
+ * The next midnight in America/Los_Angeles after `now`, as an ISO instant: when
+ * the YouTube quota and every daily allowance reset.
+ *
+ * Not "now + hours until 24:00": Pacific is UTC-8 or UTC-7 and the offset
+ * changes on the clock-change weekends, so a day is 23 or 25 hours long twice a
+ * year. Instead build tomorrow's calendar date and find the instant whose
+ * Pacific wall clock reads exactly 00:00 on it (midnight itself is never
+ * skipped or repeated; the US changes clocks at 02:00).
+ */
+export function nextQuotaReset(now = new Date()) {
+  const { y, mo, d } = pacificParts(now);
+  const target = Date.UTC(y, mo - 1, d + 1); // tomorrow's date, read as if it were UTC
+  for (const offsetH of [8, 7]) { // PST, PDT
+    const candidate = new Date(target + offsetH * 3600_000);
+    const p = pacificParts(candidate);
+    const t = new Date(Date.UTC(p.y, p.mo - 1, p.d)).getTime();
+    if (t === target && p.h === 0 && p.mi === 0) return candidate.toISOString();
+  }
+  /* c8 ignore next */
+  throw new Error('Could not resolve the next Pacific midnight.');
 }
 
 function read() {

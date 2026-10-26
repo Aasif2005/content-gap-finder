@@ -3,7 +3,7 @@ import * as jobs from '../lib/jobs.js';
 import * as cache from '../lib/cache.js';
 import { rateLimit, briefRateLimit } from '../lib/rateLimit.js';
 import * as brief from '../services/brief.js';
-import { quotaStatus } from '../lib/quota.js';
+import { quotaStatus, quotaDay, nextQuotaReset } from '../lib/quota.js';
 import * as runner from '../services/runner.js';
 import { config } from '../config.js';
 import { MAX_CUSTOM_WINDOW_DAYS, parseChannelInput } from '../services/youtube.js';
@@ -11,11 +11,33 @@ import { listRuns as listAuditRuns, readRunLog } from '../lib/auditLog.js';
 import * as store from '../lib/store.js';
 import * as watches from '../lib/watches.js';
 import * as scheduler from '../services/scheduler.js';
+import { loadUser, requireUser, forgetUser } from '../lib/auth.js';
+import { getUser, upsertUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../lib/db.js';
 
 export const router = express.Router();
 
+// Who is calling, for every route below. Public routes ignore req.user; the ones
+// that need an account say so with requireUser.
+router.use(loadUser);
+
 /** A client-fixable input problem: 400 with a code that says so. */
 const bad = (message) => Object.assign(new Error(message), { status: 400, code: 'VALIDATION' });
+
+/**
+ * The 429 body for a used-up daily allowance. `noun` is [singular, plural]. It
+ * is DAILY_LIMIT, not RATE_LIMITED: the person cannot fix it by waiting an
+ * hour, and the client shows a reset time rather than a retry countdown.
+ */
+export function dailyLimitBody(limit, noun, now = new Date()) {
+  return {
+    code: 'DAILY_LIMIT',
+    error: `You've used your ${limit} ${limit === 1 ? noun[0] : noun[1]} for today. They reset at midnight Pacific.`,
+    resetsAt: nextQuotaReset(now),
+  };
+}
+
+// Watches carry their owner's uid for filtering; clients have no use for it.
+const publicWatch = ({ ownerUid, ...w }) => w;
 
 const WINDOWS = new Set(['24h', '7d', '30d', '90d', 'custom']);
 const CONTENT_TYPES = new Set(['shorts', 'long', 'both']);
@@ -87,8 +109,14 @@ router.get('/health', (_req, res) => {
  * Starts an analysis. Returns immediately with either a cached result or a job
  * id to poll -- the pipeline takes 20-60s and holding the request open that long
  * is how you collect proxy timeouts.
+ *
+ * Needs an account. Only a FRESH run costs the person one of their daily
+ * analyses: a cache hit, or joining an identical run already in flight, spends
+ * no YouTube quota and so is free -- and either way the report is linked to the
+ * caller, so it shows up in their history.
  */
-router.post('/analyze', (req, res, next) => {
+router.post('/analyze', requireUser, (req, res, next) => {
+  const uid = req.user.uid;
   let input;
   try {
     input = validate(req.body ?? {});
@@ -97,21 +125,63 @@ router.post('/analyze', (req, res, next) => {
   }
 
   const force = req.body?.force === true;
+  const key = cache.cacheKey(input);
 
   // A cache hit costs nothing, so it bypasses the rate limit entirely --
   // browsing already-computed reports should never be throttled.
   if (!force) {
-    const hit = cache.get(cache.cacheKey(input));
+    const hit = cache.get(key);
     if (hit) {
+      linkRun(uid, hit.value?.runId);
       return res.json({ status: 'done', cached: true, cacheAgeSeconds: hit.ageSeconds, result: hit.value });
     }
   }
 
-  // Only uncached runs count against the per-IP limit and the YouTube quota.
+  // Joining a run already in flight is free too (even with force: the runner
+  // would join it regardless). The link is made when the job settles, on the
+  // server, so it still happens if the browser stops polling.
+  const running = runner.runningJobFor(key);
+  if (running) {
+    jobs.whenSettled(running, (err, result) => { if (!err) linkRun(uid, result?.runId); });
+    return res.status(202).json({ status: 'running', jobId: running, cached: false, joined: true });
+  }
+
+  // The allowance is taken BEFORE the per-person limiter so someone who is out of
+  // analyses is told so, rather than burning their hourly limit on refusals and
+  // then seeing a misleading "rate limit" message.
+  const day = quotaDay();
+  const used = tryConsume(uid, day, 'analyses', config.users.dailyAnalyses);
+  if (!used.ok) return res.status(429).json(dailyLimitBody(used.limit, ['analysis', 'analyses']));
+
+  let proceeded = false;
   rateLimit(req, res, () => {
-    const started = runner.startAnalysis(input, { force });
+    proceeded = true;
+    let started;
+    try {
+      started = runner.startAnalysis(input, { force });
+    } catch (err) {
+      refund(uid, day, 'analyses');
+      return next(err);
+    }
+    if (started.status === 'done' || started.joined) {
+      // Raced into a hit or a join after all: nothing was spent.
+      refund(uid, day, 'analyses');
+      if (started.status === 'done') linkRun(uid, started.result?.runId);
+      else jobs.whenSettled(started.jobId, (err, result) => { if (!err) linkRun(uid, result?.runId); });
+    } else {
+      // Refund on ANY failure. Telling "failed before spending YouTube quota"
+      // from "failed after" would need the pipeline to report its spend, and the
+      // person who sees a failed run is owed the analysis either way; the quota
+      // ledger is what protects the project, not this counter.
+      jobs.whenSettled(started.jobId, (err, result) => {
+        if (err) refund(uid, day, 'analyses');
+        else linkRun(uid, result?.runId);
+      });
+    }
     res.status(started.status === 'done' ? 200 : 202).json(started);
   });
+  // The limiter answered 429 itself; the allowance taken above was never used.
+  if (!proceeded) refund(uid, day, 'analyses');
 });
 
 router.get('/jobs/:id', (req, res) => {
@@ -160,10 +230,12 @@ const firstParam = (v) => (Array.isArray(v) ? v[0] : v) == null ? undefined : St
 export const validInterval = (h) => Number.isFinite(h) && h >= config.scheduler.minIntervalHours && h <= config.scheduler.maxIntervalHours;
 
 router.get('/runs', (req, res) => {
+  // Your history is the reports you ran or joined, not everyone's: the index is shared.
+  if (!req.user) return res.json({ runs: [] });
   const limit = clampLimit(req.query.limit, 30, 200);
   res.json({
-    runs: store.listRuns({
-      limit,
+    runs: store.ownRuns(store.listRuns({
+      limit: Infinity,
       // Same key derivation the pipeline and the store use, so "runs of this
       // subject" means one thing everywhere.
       nicheKey: req.query.niche || req.query.channelId
@@ -172,7 +244,7 @@ router.get('/runs', (req, res) => {
       // Scopes history to one page's mode (niche explorer vs channel analyzer)
       // when the caller isn't already asking for one specific subject.
       channelMode: req.query.mode === 'channel' ? true : req.query.mode === 'niche' ? false : undefined,
-    }),
+    }), runIdsFor(req.user.uid)).slice(0, limit),
   });
 });
 
@@ -207,7 +279,8 @@ router.get('/runs/:runId/gaps/:i/brief', (req, res) => {
   res.json({ status: saved ? 'done' : 'none', cached: Boolean(saved), brief: saved });
 });
 
-router.post('/runs/:runId/gaps/:i/brief', (req, res, next) => {
+router.post('/runs/:runId/gaps/:i/brief', requireUser, (req, res, next) => {
+  const uid = req.user.uid;
   const index = Number(req.params.i);
   const force = req.body?.force === true;
   const language = String(req.body?.language ?? '').trim().slice(0, 40);
@@ -228,16 +301,28 @@ router.post('/runs/:runId/gaps/:i/brief', (req, res, next) => {
       if (force) return res.status(409).json({ error: 'A draft of this brief is already running. Wait for it, then redraft.', code: 'BRIEF_RUNNING', jobId: peek.jobId });
       return res.status(202).json({ status: 'running', jobId: peek.jobId, cached: false });
     }
+    // Only a NEW generation (one DeepSeek call) takes a daily brief; see /analyze
+    // for why the allowance comes before the hourly limiter.
+    const day = quotaDay();
+    const used = tryConsume(uid, day, 'briefs', config.users.dailyBriefs);
+    if (!used.ok) return res.status(429).json(dailyLimitBody(used.limit, ['brief', 'briefs']));
+
+    let proceeded = false;
     briefRateLimit(req, res, () => {
+      proceeded = true;
       try {
         const started = brief.startBrief(req.params.runId, index, { force, language, format, style, targetMinutes, core: req.body?.core === true,
           // Which saved brief's essentials to keep; null re-plans from scratch.
           planFrom: typeof req.body?.planFrom === 'string' ? req.body.planFrom.trim().slice(0, 40) : null });
+        if (started.status === 'done' || !started.jobId) refund(uid, day, 'briefs');
+        else jobs.whenSettled(started.jobId, (err) => { if (err) refund(uid, day, 'briefs'); }); // a failed draft is owed back
         res.status(started.status === 'done' ? 200 : 202).json(started);
       } catch (err) {
+        refund(uid, day, 'briefs');
         next(err);
       }
     });
+    if (!proceeded) refund(uid, day, 'briefs');
   } catch (err) {
     next(err);
   }
@@ -250,21 +335,26 @@ router.post('/runs/:runId/gaps/:i/brief', (req, res, next) => {
  * the baseline gap recurrence needs -- without something re-running the
  * analysis, "recurring" can never become true.
  */
-router.get('/watches', (_req, res) => {
+router.get('/watches', requireUser, (req, res) => {
   res.json({
-    watches: watches.list(),
+    watches: watches.ownedBy(watches.list(), req.user.uid).map(publicWatch),
     minIntervalHours: config.scheduler.minIntervalHours,
-    maxWatches: config.scheduler.maxWatches,
+    // What THIS person may keep, not the server-wide ceiling.
+    maxWatches: config.users.maxWatches,
     schedulerEnabled: config.scheduler.enabled,
   });
 });
 
-router.post('/watches', (req, res, next) => {
+router.post('/watches', requireUser, (req, res, next) => {
+  const uid = req.user.uid;
   let input;
   try {
     input = validate(req.body ?? {});
 
     const existing = watches.list();
+    if (watches.atOwnerCap(existing, uid, config.users.maxWatches)) {
+      throw bad(`You can keep ${config.users.maxWatches} ${config.users.maxWatches === 1 ? 'watch' : 'watches'}. Delete one first.`);
+    }
     if (existing.length >= config.scheduler.maxWatches) {
       throw bad(`At most ${config.scheduler.maxWatches} watches. Delete one first.`);
     }
@@ -279,19 +369,23 @@ router.post('/watches', (req, res, next) => {
 
     // The same subject watched twice would just double-spend quota to append
     // duplicate history for one niche.
-    const key = JSON.stringify(cache.cacheKey(input));
-    if (existing.some((w) => JSON.stringify(cache.cacheKey(w.input)) === key)) {
+    if (watches.hasDuplicate(existing, uid, input)) {
       throw bad('That exact query is already being watched.');
     }
 
-    res.status(201).json({ watch: watches.create({ input, intervalHours, label: req.body.label }) });
+    res.status(201).json({ watch: publicWatch(watches.create({ input, intervalHours, label: req.body.label, ownerUid: uid })) });
   } catch (err) {
     next(err);
   }
 });
 
-router.patch('/watches/:id', (req, res, next) => {
+// Someone else's watch answers exactly like a missing one: 404, never 403, so a
+// guessed id does not confirm that it exists.
+const notYourWatch = (res) => res.status(404).json({ error: 'Watch not found.', code: 'WATCH_NOT_FOUND' });
+
+router.patch('/watches/:id', requireUser, (req, res, next) => {
   try {
+    if (!watches.ownedWatch(watches.list(), req.params.id, req.user.uid)) return notYourWatch(res);
     const patch = {};
     if (req.body?.enabled !== undefined) patch.enabled = Boolean(req.body.enabled);
     if (req.body?.label !== undefined) patch.label = String(req.body.label).slice(0, 120);
@@ -303,25 +397,76 @@ router.patch('/watches/:id', (req, res, next) => {
       patch.intervalHours = h;
     }
     const updated = watches.update(req.params.id, patch);
-    if (!updated) return res.status(404).json({ error: 'Watch not found.', code: 'WATCH_NOT_FOUND' });
-    res.json({ watch: updated });
+    if (!updated) return notYourWatch(res);
+    res.json({ watch: publicWatch(updated) });
   } catch (err) {
     next(err);
   }
 });
 
-router.delete('/watches/:id', (req, res) => {
-  if (!watches.remove(req.params.id)) {
-    return res.status(404).json({ error: 'Watch not found.', code: 'WATCH_NOT_FOUND' });
+router.delete('/watches/:id', requireUser, (req, res) => {
+  if (!watches.ownedWatch(watches.list(), req.params.id, req.user.uid) || !watches.remove(req.params.id)) {
+    return notYourWatch(res);
   }
   res.status(204).end();
 });
 
 /** What the newest run of a watch found that the previous one did not. Free. */
-router.get('/watches/:id/digest', (req, res) => {
+router.get('/watches/:id/digest', requireUser, (req, res) => {
+  if (!watches.ownedWatch(watches.list(), req.params.id, req.user.uid)) return notYourWatch(res);
   const d = scheduler.digest(req.params.id);
   if (!d) return res.status(404).json({ error: 'No completed run for that watch yet.', code: 'NO_DIGEST' });
   res.json({ digest: d });
+});
+
+// -------------------------------------------------------------- account ----
+
+/** The signed-in person, today's usage and what the limits are. */
+router.get('/me', requireUser, (req, res) => {
+  const { uid } = req.user;
+  // The row exists after loadUser unless it was just deleted; recreate rather than 500.
+  const user = getUser(uid) ?? upsertUser(req.user);
+  const day = quotaDay();
+  const usage = usageFor(uid, day);
+  res.json({
+    user: {
+      uid: user.uid, email: user.email, name: user.name, photoUrl: user.photoUrl, provider: user.provider,
+      emailVerified: user.emailVerified, createdAt: user.createdAt, termsAcceptedAt: user.termsAcceptedAt,
+    },
+    usage: { day, analyses: usage.analyses, briefs: usage.briefs },
+    limits: { analyses: config.users.dailyAnalyses, briefs: config.users.dailyBriefs, watches: config.users.maxWatches },
+    resetsAt: nextQuotaReset(),
+    watches: watches.ownedBy(watches.list(), uid).length,
+  });
+});
+
+/** Records that the person accepted the Terms and Privacy Policy. */
+router.post('/me/consent', requireUser, (req, res) => {
+  upsertUser(req.user); // make sure the row exists before stamping it
+  res.json({ ok: true, termsAcceptedAt: acceptTerms(req.user.uid) });
+});
+
+/**
+ * Deletes everything held about the account: profile, report links, usage and
+ * watches. Report and brief FILES stay: other people may have the same report
+ * linked, it holds no personal data about the deleted person, and the retention
+ * sweep removes it within YOUTUBE_DATA_MAX_DAYS regardless. The browser deletes
+ * the Firebase account itself (the server holds no admin credentials).
+ */
+router.delete('/me', requireUser, (req, res) => {
+  const { uid } = req.user;
+  watches.removeOwned(uid);
+  deleteUserData(uid);
+  forgetUser(uid);
+  res.json({ ok: true });
+});
+
+// ------------------------------------------------------------- featured ----
+
+/** A trimmed sample report for the marketing homepage. Public; nothing in it is per-user. */
+router.get('/featured', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=300');
+  res.json({ featured: store.featuredReport() });
 });
 
 // ------------------------------------------------------------ audit log ----
