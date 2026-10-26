@@ -80,3 +80,21 @@ export function requireUser(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Sign in to do that.', code: 'AUTH_REQUIRED' });
   next();
 }
+
+/**
+ * Email/password accounts must prove they own the address before they spend
+ * quota. Without this, anyone can mint a fresh daily allowance per made-up
+ * address and drain the project's shared YouTube budget. Google accounts arrive
+ * verified, so only the password provider can trip it.
+ */
+export const needsVerification = (user) => Boolean(user) && user.provider === 'password' && !user.emailVerified;
+
+export function requireVerified(req, res, next) {
+  if (needsVerification(req.user)) {
+    return res.status(403).json({
+      error: 'Verify your email first: we sent you a link when you signed up.',
+      code: 'EMAIL_NOT_VERIFIED',
+    });
+  }
+  next();
+}

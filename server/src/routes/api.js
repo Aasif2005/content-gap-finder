@@ -11,7 +11,7 @@ import { listRuns as listAuditRuns, readRunLog } from '../lib/auditLog.js';
 import * as store from '../lib/store.js';
 import * as watches from '../lib/watches.js';
 import * as scheduler from '../services/scheduler.js';
-import { loadUser, requireUser, forgetUser } from '../lib/auth.js';
+import { loadUser, requireUser, requireVerified, forgetUser } from '../lib/auth.js';
 import { getUser, upsertUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../lib/db.js';
 
 export const router = express.Router();
@@ -115,7 +115,7 @@ router.get('/health', (_req, res) => {
  * no YouTube quota and so is free -- and either way the report is linked to the
  * caller, so it shows up in their history.
  */
-router.post('/analyze', requireUser, (req, res, next) => {
+router.post('/analyze', requireUser, requireVerified, (req, res, next) => {
   const uid = req.user.uid;
   let input;
   try {
@@ -279,7 +279,7 @@ router.get('/runs/:runId/gaps/:i/brief', (req, res) => {
   res.json({ status: saved ? 'done' : 'none', cached: Boolean(saved), brief: saved });
 });
 
-router.post('/runs/:runId/gaps/:i/brief', requireUser, (req, res, next) => {
+router.post('/runs/:runId/gaps/:i/brief', requireUser, requireVerified, (req, res, next) => {
   const uid = req.user.uid;
   const index = Number(req.params.i);
   const force = req.body?.force === true;
@@ -345,7 +345,7 @@ router.get('/watches', requireUser, (req, res) => {
   });
 });
 
-router.post('/watches', requireUser, (req, res, next) => {
+router.post('/watches', requireUser, requireVerified, (req, res, next) => {
   const uid = req.user.uid;
   let input;
   try {

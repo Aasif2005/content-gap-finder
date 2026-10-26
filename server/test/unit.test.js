@@ -35,7 +35,7 @@ import { gapsToCsv, reportToMarkdown, exportStem } from '../../web/src/lib/expor
 import { charge, analysesAffordable, searchCallsPerAnalysis, unitsPerAnalysis, nextQuotaReset, quotaDay } from '../src/lib/quota.js';
 import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet } from 'jose';
 import { verifyIdToken, normalizeUser } from '../src/lib/firebaseToken.js';
-import { bearerToken, shouldTouch, requireUser } from '../src/lib/auth.js';
+import { bearerToken, shouldTouch, requireUser, requireVerified, needsVerification } from '../src/lib/auth.js';
 import { openDb, upsertUser, getUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../src/lib/db.js';
 import { ownRuns, featuredCandidates, trimFeatured } from '../src/lib/store.js';
 import { ownedBy, ownedWatch, atOwnerCap, hasDuplicate } from '../src/lib/watches.js';
@@ -2549,5 +2549,30 @@ describe('per-account runs, featured sample and watches', () => {
     assert.equal(go({ ip: '1.1.1.1', user: { uid: 'a' } }), true);
     assert.equal(go({ ip: '2.2.2.2', user: { uid: 'a' } }), false); // same person, new address
     assert.equal(go({ ip: '1.1.1.1', user: { uid: 'b' } }), true); // same address, different person
+  });
+});
+
+describe('email verification gate', () => {
+  const run = (user) => {
+    let out = { next: false };
+    const res = { status(c) { out.status = c; return this; }, json(b) { out.body = b; } };
+    requireVerified({ user }, res, () => { out.next = true; });
+    return out;
+  };
+
+  test('an unverified password account is refused with a code the UI can act on', () => {
+    const out = run({ provider: 'password', emailVerified: false });
+    assert.equal(out.status, 403);
+    assert.equal(out.body.code, 'EMAIL_NOT_VERIFIED');
+    assert.equal(out.next, false);
+  });
+
+  test('verified password accounts and Google accounts pass', () => {
+    assert.equal(run({ provider: 'password', emailVerified: true }).next, true);
+    assert.equal(run({ provider: 'google.com', emailVerified: false }).next, true);
+  });
+
+  test('needsVerification is false when nobody is signed in', () => {
+    assert.equal(needsVerification(null), false);
   });
 });
