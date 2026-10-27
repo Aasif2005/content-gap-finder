@@ -1,0 +1,251 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-27T05:04:23.568037Z",
+  "title": "Design System: Gapstronaut",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "primary",
+        "displayName": "Ink",
+        "canonical": "#0A1220",
+        "tonalRamp": [
+          "oklch(15% 0.03 250)",
+          "oklch(28% 0.03 250)",
+          "oklch(40% 0.03 250)",
+          "oklch(52% 0.03 250)",
+          "oklch(65% 0.03 250)",
+          "oklch(78% 0.03 250)",
+          "oklch(88% 0.03 250)",
+          "oklch(95% 0.03 250)"
+        ]
+      },
+      "highlighter-amber": {
+        "role": "secondary",
+        "displayName": "Highlighter Amber",
+        "canonical": "#F6C453",
+        "tonalRamp": [
+          "oklch(15% 0.12 85)",
+          "oklch(28% 0.12 85)",
+          "oklch(40% 0.12 85)",
+          "oklch(52% 0.12 85)",
+          "oklch(65% 0.12 85)",
+          "oklch(78% 0.12 85)",
+          "oklch(88% 0.12 85)",
+          "oklch(95% 0.12 85)"
+        ]
+      },
+      "night-ground": {
+        "role": "neutral",
+        "displayName": "Night Navy",
+        "canonical": "#0A1220",
+        "tonalRamp": [
+          "oklch(15% 0.03 255)",
+          "oklch(28% 0.03 255)",
+          "oklch(40% 0.03 255)",
+          "oklch(52% 0.03 255)",
+          "oklch(65% 0.03 255)",
+          "oklch(78% 0.03 255)",
+          "oklch(88% 0.03 255)",
+          "oklch(95% 0.03 255)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Cool Paper",
+        "canonical": "#F5F7FA",
+        "tonalRamp": [
+          "oklch(15% 0.03 250)",
+          "oklch(28% 0.03 250)",
+          "oklch(40% 0.03 250)",
+          "oklch(52% 0.03 250)",
+          "oklch(65% 0.03 250)",
+          "oklch(78% 0.03 250)",
+          "oklch(88% 0.03 250)",
+          "oklch(95% 0.03 250)"
+        ]
+      },
+      "focus": {
+        "role": "accent",
+        "displayName": "Focus Blue",
+        "canonical": "#2F5FD0",
+        "tonalRamp": [
+          "oklch(15% 0.03 260)",
+          "oklch(28% 0.03 260)",
+          "oklch(40% 0.03 260)",
+          "oklch(52% 0.03 260)",
+          "oklch(65% 0.03 260)",
+          "oklch(78% 0.03 260)",
+          "oklch(88% 0.03 260)",
+          "oklch(95% 0.03 260)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Homepage headline only."
+      },
+      "figure": {
+        "displayName": "Figure",
+        "purpose": "Counts, dates, allowances in Geist Mono with tabular numerals."
+      }
+    },
+    "shadows": [
+      {
+        "name": "panel",
+        "value": "0 1px 2px rgb(14 22 38 / 0.04)",
+        "purpose": "Resting panels."
+      },
+      {
+        "name": "menu",
+        "value": "0 12px 32px -12px rgb(14 22 38 / 0.35)",
+        "purpose": "Menu popover."
+      },
+      {
+        "name": "dialog",
+        "value": "0 24px 60px -20px rgb(0 0 0 / 0.5)",
+        "purpose": "Dialog."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "All easing."
+      },
+      {
+        "name": "dur-1",
+        "value": "150ms",
+        "purpose": "Colour and opacity transitions."
+      },
+      {
+        "name": "dur-2",
+        "value": "200ms",
+        "purpose": "Fade-in, meter width."
+      },
+      {
+        "name": "evidence-sweep",
+        "value": "700ms",
+        "purpose": "The one authored moment; off under reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action; ink ground.",
+      "html": "<button class=\"ds-btn-primary\">Find gaps</button>",
+      "css": ".ds-btn-primary{font-family:'Schibsted Grotesk Variable',system-ui,sans-serif;background:#0A1220;color:#fff;min-height:44px;padding:0 20px;border:0;border-radius:10px;font-size:15px;font-weight:600;transition:opacity 150ms}.ds-btn-primary:hover{opacity:.9}.ds-btn-primary:focus-visible{outline:2px solid #2F5FD0;outline-offset:2px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secondary action with strong hairline.",
+      "html": "<button class=\"ds-btn-secondary\">Export</button>",
+      "css": ".ds-btn-secondary{font-family:'Schibsted Grotesk Variable',system-ui,sans-serif;background:#fff;color:#0E1626;min-height:44px;padding:0 20px;border:1px solid #C5CEDD;border-radius:10px;font-size:15px;font-weight:600;transition:background-color 150ms}.ds-btn-secondary:hover{background:#EEF2FA}.ds-btn-secondary:focus-visible{outline:2px solid #2F5FD0;outline-offset:2px}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field-input",
+      "description": "48px input with label above.",
+      "html": "<label class=\"ds-label\">Niche</label><input class=\"ds-input\" placeholder=\"e.g. home espresso\">",
+      "css": ".ds-label{font-family:'Schibsted Grotesk Variable',system-ui,sans-serif;display:block;margin-bottom:8px;font-size:14px;font-weight:500;color:#0E1626}.ds-input{font-family:'Schibsted Grotesk Variable',system-ui,sans-serif;box-sizing:border-box;width:100%;min-height:48px;padding:0 14px;font-size:16px;color:#0E1626;background:#fff;border:1px solid #C5CEDD;border-radius:10px}.ds-input:hover{border-color:#5C6985}.ds-input:focus-visible{outline:2px solid #2F5FD0;outline-offset:2px}"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Flat surface with hairline.",
+      "html": "<div class=\"ds-panel\">Report excerpt</div>",
+      "css": ".ds-panel{font-family:'Schibsted Grotesk Variable',system-ui,sans-serif;padding:24px;color:#0E1626;background:#fff;border:1px solid #E3E8F0;border-radius:14px;box-shadow:0 1px 2px rgb(14 22 38/.04)}"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge-good",
+      "description": "Pill status label.",
+      "html": "<span class=\"ds-badge\">Verified</span>",
+      "css": ".ds-badge{font-family:'Schibsted Grotesk Variable',system-ui,sans-serif;display:inline-flex;padding:4px 10px;font-size:13px;font-weight:500;color:#1E6B4B;background:#E3F4EC;border-radius:999px}"
+    },
+    {
+      "name": "Evidence Mark",
+      "kind": "custom",
+      "refersTo": "evidence-mark",
+      "description": "Amber highlighter behind viewer-written text.",
+      "html": "<p class=\"ds-quote\">\"I wish someone covered <span class=\"ds-mark\">dialing in a grinder</span>.\"</p>",
+      "css": ".ds-quote{font-family:'Schibsted Grotesk Variable',system-ui,sans-serif;font-size:18px;line-height:1.9;color:#0E1626}.ds-mark{background:#FBE7A8;color:#0E1626;padding:2px 6px;border-radius:4px;-webkit-box-decoration-break:clone;box-decoration-break:clone}"
+    },
+    {
+      "name": "Usage Meter",
+      "kind": "custom",
+      "description": "Mono count with ink fill.",
+      "html": "<div class=\"ds-meter\"><div class=\"ds-meter-row\"><span>Reports</span><span class=\"ds-meter-n\">3 of 5 used</span></div><div class=\"ds-track\"><div class=\"ds-fill\"></div></div></div>",
+      "css": ".ds-meter{font-family:'Schibsted Grotesk Variable',system-ui,sans-serif;color:#0E1626;font-size:14px}.ds-meter-row{display:flex;justify-content:space-between}.ds-meter-n{font-family:'Geist Mono Variable',ui-monospace,monospace;color:#4A5670;font-variant-numeric:tabular-nums}.ds-track{margin-top:8px;height:6px;border-radius:3px;background:#E3E8F0;overflow:hidden}.ds-fill{width:60%;height:100%;border-radius:3px;background:#0A1220}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Research Desk at Night",
+    "overview": "A desk lamp over evidence. The page shows its working: every claim sits beside the viewer quote and the video behind it. The homepage lives on a night-navy ground; the logged-in app follows the OS between cool paper and the same night values. Panels are quiet, rows are separated by hairlines rather than boxed into card grids, and the only loud thing is the amber highlighter, which marks words a real viewer wrote.",
+    "keyCharacteristics": [
+      "Two grounds from one token set: paper (light) and night (dark), switchable per section.",
+      "One signature: the amber highlighter, reserved for real viewer evidence.",
+      "Semantic tokens only in new work.",
+      "Flat panels with a 1px hairline and a barely-there shadow.",
+      "Self-hosted variable type: Schibsted Grotesk, Geist Mono for figures."
+    ],
+    "rules": [
+      {
+        "name": "The Single Highlighter Rule",
+        "body": "Amber is used for exactly one meaning: a run of text a real viewer wrote. Never for buttons, badges, warnings, charts, or decoration. Warnings are burnt orange.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Grounds Rule",
+        "body": "Theme comes from the OS; .theme-night and .theme-day pin any section. Components use semantic tokens so they work on both with no per-theme code.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Figures Rule",
+        "body": "Any number shown in a column or meter uses .nums so values do not jitter.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Rest Rule",
+        "body": "Resting surfaces never gain a heavier shadow; only menus and dialogs float, and they use soft, blurred, negative-spread shadows.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the semantic tokens so a section works in both grounds.",
+      "Do put amber behind viewer-written text only, via EvidenceMark.",
+      "Do place the Derived info glyph after every figure Gapstronaut calculated.",
+      "Do keep controls at 44px minimum and use drawn icons from one library (lucide).",
+      "Do separate content with hairline rows and flat panels.",
+      "Do keep figures in Geist Mono with tabular numerals."
+    ],
+    "donts": [
+      "Don't use gradients, glass or backdrop blur, or neon and thumbnail-yellow creator-tool styling.",
+      "Don't add kickers or eyebrow labels above headings.",
+      "Don't nest cards inside cards.",
+      "Don't use hard offset shadows; soft ones only, and only on floating layers.",
+      "Don't use emoji; use drawn icons.",
+      "Don't mark callouts with a coloured left border; use a tinted Alert.",
+      "Don't use amber for status, buttons or charts; warnings are burnt orange.",
+      "Don't add new colours outside the semantic tokens."
+    ]
+  }
+}

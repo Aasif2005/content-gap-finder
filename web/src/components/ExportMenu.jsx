@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { cx } from '../lib/cx.js';
+import { Button } from './ui/Button.jsx';
 import { gapsToCsv, topicsToCsv, reportToMarkdown, download, copyToClipboard, exportStem } from '../lib/export.js';
 
 /**
@@ -10,9 +13,13 @@ export function ExportMenu({ result }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(null);
   const ref = useRef(null);
+  const trigger = useRef(null);
+  const menu = useRef(null);
+  const menuId = useId();
 
   useEffect(() => {
     if (!open) return;
+    menu.current?.querySelector('[role="menuitem"]:not(:disabled)')?.focus();
     const onDown = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onDown);
@@ -58,34 +65,55 @@ export function ExportMenu({ result }) {
     },
   ];
 
+  // Arrow keys move between enabled items; Escape closes and hands focus back.
+  const onMenuKey = (e) => {
+    const els = [...(menu.current?.querySelectorAll('[role="menuitem"]:not(:disabled)') ?? [])];
+    const i = els.indexOf(document.activeElement);
+    const go = (n) => { e.preventDefault(); els[(n + els.length) % els.length]?.focus(); };
+    if (e.key === 'ArrowDown') go(i + 1);
+    else if (e.key === 'ArrowUp') go(i - 1);
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(els.length - 1);
+    else if (e.key === 'Escape') { e.preventDefault(); setOpen(false); trigger.current?.focus(); }
+    else if (e.key === 'Tab') setOpen(false);
+  };
+
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
+      <Button
+        ref={trigger}
+        variant="secondary"
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => { if (e.key === 'ArrowDown' && !open) { e.preventDefault(); setOpen(true); } }}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium text-ink-600 transition-colors hover:bg-ink-100 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+        aria-controls={open ? menuId : undefined}
       >
-        {copied ?? 'Export'} ▾
-      </button>
+        {copied ?? 'Export'}
+        <ChevronDown aria-hidden className={cx('h-4 w-4', open && 'rotate-180')} />
+      </Button>
 
       {open && (
         <div
+          ref={menu}
+          id={menuId}
           role="menu"
-          className="absolute right-0 z-20 mt-1 w-64 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-lg dark:border-ink-700 dark:bg-ink-900"
+          aria-label="Export"
+          onKeyDown={onMenuKey}
+          className="fade-in absolute right-0 z-20 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-panel border border-line bg-surface p-1.5 shadow-[0_12px_32px_-12px_rgb(14_22_38/0.35)]"
         >
           {items.map((it) => (
             <button
               key={it.label}
               role="menuitem"
               type="button"
+              tabIndex={-1}
               disabled={it.disabled}
               onClick={it.run}
-              className="block w-full px-3 py-2 text-left transition-colors hover:bg-ink-100 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-ink-800"
+              className="block min-h-11 w-full rounded-lg px-3 py-2 text-left transition-colors hover:bg-hover focus-visible:bg-hover disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
             >
-              <span className="block text-sm font-medium text-ink-800 dark:text-ink-100">{it.label}</span>
-              <span className="block text-[11px] text-ink-400">{it.hint}</span>
+              <span className="block text-[15px] font-medium text-fg">{it.label}</span>
+              <span className="block text-[13px] text-fg-3">{it.hint}</span>
             </button>
           ))}
         </div>

@@ -1,4 +1,10 @@
-import { useState } from 'react';
+import { cloneElement, useId, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { cx } from '../lib/cx.js';
+import { Button } from './ui/Button.jsx';
+import { Checkbox } from './ui/Checkbox.jsx';
+import { Field, Input } from './ui/Field.jsx';
+import { Panel } from './ui/Panel.jsx';
 
 const WINDOWS = [
   { value: '24h', label: '24 hours' },
@@ -19,7 +25,7 @@ const TYPES = [
 
 function Pills({ options, value, onChange, name, disabled }) {
   return (
-    <div role="radiogroup" aria-label={name} className="inline-flex rounded-lg bg-ink-100 p-0.5 dark:bg-ink-800">
+    <div role="radiogroup" aria-label={name} className="inline-flex flex-wrap rounded-control bg-surface-2 p-0.5">
       {options.map((o) => (
         <button
           key={o.value}
@@ -28,11 +34,12 @@ function Pills({ options, value, onChange, name, disabled }) {
           aria-checked={value === o.value}
           disabled={disabled}
           onClick={() => onChange(o.value)}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-all disabled:opacity-50 ${
+          className={cx(
+            'min-h-11 rounded-[8px] border px-3.5 text-[15px] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-55',
             value === o.value
-              ? 'bg-white text-ink-900 shadow-sm dark:bg-ink-600 dark:text-white'
-              : 'text-ink-500 hover:text-ink-800 dark:text-ink-400 dark:hover:text-ink-100'
-          }`}
+              ? 'border-line-strong bg-surface font-semibold text-fg'
+              : 'border-transparent font-medium text-fg-2 hover:bg-hover hover:text-fg'
+          )}
         >
           {o.label}
         </button>
@@ -61,6 +68,7 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
     initial.customAfter ? initial.customAfter.slice(0, 10) : daysAgoISO(14)
   );
 
+  const filtersId = useId();
   const channelMode = mode === 'channel';
   const ready = channelMode ? channelId.trim().length > 1 : niche.trim().length >= 2;
 
@@ -87,7 +95,8 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row">
+      {/* The search console: one panel, the field and the button on one line. */}
+      <Panel padding="none" className="flex flex-col gap-2 p-2 sm:flex-row">
         {channelMode ? (
           <input
             value={channelId}
@@ -101,42 +110,38 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
           <input
             value={niche}
             onChange={(e) => setNiche(e.target.value)}
-            placeholder="Enter a niche — e.g. sourdough baking, home lab, watercolour portraits"
+            placeholder="Enter a niche, e.g. sourdough baking, home lab, watercolour portraits"
             aria-label="Niche or keyword"
             disabled={busy}
             className={mainInputCls}
           />
         )}
-        <button
-          type="submit"
-          disabled={busy || !ready}
-          className="rounded-xl bg-ink-900 px-6 py-3 text-base font-semibold text-white shadow-sm transition-all hover:bg-ink-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-ink-900 dark:hover:bg-ink-200"
-        >
+        <Button type="submit" size="lg" disabled={busy || !ready} className="shrink-0">
           {busy ? 'Analyzing…' : 'Find gaps'}
-        </button>
-      </div>
+        </Button>
+      </Panel>
 
-      <p className="text-xs text-ink-400">
+      <p className="max-w-[68ch] text-sm leading-relaxed text-fg-3">
         {channelMode
           ? 'Analyses that channel\u2019s own recent uploads and its own viewers\u2019 comments — what your audience keeps asking for and you have not made. Cheaper and more precise than a niche search, because there is no question what the videos are about.'
           : 'Searches YouTube for the niche, then mines the comments on what it finds.'}
       </p>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         {/* Not <label>: a label forwards clicks to its first button, so clicking
             the word "Published" silently switched the window to 24 hours. */}
-        <div className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-fg-2">
           <span className="font-medium" aria-hidden="true">Published</span>
           <Pills name="Published: time window" options={WINDOWS} value={window} onChange={setWindow} disabled={busy} />
         </div>
 
-        <div className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-fg-2">
           <span className="font-medium" aria-hidden="true">Format</span>
           <Pills name="Format: content type" options={TYPES} value={contentType} onChange={setContentType} disabled={busy} />
         </div>
 
         {window === 'custom' && (
-          <label className="rise flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
+          <label className="flex items-center gap-3 text-sm text-fg-2">
             <span className="font-medium">Since</span>
             <input
               type="date"
@@ -146,22 +151,25 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
               onChange={(e) => setCustomAfter(e.target.value)}
               disabled={busy}
               aria-label="Custom range start date"
-              className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-ink-400 disabled:opacity-50 dark:border-ink-700 dark:bg-ink-800"
+              className={cx(controlCls, 'min-h-11 font-mono nums')}
             />
           </label>
         )}
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           onClick={() => setAdvanced((v) => !v)}
-          className="text-sm font-medium text-ink-500 underline-offset-4 hover:underline dark:text-ink-400"
+          aria-expanded={advanced}
+          aria-controls={filtersId}
+          className="-ml-2"
         >
           {advanced ? 'Hide filters' : 'More filters'}
-        </button>
+          <ChevronDown aria-hidden className={cx('h-4 w-4', advanced && 'rotate-180')} />
+        </Button>
       </div>
 
       {advanced && (
-        <div className="rise grid gap-4 rounded-xl border border-ink-200 bg-white p-4 sm:grid-cols-4 dark:border-ink-800 dark:bg-ink-900">
+        <Panel id={filtersId} className="grid gap-x-5 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
           {/* Region and language narrow WHICH videos a niche search returns. A
               channel's own uploads are already exactly the right videos, so
               these have nothing to narrow and are hidden rather than shown
@@ -169,64 +177,63 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
           {!channelMode && (
             <>
               <Field label="Region" hint="ISO code, e.g. US, IN, GB. Excludes only channels that report a different country — many don't set one.">
-                <input value={regionCode} onChange={(e) => setRegionCode(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
+                <Input value={regionCode} onChange={(e) => setRegionCode(e.target.value)} placeholder="any" maxLength={2} />
               </Field>
               <Field label="Language" hint="ISO code, e.g. ta, hi, ar, ko, en, es. Real filter using each video's own declared/detected audio language, backed by script/common-word matching and a title dub-label check (e.g. 'Hindi Dubbed') as further evidence.">
-                <input value={relevanceLanguage} onChange={(e) => setRelevanceLanguage(e.target.value)} placeholder="any" maxLength={2} className={inputCls} />
+                <Input value={relevanceLanguage} onChange={(e) => setRelevanceLanguage(e.target.value)} placeholder="any" maxLength={2} />
               </Field>
             </>
           )}
           <Field label="Min views" hint="Drops videos below this">
-            <input value={minViews} onChange={(e) => setMinViews(e.target.value.replace(/\D/g, ''))} placeholder="0" inputMode="numeric" className={inputCls} />
+            <Input value={minViews} onChange={(e) => setMinViews(e.target.value.replace(/\D/g, ''))} placeholder="0" inputMode="numeric" className="font-mono nums" />
           </Field>
-          <Field label="Gap strictness" hint={gapMode === 'strict' ? 'Only topics nobody covers at all' : 'Also includes weakly covered topics'}>
-            <select value={gapMode} onChange={(e) => setGapMode(e.target.value)} className={inputCls}>
+          <SelectField label="Gap strictness" hint={gapMode === 'strict' ? 'Only topics nobody covers at all' : 'Also includes weakly covered topics'}>
+            <select value={gapMode} onChange={(e) => setGapMode(e.target.value)} className={cx(controlCls, 'min-h-12 w-full')}>
               <option value="inclusive">Uncovered + weak</option>
               <option value="strict">Uncovered only</option>
             </select>
-          </Field>
+          </SelectField>
 
           {/* Deep scan widens a SEARCH pool. Channel mode has no search to widen
               -- it already reads every upload in the window. */}
           {!channelMode && (
-          <label className="flex cursor-pointer items-start gap-2.5 sm:col-span-4">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={deepScan}
               onChange={(e) => setDeepScan(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded border-ink-300 accent-ink-900 dark:border-ink-600 dark:accent-white"
-            />
-            <span>
-              <span className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-300">
-                Deep scan
-              </span>
-              <span className="mt-0.5 block text-[11px] leading-relaxed text-ink-400">
+              className="sm:col-span-2 lg:col-span-4"
+            >
+              <span className="font-medium text-fg">Deep scan</span>
+              <span className="mt-0.5 block max-w-[68ch] text-[13px] leading-relaxed text-fg-3">
                 Doubles the candidate pool with a second pass sorted by upload date instead of
                 view count. Without it the pool is the top 50 by <em>absolute</em> views, which
                 quietly filters out the breakout small channel that views-per-subscriber scoring
                 is meant to find. Costs one extra search call per format (of 100 a day).
               </span>
-            </span>
-          </label>
+            </Checkbox>
           )}
-        </div>
+        </Panel>
       )}
     </form>
   );
 }
 
-const inputCls =
-  'w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm outline-none focus:border-ink-400 dark:border-ink-700 dark:bg-ink-800';
+// Selects and dates share the kit's control look (10px radius, 1px strong hairline).
+const controlCls =
+  'rounded-control border border-line-strong bg-surface px-3 text-[15px] text-fg transition-colors duration-150 hover:border-fg-3 disabled:cursor-not-allowed disabled:opacity-55';
 
+// The big field inside the console panel: borderless, the panel is its frame.
 const mainInputCls =
-  'flex-1 rounded-xl border border-ink-200 bg-white px-4 py-3 text-base shadow-sm outline-none transition-shadow placeholder:text-ink-400 focus:border-ink-400 focus:ring-4 focus:ring-ink-900/5 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-900 dark:focus:border-ink-500';
+  'min-h-12 min-w-0 flex-1 rounded-control bg-transparent px-3.5 text-lg font-medium text-fg placeholder:font-normal placeholder:text-fg-3 disabled:cursor-not-allowed disabled:opacity-60';
 
-function Field({ label, hint, children }) {
+/** A labelled select, wired like the kit's Field (which only knows about Input). */
+function SelectField({ label, hint, children }) {
+  const id = useId();
+  const hintId = `${id}-hint`;
   return (
-    <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wide text-ink-400">{label}</span>
-      <div className="mt-1">{children}</div>
-      <span className="mt-1 block text-[11px] text-ink-400">{hint}</span>
-    </label>
+    <div>
+      <label htmlFor={id} className="mb-2 block text-sm font-medium text-fg">{label}</label>
+      {cloneElement(children, { id, 'aria-describedby': hintId })}
+      <p id={hintId} className="mt-2 text-[13px] leading-relaxed text-fg-3">{hint}</p>
+    </div>
   );
 }

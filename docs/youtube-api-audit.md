@@ -76,7 +76,7 @@ timeline; reports range from a few weeks to a few months.
 | Privacy Policy URL | `[https://your-domain/privacy]` |
 | Terms of Service URL | `[https://your-domain/terms]` |
 | Publicly accessible? | Yes |
-| Demo account | Not applicable: the app has no login. Reviewers can use it directly. If accounts are added later, create a demo account and put it here. |
+| Demo account | **Required: the app needs a login to run analyses.** Create a dedicated email/password account (never your personal one), verify its email, and put its email and password here. Reviewers need full access, so keep its daily allowance topped up and leave one saved report in its history. |
 | Special instructions | "Open the URL, type a niche such as 'sourdough starter', press Find gaps and accept the terms dialog. A run takes about 60–120 seconds. A finished example report: `[https://your-domain/r/<runId>]`." |
 
 ## Section 5: Use case and quota
@@ -84,7 +84,7 @@ timeline; reports range from a few weeks to a few months.
 | Field | Answer |
 |---|---|
 | Use case categories | **Tools for Creators** and **Analytics & Reporting** |
-| Requires Google sign-in (OAuth)? | **No**. Public data only, read with an API key. |
+| Requires Google sign-in (OAuth)? | **No.** Users can sign in to the app with Google through Firebase Authentication, but only for the app's own login (scopes `openid`, `email`, `profile`). The app never requests YouTube OAuth scopes: it reads public data with a server-side API key. Suggested text: "Users may sign in to our app with Google through Firebase Authentication (openid, email, profile only) or with email and password. This is app login only. The app never requests YouTube OAuth scopes and calls YouTube only with a server-side API key on public data." |
 | Derived metrics and data storage | **Accept the amendment.** See below. |
 | Expected volume | `[pick the bracket matching your target, e.g. "1,000–10,000 requests per day"]` |
 
@@ -187,7 +187,7 @@ Replace the target with your own estimate. The arithmetic is what reviewers want
 |---|---|---|
 | III.A.1: users agree to the YouTube ToS | ✅ Terms say so; consent dialog before first use | `web/src/pages/Legal.jsx`, `web/src/lib/consent.jsx` |
 | III.A.2: privacy policy, always reachable, names YouTube API Services, links Google's policy, covers collection, sharing and storage | ✅ | `/privacy`, footer on every page |
-| III.A.2.h–i: revocation link and contact for Authorized Data | Not applicable (no OAuth); a contact is given anyway | `CONTACT_EMAIL` |
+| III.A.2.h–i: revocation link and contact for Authorized Data | Not applicable (no YouTube authorization); a contact is given anyway, and in-app account deletion removes user data | `CONTACT_EMAIL`, Profile page |
 | III.C.5: search results are not modified | ✅ Titles and thumbnails are shown as returned; ranking is ours and labelled | `VideoStrip.jsx` |
 | III.D.1: one project, credentials kept private | ✅ The key lives only in `.env` and is never sent to the browser | `services/youtube.js` |
 | III.D.3: stay within quota | ✅ Separate search and unit ledgers, stopping before the limits | `lib/quota.js` |
@@ -207,3 +207,14 @@ Replace the target with your own estimate. The arithmetic is what reviewers want
   the new limits, and restart.
 - Use the extra quota only for the approved use case (III.D.3).
 - Expect periodic re-audits. Keep this document and the live site in sync.
+
+## Google sign-in and the OAuth consent screen
+
+Google sign-in is app login only, with the non-sensitive scopes `openid`, `email` and `profile`, so
+Google's full app verification is not needed. In the Google Cloud project (the same one that holds the
+YouTube key), open APIs & Services, OAuth consent screen, and:
+
+- set the app name to Gapstronaut, add the support email, and the Privacy Policy and Terms links on the live domain;
+- add your domain under Authorized domains (also add it in Firebase, Authentication, Settings, Authorized domains);
+- publish the app (move it out of Testing, which caps users at 100);
+- for your name and logo to show on the Google sign-in screen, Google asks for brand verification, which needs a homepage on a domain you own. Until then Google shows a plainer screen; sign-in still works.

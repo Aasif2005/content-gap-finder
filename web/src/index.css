@@ -23,7 +23,7 @@
 
   --fg: #0E1626;
   --fg-2: #4A5670;
-  --fg-3: #667291;
+  --fg-3: #5C6985;
 
   --ink: #0A1220; /* primary button ground */
   --on-ink: #FFFFFF;
@@ -36,7 +36,7 @@
 
   --good-bg: #E3F4EC; --good-fg: #1E6B4B;
   --bad-bg: #FBE9E6;  --bad-fg: #9A2F22;
-  --warn-bg: #FBF1D6; --warn-fg: #7A5410;
+  --warn-bg: #FCEBDD; --warn-fg: #8F4410; /* burnt orange: kept clear of the amber highlighter */
   --info-bg: #E6EEFC; --info-fg: #2850B0;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -63,11 +63,11 @@
     --focus: #7FA2F5;
     --mark: #F6C453;
     --mark-soft: #4A3A12; /* selection ground: amber, but quiet enough for light text */
-    --mark-bg: var(--mark);
+    --mark-bg: color-mix(in oklab, var(--mark) 88%, var(--surface)); /* a touch softer than the swatch: big blocks stay calm */
     --on-mark: #0A1220;
     --good-bg: #12302A; --good-fg: #6FD0A0;
     --bad-bg: #3A1B1E;  --bad-fg: #F19A8E;
-    --warn-bg: #3A2E12; --warn-fg: #F6C453;
+    --warn-bg: #3A2414; --warn-fg: #F0955A;
     --info-bg: #16264A; --info-fg: #9DB8F7;
   }
 }
@@ -90,11 +90,11 @@
   --focus: #7FA2F5;
   --mark: #F6C453;
   --mark-soft: #4A3A12;
-  --mark-bg: var(--mark);
+  --mark-bg: color-mix(in oklab, var(--mark) 88%, var(--surface));
   --on-mark: #0A1220;
   --good-bg: #12302A; --good-fg: #6FD0A0;
   --bad-bg: #3A1B1E;  --bad-fg: #F19A8E;
-  --warn-bg: #3A2E12; --warn-fg: #F6C453;
+  --warn-bg: #3A2414; --warn-fg: #F0955A;
   --info-bg: #16264A; --info-fg: #9DB8F7;
 }
 
@@ -136,23 +136,7 @@
   --radius-control: 10px;
   --shadow-panel: 0 1px 2px rgb(14 22 38 / 0.04);
 
-  /* The old neutral and heat scales. The report components still use them until
-     they are moved onto the semantic tokens above. */
-  --color-ink-50:  #f6f7f9;
-  --color-ink-100: #eceef2;
-  --color-ink-200: #d5d9e2;
-  --color-ink-300: #b0b7c6;
-  --color-ink-400: #7c8598;
-  --color-ink-500: #5a6376;
-  --color-ink-600: #434b5c;
-  --color-ink-700: #333a48;
-  --color-ink-800: #21262f;
-  --color-ink-900: #14181f;
-  --color-ink-950: #0c0f14;
 
-  --color-heat-low:  #38bdf8;
-  --color-heat-mid:  #f59e0b;
-  --color-heat-high: #f43f5e;
 }
 
 html, body, #root { min-height: 100%; }
@@ -225,13 +209,6 @@ input, textarea, [contenteditable] { caret-color: var(--focus); }
   100% { background-size: 100% 100%; color: var(--on-mark); }
 }
 
-/* Older report components still use these two. */
-@keyframes rise {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.rise { animation: rise 0.35s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
-
 @keyframes shimmer {
   100% { transform: translateX(100%); }
 }
@@ -246,7 +223,7 @@ input, textarea, [contenteditable] { caret-color: var(--focus); }
 /* Reduced motion: show every end state, run no animation. */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .fade-in, .rise { animation: none; }
+  .fade-in { animation: none; }
   .shimmer::after { animation: none; display: none; }
   .evidence-sweep {
     animation: none !important;

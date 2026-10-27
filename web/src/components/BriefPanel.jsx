@@ -1,21 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
+import { ArrowRight, Check, ChevronDown, X } from 'lucide-react';
 import { Badge } from './Bits.jsx';
+import { Alert } from './ui/Alert.jsx';
+import { Button } from './ui/Button.jsx';
+import { Link } from '../lib/router.jsx';
 import { getBrief, makeBrief } from '../lib/api.js';
 import { copyToClipboard } from '../lib/export.js';
 import { useConsent } from '../lib/consent.jsx';
+import { currentPathAndSearch } from '../lib/navigation.js';
+import { cx } from '../lib/cx.js';
 
-const BAND_TONE = { STRONG: 'good', WORKABLE: 'warm', WEAK: 'neutral' };
+const BAND_TONE = { STRONG: 'good', WORKABLE: 'warn', WEAK: 'neutral' };
 
 // '' means "match the audience": the brief follows the language of the comments.
 const LANGUAGES = ['', 'English', 'Tamil', 'Hindi', 'Telugu', 'Malayalam', 'Kannada', 'Spanish', 'French', 'German', 'Portuguese', 'Arabic', 'Indonesian'];
 
+// The length verdict is a status, so it takes the status pairs.
 const LENGTH_TONE = {
-  fits: 'border-emerald-300 bg-emerald-50/70 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200',
-  padded: 'border-amber-300 bg-amber-50/70 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200',
-  rushed: 'border-amber-300 bg-amber-50/70 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200',
-  'wrong-format': 'border-sky-300 bg-sky-50/70 text-sky-900 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200',
+  fits: 'bg-good-bg text-good-fg',
+  padded: 'bg-warn-bg text-warn-fg',
+  rushed: 'bg-warn-bg text-warn-fg',
+  'wrong-format': 'bg-info-bg text-info-fg',
 };
 const LENGTH_LABEL = { fits: 'Length fits', padded: 'Longer than it needs to be', rushed: 'Shorter than it needs to be', 'wrong-format': 'Wrong format for what was asked' };
+
+// Selects share the kit's control look (10px radius, 1px strong hairline, 44px).
+const SELECT_CLS =
+  'min-h-11 rounded-control border border-line-strong bg-surface px-3 text-[15px] text-fg transition-colors duration-150 hover:border-fg-3 disabled:cursor-not-allowed disabled:opacity-55';
+
+// Each of the three sections is a hairline-separated block inside the brief.
+const SECTION = 'space-y-4 border-t border-line pt-6';
+const SUBHEAD = 'text-[15px] font-semibold text-fg';
+const LABEL = 'text-[13px] font-medium text-fg-3';
 
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s) % 60).padStart(2, '0')}`;
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -45,11 +61,11 @@ const coverageText = (c) => (c === 'none' ? 'nobody covers it yet' : c === 'weak
 export function SensitiveNotice({ sensitive }) {
   if (sensitive?.level !== 'high') return null;
   return (
-    <div className="rounded-lg border border-rose-300 bg-rose-50 p-2.5 text-xs text-rose-800 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300">
+    <Alert tone="bad">
       <b>Real, ongoing case involving identifiable people.</b> Viewer suspicion is not a finding. The brief is written as
       what is <em>confirmed</em> versus <em>not confirmed</em>, and titles that imply guilt are flagged. Check every fact against an official source before filming.
-      {sensitive.reasons?.length > 0 && <span className="text-rose-600 dark:text-rose-400"> ({sensitive.reasons.join('; ')})</span>}
-    </div>
+      {sensitive.reasons?.length > 0 && <span className="opacity-80"> ({sensitive.reasons.join('; ')})</span>}
+    </Alert>
   );
 }
 
@@ -100,42 +116,44 @@ export function briefToMarkdown(b, gap = null) {
   return out.join('\n');
 }
 
-function SectionHead({ n, title, sub }) {
+function SectionHead({ title, sub }) {
   return (
-    <h3 className="flex items-baseline gap-2 border-b border-ink-200 pb-1 dark:border-ink-700">
-      <span className="nums text-xs font-semibold text-ink-400">{n}</span>
-      <span className="text-sm font-semibold text-ink-800 dark:text-ink-100">{title}</span>
-      <span className="text-[11px] text-ink-400">{sub}</span>
-    </h3>
+    <div>
+      <h3 className="text-[17px] font-semibold tracking-[-0.01em] text-fg">{title}</h3>
+      <p className="mt-0.5 text-sm text-fg-3">{sub}</p>
+    </div>
   );
 }
 
 function Opportunity({ brief, opp }) {
   return (
-    <section className="space-y-2">
-      <SectionHead n="1" title="Content opportunity" sub="why this video is worth making" />
+    <section className={SECTION}>
+      <SectionHead title="Content opportunity" sub="why this video is worth making" />
       {opp && (
-        <p className="text-xs text-ink-600 dark:text-ink-300">
-          <span className="nums">{plural(opp.comments, 'comment')} across {plural(opp.videos, 'video')}, {plural(opp.likes, 'like')}</span>
+        <p className="text-[15px] leading-relaxed text-fg-2">
+          <span className="nums font-mono text-sm text-fg">{plural(opp.comments, 'comment')} across {plural(opp.videos, 'video')}, {plural(opp.likes, 'like')}</span>
           {opp.coverage && <>; {coverageText(opp.coverage)}</>}
           {opp.recurrence?.timesSeen > 1 && <>; asked for in {opp.recurrence.timesSeen} runs</>}.
           {opp.earlySignal && (
-            <Badge tone="warm" title="Few comments and few likes. Real, but not yet proven demand.">early signal</Badge>
+            <Badge tone="warn" className="ml-2 align-middle" title="Few comments and few likes. Real, but not yet proven demand.">early signal</Badge>
           )}
         </p>
       )}
       {brief.angle && (
-        <p className="text-ink-800 dark:text-ink-100">
-          <span className="mr-1.5 text-[11px] font-semibold uppercase text-ink-400">Angle</span>{brief.angle}
-          <span className="ml-1 text-[11px] text-ink-400">(inferred from the covering videos&rsquo; titles, not from watching them)</span>
-        </p>
+        <div>
+          <p className={LABEL}>Angle</p>
+          <p className="mt-1 max-w-[68ch] text-[17px] leading-relaxed text-fg">{brief.angle}</p>
+          <p className="mt-1 text-[13px] text-fg-3">(inferred from the covering videos&rsquo; titles, not from watching them)</p>
+        </div>
       )}
       {brief.length && (
-        <p className="text-xs text-ink-600 dark:text-ink-300">
-          <span className="mr-1.5 text-[11px] font-semibold uppercase text-ink-400">Best as</span>
-          about <span className="nums">{mmss(brief.length.best ?? brief.length.needed)}</span>{brief.length.basis === 'measured' ? ' of speech' : ''},{' '}
-          {brief.runtime.format === 'short' ? 'a Short' : 'long-form'}, {plural(brief.essentials.length, 'essential')} to teach
-        </p>
+        <div>
+          <p className={LABEL}>Best as</p>
+          <p className="mt-1 text-[15px] leading-relaxed text-fg">
+            about <span className="nums font-mono text-sm">{mmss(brief.length.best ?? brief.length.needed)}</span>{brief.length.basis === 'measured' ? ' of speech' : ''},{' '}
+            {brief.runtime.format === 'short' ? 'a Short' : 'long-form'}, {plural(brief.essentials.length, 'essential')} to teach
+          </p>
+        </div>
       )}
     </section>
   );
@@ -145,9 +163,9 @@ function NeedList({ title, items }) {
   if (!items.length) return null;
   return (
     <div>
-      <h4 className="text-xs font-semibold text-amber-900 dark:text-amber-200">{title}</h4>
-      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-amber-900 dark:text-amber-200">
-        {items.map((n, i) => <li key={i}>{n.claim}{n.why && <span className="text-amber-700 dark:text-amber-400"> — {n.why}</span>}</li>)}
+      <h4 className="text-sm font-semibold">{title}</h4>
+      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-relaxed">
+        {items.map((n, i) => <li key={i}>{n.claim}{n.why && <span className="opacity-80"> — {n.why}</span>}</li>)}
       </ul>
     </div>
   );
@@ -164,32 +182,34 @@ function Research({ brief, opp }) {
     c.inventedNumbers?.length && `figure${c.inventedNumbers.length === 1 ? '' : 's'} not in the evidence: ${c.inventedNumbers.join(', ')}`,
   ].filter(Boolean);
   return (
-    <section className="space-y-2">
-      <SectionHead n="2" title="Creator research" sub="what to verify and prepare before filming" />
+    <section className={SECTION}>
+      <SectionHead title="Creator research" sub="what to verify and prepare before filming" />
       <SensitiveNotice sensitive={brief.sensitive} />
       {(verify.length > 0 || prepare.length > 0) && (
-        <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50/70 p-2.5 dark:border-amber-500/40 dark:bg-amber-500/10">
-          <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
-            The draft relies on these, but the evidence (a few viewer comments and video titles) does not contain them.
-          </p>
-          <NeedList title={prepare.length ? 'Verify' : 'Confirm these'} items={verify} />
-          <NeedList title="Prepare" items={prepare} />
-        </div>
+        <Alert tone="warn">
+          <div className="space-y-3">
+            <p className="text-sm">
+              The draft relies on these, but the evidence (a few viewer comments and video titles) does not contain them.
+            </p>
+            <NeedList title={prepare.length ? 'Verify' : 'Confirm these'} items={verify} />
+            <NeedList title="Prepare" items={prepare} />
+          </div>
+        </Alert>
       )}
       {opp?.covering?.length > 0 && (
-        <div className="text-xs text-ink-600 dark:text-ink-300">
-          <span className="font-semibold text-ink-700 dark:text-ink-200">Watch first:</span>{' '}
+        <p className="max-w-[68ch] text-[15px] leading-relaxed text-fg-2">
+          <span className="font-semibold text-fg">Watch first:</span>{' '}
           {opp.covering.map((v, i) => (
             <span key={v.videoId}>
               {i > 0 && ' · '}
-              <a href={watchUrl(v.videoId)} target="_blank" rel="noreferrer" className="underline decoration-ink-300 hover:text-ink-900 dark:hover:text-ink-100">{v.title}</a>
+              <a href={watchUrl(v.videoId)} target="_blank" rel="noreferrer" className="text-fg underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-fg">{v.title}</a>
             </span>
           ))}
-          <span className="text-ink-400"> to confirm what they really miss. The angle is based on their titles.</span>
-        </div>
+          <span className="text-fg-3"> to confirm what they really miss. The angle is based on their titles.</span>
+        </p>
       )}
       {found?.length > 0 && (
-        <p className="text-[11px] text-ink-500">
+        <p className="text-[13px] leading-relaxed text-fg-3">
           Checks found: {found.join('; ')}{c.flaggedBeats?.length > 0 && <> (beat{c.flaggedBeats.length === 1 ? '' : 's'} {c.flaggedBeats.join(', ')})</>}.
         </p>
       )}
@@ -197,57 +217,55 @@ function Research({ brief, opp }) {
   );
 }
 
-function LengthBanner({ brief, busy, onRedraft }) {
+function LengthBanner({ brief, busy, onRedraft, canMake }) {
   const l = brief.length;
   if (!l) return null;
   const longForm = brief.runtime.format !== 'short';
   return (
-    <div className={`rounded-lg border p-2.5 text-xs ${LENGTH_TONE[l.verdict]}`}>
+    <div role="status" className={cx('rounded-panel px-4 py-3.5 text-sm leading-relaxed', LENGTH_TONE[l.verdict] ?? 'bg-surface-2 text-fg-2')}>
       <p><b>{LENGTH_LABEL[l.verdict]}.</b> {l.summary}</p>
       {l.reasons.length > 0 && (
-        <ul className="mt-1 list-disc space-y-0.5 pl-4">{l.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+        <ul className="mt-1.5 list-disc space-y-1 pl-5">{l.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
       )}
-      {brief.lengthNote && <p className="mt-1">{brief.lengthNote}</p>}
-      {l.core && <p className="mt-1">{l.core.note}</p>}
-      {l.earlySignal && <p className="mt-1">{l.earlySignal}</p>}
-      <p className="mt-1 text-[11px] opacity-75">
+      {brief.lengthNote && <p className="mt-1.5">{brief.lengthNote}</p>}
+      {l.core && <p className="mt-1.5">{l.core.note}</p>}
+      {l.earlySignal && <p className="mt-1.5">{l.earlySignal}</p>}
+      <p className="mt-2 text-[13px]">
         {l.basis === 'measured'
           ? 'Timed from the script’s own words at 150 words a minute (an English speaking rate; other languages run differently), not from the model’s estimate. Which beats teach nothing viewers asked for is checked in code.'
           : 'Built from the essentials below: each one’s time is the model’s estimate, but which beats teach nothing viewers asked for is checked in code. A full script is timed from its words instead.'}
       </p>
-      <div className="mt-1.5 flex flex-wrap gap-2">
-        {l.offerRedraft && (
-          <RedraftButton busy={busy} onClick={() => onRedraft({ targetMinutes: l.suggestedMinutes })}>
-            Redraft at ~{l.suggestedMinutes}:00
-          </RedraftButton>
-        )}
-        {l.core && (
-          <RedraftButton busy={busy} onClick={() => onRedraft({ core: true, targetMinutes: l.core.minutes })}>
-            Redraft the core (~{l.core.minutes}:00)
-          </RedraftButton>
-        )}
-        {l.verdict === 'wrong-format' && (
-          <RedraftButton busy={busy} onClick={() => onRedraft({ format: longForm ? 'short' : 'long-form' })}>
-            Redraft as {longForm ? 'a Short' : 'long-form'}
-          </RedraftButton>
-        )}
-        {(l.earlySignal && longForm && l.verdict !== 'wrong-format') && (
-          <RedraftButton busy={busy} onClick={() => onRedraft({ format: 'short' })}>Draft a test Short</RedraftButton>
-        )}
-      </div>
+      {canMake && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {l.offerRedraft && (
+            <RedraftButton busy={busy} onClick={() => onRedraft({ targetMinutes: l.suggestedMinutes })}>
+              Redraft at ~{l.suggestedMinutes}:00
+            </RedraftButton>
+          )}
+          {l.core && (
+            <RedraftButton busy={busy} onClick={() => onRedraft({ core: true, targetMinutes: l.core.minutes })}>
+              Redraft the core (~{l.core.minutes}:00)
+            </RedraftButton>
+          )}
+          {l.verdict === 'wrong-format' && (
+            <RedraftButton busy={busy} onClick={() => onRedraft({ format: longForm ? 'short' : 'long-form' })}>
+              Redraft as {longForm ? 'a Short' : 'long-form'}
+            </RedraftButton>
+          )}
+          {(l.earlySignal && longForm && l.verdict !== 'wrong-format') && (
+            <RedraftButton busy={busy} onClick={() => onRedraft({ format: 'short' })}>Draft a test Short</RedraftButton>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 function RedraftButton({ busy, onClick, children }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={busy}
-      className="rounded border border-current/30 bg-white/60 px-2 py-0.5 text-[11px] font-medium hover:bg-white disabled:opacity-60 dark:bg-transparent dark:hover:bg-white/10"
-    >
+    <Button variant="secondary" onClick={onClick} disabled={busy}>
       {busy ? 'Redrafting…' : children}
-    </button>
+    </Button>
   );
 }
 
@@ -255,23 +273,25 @@ function Essentials({ essentials }) {
   if (!essentials?.length) return null;
   return (
     <div>
-      <h4 className="text-xs font-semibold text-ink-700 dark:text-ink-200">Essentials: what the viewer must leave with</h4>
-      <ol className="mt-1 space-y-1 text-xs">
+      <h4 className={SUBHEAD}>Essentials: what the viewer must leave with</h4>
+      <ol className="mt-2 divide-y divide-line-soft">
         {essentials.map((e) => (
-          <li key={e.n} className="text-ink-700 dark:text-ink-200">
-            <span className="nums mr-1 font-semibold text-ink-400">{e.n}.</span>
-            {e.point}{' '}
-            <span className="inline-flex flex-wrap items-baseline gap-1.5 align-baseline">
-            <span className="nums text-ink-400">{mmss(e.seconds)}{e.demo ? ' · demo' : ''}</span>
-            {e.coveredBy?.length > 0
-              ? <Badge tone="good">beat {e.coveredBy.join(', ')}</Badge>
-              : <Badge tone="bad">not taught</Badge>}
-            {e.unrequested && <Badge tone="warm" title="Cites no viewer comment and not the request itself">nobody asked</Badge>}
-            {e.thin && !e.unrequested && <Badge title="Only one comment, with few likes, asked for this, and the request itself does not need it">optional: one comment</Badge>}
-            {e.answers?.length > 0 && !e.unrequested && (
-              <span className="text-[11px] text-ink-400">answers {e.answers.map((a) => (a === 'q' ? 'the request' : `comment ${a}`)).join(', ')}</span>
-            )}
-            </span>
+          <li key={e.n} className="flex gap-3 py-3 text-[15px] leading-relaxed text-fg">
+            <span className="nums w-5 shrink-0 font-mono text-sm text-fg-3">{e.n}</span>
+            <div className="min-w-0 max-w-[68ch]">
+              <p>{e.point}</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                <span className="nums font-mono text-xs text-fg-3">{mmss(e.seconds)}{e.demo ? ' · demo' : ''}</span>
+                {e.coveredBy?.length > 0
+                  ? <Badge tone="good">beat {e.coveredBy.join(', ')}</Badge>
+                  : <Badge tone="bad">not taught</Badge>}
+                {e.unrequested && <Badge tone="warn" title="Cites no viewer comment and not the request itself">nobody asked</Badge>}
+                {e.thin && !e.unrequested && <Badge title="Only one comment, with few likes, asked for this, and the request itself does not need it">optional: one comment</Badge>}
+                {e.answers?.length > 0 && !e.unrequested && (
+                  <span className="text-[13px] text-fg-3">answers {e.answers.map((a) => (a === 'q' ? 'the request' : `comment ${a}`)).join(', ')}</span>
+                )}
+              </div>
+            </div>
           </li>
         ))}
       </ol>
@@ -286,20 +306,20 @@ function LanguageNote({ brief }) {
   const drift = brief.languageDrift ?? [];
   if (!r?.fixed && !drift.length) return null;
   return (
-    <p className="mt-0.5 text-[11px] text-ink-500">
+    <p className="mt-1 text-[13px] leading-relaxed text-fg-3">
       {r?.fixed > 0 && <>{plural(r.fixed, 'field')} came back in another language and {r.fixed === 1 ? 'was' : 'were'} translated to {brief.language}. </>}
-      {drift.length > 0 && <Badge tone="warm" title={drift.join(', ')}>{plural(drift.length, 'field')} still not in {brief.language}</Badge>}
+      {drift.length > 0 && <Badge tone="warn" title={drift.join(', ')}>{plural(drift.length, 'field')} still not in {brief.language}</Badge>}
     </p>
   );
 }
 
 function HookBadges({ h }) {
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
       {h.unscored
         ? h.partial
           ? (
-            <Badge title={`The five-property scorer only reads English. Language-neutral checks: ${h.partial.checks.map((c) => `${c.pass ? '✓' : '✗'} ${c.label}`).join(', ')}`}>
+            <Badge mono title={`The five-property scorer only reads English. Language-neutral checks: ${h.partial.checks.map((c) => `${c.pass ? '✓' : '✗'} ${c.label}`).join(', ')}`}>
               partial check {h.partial.passed}/{h.partial.total}
             </Badge>
           )
@@ -308,35 +328,49 @@ function HookBadges({ h }) {
       <Badge title={h.formulaSource === 'model' ? 'No wording match in code; this is the formula the model says it used.' : 'Closest hook formula by wording, matched in code.'}>
         {h.formula}{h.formulaSource === 'model' ? ' (model’s label)' : ''}
       </Badge>
-      {h.weakOpener && <Badge tone="warm" title="Opens by announcing the video instead of starting it">announces the video</Badge>}
+      {h.weakOpener && <Badge tone="warn" title="Opens by announcing the video instead of starting it">announces the video</Badge>}
       {h.ungrounded && <Badge tone="bad" title={`${h.inventedNumbers.join(', ')} is not in the viewers' own words`}>invented figure</Badge>}
       {h.unverifiedNames?.length > 0 && <Badge tone="bad" title="A name the evidence never mentioned">unverified name: {h.unverifiedNames.join(', ')}</Badge>}
-      {h.weakest && <span className="text-[11px] text-ink-400">weakest: {h.weakest.toLowerCase()} — {h.fix}</span>}
+      {h.weakest && <span className="text-[13px] text-fg-3">weakest: {h.weakest.toLowerCase()} — {h.fix}</span>}
     </div>
   );
 }
 
-function Script({ brief, busy, onRedraft }) {
+function QueryStatus({ q }) {
+  if (q.request) return <span className="text-warn-fg">reads like a request to a creator, not a search people type</span>;
+  const icon = (Icon) => <Icon aria-hidden strokeWidth={2.5} className="mr-1 inline h-3.5 w-3.5 align-[-0.15em]" />;
+  if (q.inTitle) return <span className="text-good-fg">{icon(Check)}in the title</span>;
+  if (q.inOpening) return <span className="text-warn-fg">{icon(X)}not in the title, only the description</span>;
+  return (
+    <span className="text-bad-fg">
+      {icon(X)}
+      {/* Briefs saved before coverage was measured have neither field. */}
+      {q.missing ? `${Math.round((q.coverage ?? 0) * 100)}% covered, missing: ${q.missing.join(', ')}` : 'not in the title or description'}
+    </span>
+  );
+}
+
+function Script({ brief, busy, onRedraft, canMake }) {
   const scriptStyle = brief.style === 'script';
   const longForm = brief.runtime.format !== 'short';
   return (
-    <section className="space-y-3">
-      <SectionHead n="3" title="Ready-to-film script" sub="how to make it" />
-      <LengthBanner brief={brief} busy={busy} onRedraft={onRedraft} />
+    <section className={cx(SECTION, 'space-y-8')}>
+      <SectionHead title="Ready-to-film script" sub="how to make it" />
+      <LengthBanner brief={brief} busy={busy} onRedraft={onRedraft} canMake={canMake} />
       <Essentials essentials={brief.essentials} />
 
       <div>
-        <h4 className="text-xs font-semibold text-ink-700 dark:text-ink-200">Opening lines</h4>
-        <p className="mt-0.5 text-[11px] text-ink-400">
+        <h4 className={SUBHEAD}>Opening lines</h4>
+        <p className="mt-1 max-w-[68ch] text-[13px] leading-relaxed text-fg-3">
           A checklist (does it speak to the viewer, name something specific, open a question), not a prediction of retention.
           It tends to score plain hooks low when no figure in the comments could be used.
         </p>
-        {brief.languageNote && <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">{brief.languageNote}</p>}
+        {brief.languageNote && <p className="mt-1 text-[13px] leading-relaxed text-warn-fg">{brief.languageNote}</p>}
         <LanguageNote brief={brief} />
-        <ul className="mt-2 space-y-2">
+        <ul className="mt-4 space-y-5">
           {(brief.hooks ?? []).map((h, i) => (
-            <li key={i} className={i < 2 ? '' : 'opacity-70'}>
-              <p className="text-ink-800 dark:text-ink-100">&ldquo;{h.hook}&rdquo;</p>
+            <li key={i}>
+              <p className={cx('max-w-[68ch] text-[17px] leading-snug', i < 2 ? 'text-fg' : 'text-fg-2')}>&ldquo;{h.hook}&rdquo;</p>
               <HookBadges h={h} />
             </li>
           ))}
@@ -344,40 +378,38 @@ function Script({ brief, busy, onRedraft }) {
       </div>
 
       <div>
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h4 className="text-xs font-semibold text-ink-700 dark:text-ink-200">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <h4 className={SUBHEAD}>
             {brief.runtime.estimated ? 'Outline' : 'Script beats'}{' '}
-            <span className="nums font-normal text-ink-400">
+            <span className="nums font-mono text-[13px] font-normal text-fg-3">
               · {brief.runtime.estimated ? 'budgeted at about' : 'about'} {mmss(brief.runtime.seconds)}
               {brief.runtime.estimated ? ' (talking points are budgeted, not read through)' : ' spoken at 150 words a minute'}
             </span>
           </h4>
-          {longForm && (
+          {longForm && canMake && (
             <RedraftButton busy={busy} onClick={() => onRedraft({ style: scriptStyle ? 'points' : 'script' })}>
               {scriptStyle ? 'Switch to talking points' : 'Write it as a full script'}
             </RedraftButton>
           )}
         </div>
-        <ol className="mt-2 space-y-2.5">
+        <ol className="mt-2 divide-y divide-line-soft">
           {brief.beats.map((b, i) => (
-            <li key={i} className={b.offPlan ? 'opacity-60' : ''}>
-              <p className="text-ink-800 dark:text-ink-100">
-                <span className="mr-1.5 text-[11px] font-semibold uppercase text-ink-400">
-                  {b.beat}{b.beat === 'body' && b.covers && !b.offPlan ? ` · essential ${b.covers}` : ''} · {mmss(b.seconds)}
-                </span>
-                {b.say}
+            <li key={i} className="py-4 first:pt-2">
+              <p className="nums font-mono text-xs font-medium capitalize text-fg-3">
+                {b.beat}{b.beat === 'body' && b.covers && !b.offPlan ? ` · essential ${b.covers}` : ''} · {mmss(b.seconds)}
               </p>
+              <p className={cx('mt-1.5 max-w-[68ch] text-base leading-[1.7]', b.offPlan ? 'text-fg-3' : 'text-fg')}>{b.say}</p>
               {b.points?.length > 0 && (
-                <ul className="mt-0.5 list-disc space-y-0.5 pl-5 text-ink-700 dark:text-ink-200">
+                <ul className={cx('mt-2 max-w-[68ch] list-disc space-y-1 pl-5 text-[15px] leading-relaxed', b.offPlan ? 'text-fg-3' : 'text-fg-2')}>
                   {b.points.map((p, j) => <li key={j}>{p}</li>)}
                 </ul>
               )}
-              {b.onScreen && <p className="text-xs text-sky-700 dark:text-sky-300">on screen: {b.onScreen}</p>}
+              {b.onScreen && <p className="mt-2 max-w-[68ch] text-sm text-info-fg">on screen: {b.onScreen}</p>}
               {(b.offPlan || b.stretched || b.needsSource > 0 || b.unverifiedNames?.length > 0 || b.inventedNumbers?.length > 0) && (
-                <div className="mt-0.5 flex flex-wrap gap-1.5">
-                  {b.offPlan && <Badge tone="warm" title="Teaches no essential, so no viewer asked for it">not asked for: cut?</Badge>}
-                  {b.stretched && <Badge tone="warm" title="Runs far longer than the essential it teaches">stretched</Badge>}
-                  {b.needsSource > 0 && <Badge tone="warm">needs source ×{b.needsSource}</Badge>}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {b.offPlan && <Badge tone="warn" title="Teaches no essential, so no viewer asked for it">not asked for: cut?</Badge>}
+                  {b.stretched && <Badge tone="warn" title="Runs far longer than the essential it teaches">stretched</Badge>}
+                  {b.needsSource > 0 && <Badge tone="warn">needs source ×{b.needsSource}</Badge>}
                   {b.unverifiedNames?.length > 0 && <Badge tone="bad">unverified name: {b.unverifiedNames.join(', ')}</Badge>}
                   {b.inventedNumbers?.length > 0 && <Badge tone="bad" title="Not in the viewers' own words">figure: {b.inventedNumbers.join(', ')}</Badge>}
                 </div>
@@ -388,47 +420,35 @@ function Script({ brief, busy, onRedraft }) {
       </div>
 
       <div>
-        <h4 className="text-xs font-semibold text-ink-700 dark:text-ink-200">Title, description and tags</h4>
+        <h4 className={SUBHEAD}>Title, description and tags</h4>
         {brief.titleFix && (
-          <p className="mt-1 text-xs text-ink-700 dark:text-ink-200">
+          <p className="mt-2 max-w-[68ch] text-[15px] leading-relaxed text-fg">
             <span className="font-semibold">Suggested title for search:</span> {brief.titleFix.title}{' '}
-            <span className="nums text-ink-400">
+            <span className="nums font-mono text-xs text-fg-3">
               · carries {Math.round(brief.titleFix.coverage * 100)}% of the search words (current title {Math.round(brief.titleFix.originalCoverage * 100)}%) · lint {brief.titleFix.score}/100
             </span>
           </p>
         )}
-        <ul className="mt-1 space-y-0.5">
+        <ul className="mt-3 space-y-1.5">
           {brief.seo.queryTest.map((q) => (
-            <li key={q.query} className="text-xs text-ink-600 dark:text-ink-300">
-              &ldquo;{q.query}&rdquo;{' '}
-              {q.request
-                ? <span className="text-amber-600 dark:text-amber-400">reads like a request to a creator, not a search people type</span>
-                : (
-                  <span className={q.inTitle ? 'text-emerald-600 dark:text-emerald-400' : q.inOpening ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}>
-                    {q.inTitle
-                      ? '✓ in the title'
-                      : q.inOpening
-                        ? '✗ not in the title, only the description'
-                        // Briefs saved before coverage was measured have neither field.
-                        : q.missing ? `✗ ${Math.round((q.coverage ?? 0) * 100)}% covered, missing: ${q.missing.join(', ')}` : '✗ not in the title or description'}
-                  </span>
-                )}
+            <li key={q.query} className="text-sm leading-relaxed text-fg-2">
+              &ldquo;{q.query}&rdquo; <QueryStatus q={q} />
             </li>
           ))}
         </ul>
         {brief.seo.queryTest.some((q) => !q.inTitle && !q.request) && !brief.titleFix && (
-          <p className="mt-1 text-[11px] text-ink-400">If the words people type are not in the title, the title is the thing to change, not the description.</p>
+          <p className="mt-2 text-[13px] text-fg-3">If the words people type are not in the title, the title is the thing to change, not the description.</p>
         )}
-        <p className="mt-2 text-ink-800 dark:text-ink-100">{brief.seo.descriptionOpening}</p>
+        <p className="mt-4 max-w-[68ch] text-base leading-relaxed text-fg">{brief.seo.descriptionOpening}</p>
         {brief.seo.descriptionInvented?.length > 0 && (
-          <p className="text-[11px] text-rose-600 dark:text-rose-400">Contains a figure ({brief.seo.descriptionInvented.join(', ')}) that is not in the viewers&rsquo; own words. Check it before using it.</p>
+          <p className="mt-1 text-[13px] text-bad-fg">Contains a figure ({brief.seo.descriptionInvented.join(', ')}) that is not in the viewers&rsquo; own words. Check it before using it.</p>
         )}
         {brief.seo.descriptionNames?.length > 0 && (
-          <p className="text-[11px] text-rose-600 dark:text-rose-400">Names a person or place the evidence never mentioned ({brief.seo.descriptionNames.join(', ')}). Check it before using it.</p>
+          <p className="mt-1 text-[13px] text-bad-fg">Names a person or place the evidence never mentioned ({brief.seo.descriptionNames.join(', ')}). Check it before using it.</p>
         )}
-        <p className="mt-2 flex flex-wrap gap-1">
+        <p className="mt-3 flex flex-wrap gap-1.5">
           {brief.seo.tags.map((t) => (
-            <Badge key={t} tone={brief.seo.unverifiedTags?.includes(t) ? 'warm' : 'neutral'} title={brief.seo.unverifiedTags?.includes(t) ? 'Contains a word neither the evidence nor the draft uses - check it' : undefined}>{t}</Badge>
+            <Badge key={t} tone={brief.seo.unverifiedTags?.includes(t) ? 'warn' : 'neutral'} title={brief.seo.unverifiedTags?.includes(t) ? 'Contains a word neither the evidence nor the draft uses - check it' : undefined}>{t}</Badge>
           ))}
         </p>
       </div>
@@ -436,13 +456,44 @@ function Script({ brief, busy, onRedraft }) {
   );
 }
 
-/** On-demand brief for one gap: why make it, what to check first, and the script. Nothing is spent until the button is pressed. */
-export function BriefPanel({ runId, index, sensitive, gap }) {
+/** A calm, determinate-looking bar for a draft in flight: it only ever moves forward and stops short of full. */
+function DraftProgress({ elapsed, label }) {
+  const pct = Math.min(95, Math.max(4, (elapsed / 90) * 100));
+  return (
+    <div className="w-full min-w-56">
+      <div className="flex items-baseline justify-between gap-3 text-sm text-fg-2">
+        <span role="status">{label}</span>
+        <span className="nums font-mono text-[13px] text-fg-3">{elapsed}s</span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-[3px] bg-line">
+        <div
+          className="h-full rounded-[3px] bg-ink transition-[width] duration-500 ease-[var(--ease-out)] motion-reduce:transition-none"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * On-demand brief for one gap: why make it, what to check first, and the script.
+ * Nothing is spent until the button is pressed.
+ *
+ * `canMake={false}` is for visitors who are not logged in: no generation
+ * control is shown and `makeBrief` cannot be reached from here. A brief that was
+ * already saved for the report still loads and reads as normal; otherwise a
+ * quiet link invites them to log in.
+ *
+ * Idle, this renders as flex items so GapCard can seat the button beside its
+ * "Film this" text; with a brief it takes the full row.
+ */
+export function BriefPanel({ runId, index, sensitive, gap, canMake = true }) {
   const [language, setLanguage] = useState('');
   const [brief, setBrief] = useState(null);
   const [state, setState] = useState('idle'); // idle | working | error
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
 
   // A brief drafted earlier (in this language) is a disk read -- show it without another click.
   useEffect(() => {
@@ -460,9 +511,18 @@ export function BriefPanel({ runId, index, sensitive, gap }) {
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   target.current = `${runId}:${index}:${language}`;
 
+  // Seconds spent drafting, for the progress bar. Ticks only while a draft runs.
+  useEffect(() => {
+    if (state !== 'working') { setElapsed(0); return undefined; }
+    const t0 = Date.now();
+    const id = setInterval(() => setElapsed(Math.round((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [state]);
+
   const ensureConsent = useConsent();
 
   const run = async (opts = {}) => {
+    if (!canMake) return; // a logged-out visitor can never start a draft from here
     if (!(await ensureConsent())) return;
     const mine = target.current;
     const gone = () => !mounted.current || target.current !== mine;
@@ -494,13 +554,13 @@ export function BriefPanel({ runId, index, sensitive, gap }) {
   const busy = state === 'working';
 
   const picker = (
-    <label className="flex items-center gap-1.5 text-[11px] text-ink-500">
+    <label className="flex items-center gap-2 text-sm text-fg-2">
       Write in
       <select
         value={language}
         onChange={(e) => setLanguage(e.target.value)}
         disabled={busy}
-        className="rounded border border-ink-300 bg-transparent px-1.5 py-0.5 text-[11px] dark:border-ink-700"
+        className={SELECT_CLS}
       >
         {LANGUAGES.map((l) => <option key={l} value={l}>{l || 'the audience’s language'}</option>)}
       </select>
@@ -509,64 +569,76 @@ export function BriefPanel({ runId, index, sensitive, gap }) {
 
   if (!brief) {
     return (
-      <div className="mt-3 space-y-2">
-        <SensitiveNotice sensitive={sensitive} />
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => run()}
-            disabled={busy}
-            className="rounded-lg border border-ink-300 px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-100 disabled:opacity-60 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
+      <>
+        {sensitive?.level === 'high' && (
+          <div className="order-last basis-full"><SensitiveNotice sensitive={sensitive} /></div>
+        )}
+        {canMake ? (
+          <div className="flex min-w-0 max-w-full flex-col items-stretch gap-3 sm:shrink-0 sm:items-end">
+            <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+              {picker}
+              <Button onClick={() => run()} disabled={busy}>
+                {busy ? 'Drafting…' : <>Make it <ArrowRight aria-hidden className="h-4 w-4" /></>}
+              </Button>
+            </div>
+            {busy && <DraftProgress elapsed={elapsed} label="Drafting the brief. This takes 30 to 90 seconds." />}
+          </div>
+        ) : (
+          <Link
+            href={`/login?next=${encodeURIComponent(typeof window === 'undefined' ? '/' : currentPathAndSearch())}`}
+            className="inline-flex min-h-11 shrink-0 items-center rounded-control px-1 text-[15px] font-medium text-fg-2 underline decoration-line-strong underline-offset-4 transition-colors hover:text-fg hover:decoration-fg"
           >
-            {busy ? 'Drafting the brief… (30-90s)' : 'Make it →'}
-          </button>
-          {picker}
-        </div>
-        {state === 'error' && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
-      </div>
+            Log in to make this video
+          </Link>
+        )}
+        {state === 'error' && (
+          <div className="order-last basis-full"><Alert tone="bad">{error}</Alert></div>
+        )}
+      </>
     );
   }
 
   const opp = opportunityOf(brief, gap);
 
   return (
-    <details className="group mt-3 rounded-lg border border-ink-200 p-3 dark:border-ink-700" open>
+    <details className="group basis-full border-t border-line-soft pt-2" open>
       {/* The summary holds only its title: a select and buttons inside a
           <summary> are nested controls, and the select toggled the panel. */}
-      <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-wide text-ink-500">
-        Make it · brief <span className="font-normal normal-case text-ink-400 group-open:hidden">(show)</span>
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-control [&::-webkit-details-marker]:hidden">
+        <span className="text-[17px] font-semibold tracking-[-0.01em] text-fg">Make it · brief</span>
+        <ChevronDown aria-hidden className="h-5 w-5 text-fg-3 group-open:rotate-180" />
       </summary>
-      <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
-          {picker}
-          <button
-            onClick={async () => { setCopied(await copyToClipboard(briefToMarkdown(brief, gap))); setTimeout(() => setCopied(false), 1500); }}
-            className="rounded border border-ink-300 px-2 py-0.5 text-[11px] font-medium text-ink-600 hover:bg-ink-100 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
-          >
-            {copied ? 'Copied' : 'Copy all'}
-          </button>
-          <button
-            onClick={() => redraft()}
-            disabled={busy}
-            className="rounded border border-ink-300 px-2 py-0.5 text-[11px] font-medium text-ink-600 hover:bg-ink-100 disabled:opacity-60 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
-          >
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        {canMake && picker}
+        <Button
+          variant="secondary"
+          onClick={async () => { setCopied(await copyToClipboard(briefToMarkdown(brief, gap))); setTimeout(() => setCopied(false), 1500); }}
+        >
+          {copied ? 'Copied' : 'Copy all'}
+        </Button>
+        {canMake && (
+          <Button variant="secondary" onClick={() => redraft()} disabled={busy}>
             {busy ? 'Redrafting…' : 'Redraft'}
-          </button>
-          {brief.essentials?.length > 0 && (
-            <button
-              onClick={() => redraft({ planFrom: null })}
-              disabled={busy}
-              title="Redraft keeps the essentials. This decides them again from the comments, so the scope and length can change."
-              className="rounded border border-ink-300 px-2 py-0.5 text-[11px] font-medium text-ink-600 hover:bg-ink-100 disabled:opacity-60 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
-            >
-              New plan
-            </button>
-          )}
+          </Button>
+        )}
+        {canMake && brief.essentials?.length > 0 && (
+          <Button
+            variant="secondary"
+            onClick={() => redraft({ planFrom: null })}
+            disabled={busy}
+            title="Redraft keeps the essentials. This decides them again from the comments, so the scope and length can change."
+          >
+            New plan
+          </Button>
+        )}
       </div>
-      {state === 'error' && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+      {busy && <div className="mt-3 max-w-sm"><DraftProgress elapsed={elapsed} label="Redrafting the brief. This takes 30 to 90 seconds." /></div>}
+      {state === 'error' && <Alert tone="bad" className="mt-3">{error}</Alert>}
 
-      <div className="mt-3 space-y-5 text-sm">
+      <div className="mt-6 space-y-8">
         <Opportunity brief={brief} opp={opp} />
         <Research brief={brief} opp={opp} />
-        <Script brief={brief} busy={busy} onRedraft={redraft} />
+        <Script brief={brief} busy={busy} onRedraft={redraft} canMake={canMake} />
       </div>
     </details>
   );

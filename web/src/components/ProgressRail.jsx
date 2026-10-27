@@ -1,3 +1,6 @@
+import { Check } from 'lucide-react';
+import { cx } from '../lib/cx.js';
+import { Panel } from './ui/Panel.jsx';
 import { Skeleton } from './Bits.jsx';
 
 const PHASES = [
@@ -8,67 +11,77 @@ const PHASES = [
   { key: 'gaps', label: 'Mining gaps' },
 ];
 
+/**
+ * A run takes a minute or two. This shows where it is: the current step in a
+ * polite live region (so a screen reader hears each step once, not every
+ * second), a bar that only ever moves forward, and quiet placeholders for the
+ * cards about to land.
+ */
 export function ProgressRail({ phase, detail, progress, elapsedMs }) {
   const activeIndex = Math.max(0, PHASES.findIndex((p) => p.key === phase));
   const seconds = Math.round((elapsedMs ?? 0) / 1000);
+  const pct = Math.round(Math.max(3, Math.min(100, progress ?? 0)));
 
   return (
-    <div className="rise space-y-5">
-      <div className="rounded-xl border border-ink-200 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-        <div className="flex items-baseline justify-between">
-          <p className="text-sm font-medium text-ink-800 dark:text-ink-100">{detail || 'Starting…'}</p>
-          <p className="nums text-xs text-ink-400">{seconds}s</p>
+    <div className="space-y-4">
+      <Panel>
+        <div className="flex items-baseline justify-between gap-4">
+          <p aria-live="polite" className="min-w-0 text-base font-medium text-fg">{detail || 'Starting…'}</p>
+          <p className="nums shrink-0 font-mono text-[13px] text-fg-3">{seconds}s</p>
         </div>
 
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-800">
+        <div
+          role="progressbar"
+          aria-label="Analysis progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+          className="mt-3 h-1.5 overflow-hidden rounded-[3px] bg-line"
+        >
           <div
-            className="h-full rounded-full bg-ink-900 transition-[width] duration-500 ease-out dark:bg-white"
-            style={{ width: `${Math.max(3, progress ?? 0)}%` }}
+            className="h-full rounded-[3px] bg-ink transition-[width] duration-500 ease-[var(--ease-out)] motion-reduce:transition-none"
+            style={{ width: `${pct}%` }}
           />
         </div>
 
-        <ol className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
+        <ol className="mt-5 flex flex-wrap gap-x-6 gap-y-2">
           {PHASES.map((p, i) => {
             const done = i < activeIndex;
             const active = i === activeIndex;
             return (
               <li
                 key={p.key}
-                className={`flex items-center gap-1.5 text-xs transition-colors ${
-                  active ? 'font-semibold text-ink-900 dark:text-white'
-                    : done ? 'text-ink-500 dark:text-ink-400'
-                    : 'text-ink-300 dark:text-ink-600'
-                }`}
+                aria-current={active ? 'step' : undefined}
+                className={cx(
+                  'flex items-center gap-2 text-sm',
+                  active ? 'font-semibold text-fg' : done ? 'text-fg-2' : 'text-fg-3'
+                )}
               >
                 <span
-                  className={`grid h-4 w-4 place-items-center rounded-full text-[9px] ${
-                    done ? 'bg-emerald-500 text-white'
-                      : active ? 'bg-ink-900 text-white dark:bg-white dark:text-ink-900'
-                      : 'bg-ink-200 dark:bg-ink-700'
-                  }`}
+                  aria-hidden
+                  className={cx(
+                    'grid h-[18px] w-[18px] place-items-center rounded-full',
+                    done ? 'bg-good-bg text-good-fg' : active ? 'bg-ink text-on-ink' : 'border border-line-strong'
+                  )}
                 >
-                  {done ? '✓' : i + 1}
+                  {done ? <Check className="h-3 w-3" strokeWidth={3} /> : active ? <span className="h-1.5 w-1.5 rounded-full bg-on-ink" /> : null}
                 </span>
                 {p.label}
+                <span className="sr-only">{done ? ' (done)' : active ? ' (current)' : ' (waiting)'}</span>
               </li>
             );
           })}
         </ol>
-      </div>
+      </Panel>
 
-      {/* Skeletons stand in for the cards that are about to land. */}
-      <div className="space-y-3">
+      {/* Placeholders for the cards that are about to land. */}
+      <div className="space-y-3" aria-hidden>
         {[0, 1, 2].map((i) => (
-          <div key={i} className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
-            <div className="flex gap-3">
-              <Skeleton className="h-6 w-6 shrink-0" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-1/3" />
-                <Skeleton className="h-3 w-3/4" />
-                <Skeleton className="h-3 w-1/2" />
-              </div>
-            </div>
-          </div>
+          <Panel key={i}>
+            <Skeleton className="h-5 w-1/3" />
+            <Skeleton className="mt-3 h-3.5 w-3/4" />
+            <Skeleton className="mt-2 h-3.5 w-1/2" />
+          </Panel>
         ))}
       </div>
     </div>

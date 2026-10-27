@@ -19,7 +19,3 @@ export const ago = (days) => {
   if (days < 30) return `${Math.round(days)}d ago`;
   return `${Math.round(days / 30)}mo ago`;
 };
-
-/** Cool -> hot ramp, used for heat bars and rank chips. */
-export const heatColor = (heat) =>
-  heat >= 70 ? 'var(--color-heat-high)' : heat >= 40 ? 'var(--color-heat-mid)' : 'var(--color-heat-low)';

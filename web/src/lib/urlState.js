@@ -11,6 +11,8 @@
  * trap -- the form is prefilled and they press the button.
  */
 
+import { navigate } from './navigation.js';
+
 const FIELDS = {
   niche: { parse: (v) => v, serialize: (v) => v || undefined },
   window: { parse: (v) => v, serialize: (v) => (v && v !== '7d' ? v : undefined) },
@@ -69,16 +71,37 @@ export function queryToSearch(input = {}) {
   return qs ? `?${qs}` : '';
 }
 
-/** Replaces the URL without a navigation, so a report becomes linkable in place. */
-export function pushReportUrl(runId, mode = 'niche') {
-  if (!runId) return;
-  window.history.pushState({ runId, inApp: true }, '', `${basePathFor(mode)}/r/${runId}`);
+/** `/r/<runId>` or `/channel/r/<runId>`: where a saved report lives. */
+export const reportPathFor = (mode, runId) => `${basePathFor(mode)}/r/${runId}`;
+
+/**
+ * A report belongs to the page that made it. When a run opened under the wrong
+ * page's URL (a niche report at /channel/r/<id>), this is the path it should be
+ * at, otherwise null.
+ */
+export function correctReportPath(routeMode, runChannelMode, runId) {
+  const own = runChannelMode ? 'channel' : 'niche';
+  return own === routeMode ? null : reportPathFor(own, runId);
 }
 
+/**
+ * Gives a finished report its own URL. Goes through the router (navigation.js),
+ * so the page re-renders for it and Back and Forward work. Pass `replace` to
+ * swap the current history entry instead of adding one.
+ */
+export function pushReportUrl(runId, mode = 'niche', { replace = false } = {}) {
+  if (!runId) return;
+  navigate(reportPathFor(mode, runId), { replace });
+}
+
+/**
+ * Mirrors the search form into the URL (/explore?niche=...). A replace, not a
+ * push: typing a search is not a place to come back to, and it keeps whatever
+ * the entry already said (`inApp`), so Back still knows where it goes.
+ */
 export function pushQueryUrl(input, mode = 'niche') {
-  // Keep whatever the entry already says (`inApp`), so Back still knows where it goes.
-  window.history.replaceState(window.history.state ?? {}, '', `${pagePathFor(mode)}${queryToSearch(input)}`);
+  navigate(`${pagePathFor(mode)}${queryToSearch(input)}`, { replace: true, scroll: false });
 }
 
 /** Client-side navigation lives in navigation.js; re-exported for the callers that import it from here. */
-export { navigate } from './navigation.js';
+export { navigate };

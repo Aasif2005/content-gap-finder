@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { ChevronDown, Tv } from 'lucide-react';
 import { getRuns } from '../lib/api.js';
+import { cx } from '../lib/cx.js';
 import { Badge } from './Bits.jsx';
+import { Button } from './ui/Button.jsx';
+import { Panel } from './ui/Panel.jsx';
+import { Skeleton } from './ui/Skeleton.jsx';
 
 const when = (iso) => {
   const mins = (Date.now() - new Date(iso).getTime()) / 60000;
@@ -21,6 +26,7 @@ export function HistoryPanel({ onOpen, currentRunId, mode = 'niche' }) {
   const [open, setOpen] = useState(false);
   const [runs, setRuns] = useState(null);
   const [error, setError] = useState(null);
+  const panelId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -35,21 +41,29 @@ export function HistoryPanel({ onOpen, currentRunId, mode = 'niche' }) {
   }, [open, currentRunId, mode]);
 
   return (
-    <div className="min-w-0">
-      <button
-        type="button"
+    <div className={cx('min-w-0', open && 'basis-full')}>
+      <Button
+        variant="ghost"
         onClick={() => setOpen((v) => !v)}
-        className="text-sm font-medium text-ink-500 underline-offset-4 hover:underline dark:text-ink-400"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        className="-ml-2"
       >
         {open ? 'Hide past runs' : 'Past runs'}
-      </button>
+        <ChevronDown aria-hidden className={cx('h-4 w-4', open && 'rotate-180')} />
+      </Button>
 
       {open && (
-        <div className="rise mt-2 overflow-hidden rounded-xl border border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900">
-          {error && <p className="px-4 py-3 text-sm text-rose-700 dark:text-rose-400">{error}</p>}
-          {!error && runs === null && <p className="px-4 py-3 text-sm text-ink-400">Loading…</p>}
+        <Panel id={panelId} padding="none" className="mt-2 overflow-hidden">
+          {error && <p role="alert" className="px-5 py-4 text-[15px] text-bad-fg">{error}</p>}
+          {!error && runs === null && (
+            <div role="status" aria-label="Loading past runs" className="space-y-3 px-5 py-4">
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          )}
           {!error && runs?.length === 0 && (
-            <p className="px-4 py-3 text-sm text-ink-400">
+            <p className="px-5 py-4 text-[15px] leading-relaxed text-fg-2">
               No past runs stored yet. Every analysis from here on is kept and reopenable for free.
             </p>
           )}
@@ -59,25 +73,28 @@ export function HistoryPanel({ onOpen, currentRunId, mode = 'niche' }) {
               key={r.runId}
               type="button"
               onClick={() => onOpen(r.runId)}
-              className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 border-b border-ink-100 px-4 py-2.5 text-left transition-colors last:border-0 hover:bg-ink-100 dark:border-ink-800 dark:hover:bg-ink-800 ${
-                r.runId === currentRunId ? 'bg-ink-100 dark:bg-ink-800' : ''
-              }`}
+              aria-current={r.runId === currentRunId ? 'true' : undefined}
+              className={cx(
+                'flex min-h-14 w-full flex-wrap items-center gap-x-4 gap-y-1 border-b border-line-soft px-5 py-3 text-left transition-colors last:border-0 hover:bg-hover',
+                r.runId === currentRunId && 'bg-hover'
+              )}
             >
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-800 dark:text-ink-100">
-                {r.channelMode ? `📺 ${r.channelTitle ?? 'channel'}` : r.niche}
+              <span className="flex min-w-0 flex-1 items-center gap-2 text-base font-semibold text-fg">
+                {r.channelMode && <Tv aria-hidden className="h-4 w-4 shrink-0 text-fg-3" />}
+                <span className="truncate">{r.channelMode ? (r.channelTitle ?? 'channel') : r.niche}</span>
               </span>
-              <span className="nums shrink-0 text-xs text-ink-400">
+              <span className="nums font-mono text-[13px] text-fg-2">
                 {r.videosAnalyzed} videos · {r.gapsFound} gaps · {r.topicsFound} topics
               </span>
-              <span className="flex shrink-0 items-center gap-1.5">
-                {r.thinPool && <Badge tone="warm" title="Too few videos for the ranking to mean much">thin</Badge>}
-                {r.deepScan && <Badge tone="cool">deep</Badge>}
-                <span className="nums text-xs text-ink-400">{r.window}</span>
-                <span className="nums w-16 text-right text-xs text-ink-400">{when(r.generatedAt)}</span>
+              <span className="flex shrink-0 items-center gap-2">
+                {r.thinPool && <Badge tone="warn" title="Too few videos for the ranking to mean much">thin</Badge>}
+                {r.deepScan && <Badge tone="info">deep</Badge>}
+                <span className="nums font-mono text-[13px] text-fg-3">{r.window}</span>
+                <span className="nums w-16 text-right font-mono text-[13px] text-fg-3">{when(r.generatedAt)}</span>
               </span>
             </button>
           ))}
-        </div>
+        </Panel>
       )}
     </div>
   );

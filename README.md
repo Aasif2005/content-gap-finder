@@ -30,6 +30,29 @@ npm run build && npm start   # everything on :8787
 
 Tests: `npm test --workspace server`
 
+### Accounts (Firebase)
+
+Analyses, Make it and watches need an account. Sign-in uses Firebase Authentication (Google and
+email + password). Without a Firebase project the site still runs, as logged out, and anything that
+needs an account says so.
+
+1. Create a project at [console.firebase.google.com](https://console.firebase.google.com). Using the
+   same Google Cloud project as the YouTube key keeps everything in one place.
+2. **Authentication, Sign-in method:** enable **Google** and **Email/Password**.
+3. **Authentication, Settings, Authorized domains:** add `localhost` for development, and your real
+   domain when you have one.
+4. **Project settings, Your apps:** add a Web app and copy its config into `.env`:
+   `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
+   `VITE_FIREBASE_APP_ID`, plus `FIREBASE_PROJECT_ID` (the same project id, for the server). The web
+   config is public by design; it ships in the bundle.
+5. Restart the server and rebuild the web app (`npm run build`). New email/password accounts must
+   verify their email before they can run analyses; Google accounts arrive verified.
+6. Set `CONTACT_EMAIL` (shown on the Privacy Policy and Terms). It is `sample@gmail.com` until you
+   have a domain.
+
+Each account gets a daily allowance (`USER_DAILY_ANALYSES`, `USER_DAILY_BRIEFS`, `USER_MAX_WATCHES`).
+Opening a saved or cached report costs nothing, and shared `/r/<id>` links stay public.
+
 ### Getting the keys
 
 | Key | Where |

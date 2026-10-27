@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LogOut, User as UserIcon } from 'lucide-react';
+import { LogOut, Menu as MenuIcon, User as UserIcon } from 'lucide-react';
 import { Footer } from '../Footer.jsx';
 import { Alert, Avatar, Button, Logo, Menu } from '../ui/index.js';
 import { useToast } from '../ui/Toast.jsx';
@@ -83,11 +83,11 @@ export default function AppShell({ children }) {
         Skip to content
       </a>
       <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex min-h-16 max-w-[1200px] flex-wrap items-center justify-between gap-x-6 gap-y-1 px-4 py-1.5 sm:px-8">
-          <div className="flex flex-wrap items-center gap-x-9 gap-y-1">
+        <div className="mx-auto flex min-h-16 max-w-[1200px] items-center justify-between gap-x-6 px-4 py-1.5 sm:px-8">
+          <div className="flex items-center gap-x-9">
             <Logo href={user ? '/dashboard' : '/'} size={24} className="text-lg" />
             {user && (
-              <nav aria-label="Main" className="-mx-2 flex flex-wrap gap-1.5 text-[15px]">
+              <nav aria-label="Main" className="-mx-2 hidden gap-1.5 text-[15px] md:flex">
                 {NAV.map((item) => {
                   const on = item.active(path);
                   return (
@@ -110,7 +110,19 @@ export default function AppShell({ children }) {
 
           <div className="flex items-center gap-3 sm:gap-4">
             {user && allowance && (
-              <span className="nums rounded-lg border border-line px-2.5 py-1.5 font-mono text-[13px] text-fg-2">{allowance}</span>
+              <span className="nums hidden rounded-lg border border-line px-2.5 py-1.5 font-mono text-[13px] text-fg-2 md:inline">{allowance}</span>
+            )}
+            {user && (
+              // Under md the three places to go (and the allowance) fold into one menu,
+              // so the bar stays a single row: wordmark, menu, avatar.
+              <div className="md:hidden">
+                <Menu
+                  label="Navigate"
+                  trigger={<span className="grid h-11 w-11 place-items-center rounded-lg text-fg-2"><MenuIcon aria-hidden className="h-5 w-5" /></span>}
+                  header={allowance ? <p className="nums font-mono text-[13px] text-fg-2">{allowance}</p> : null}
+                  items={NAV.map((item) => ({ label: item.label, href: item.href }))}
+                />
+              </div>
             )}
             {user && (
               <Menu

@@ -33,7 +33,14 @@ import { corsOriginAllowed, makeSecurityHeaders } from '../src/lib/security.js';
 import { clampLimit, validInterval } from '../src/routes/api.js';
 import { gapsToCsv, reportToMarkdown, exportStem } from '../../web/src/lib/export.js';
 import { matchRoute, normalizePath } from '../../web/src/lib/routes.js';
+import { reportPathFor, correctReportPath, runIdFromPath, queryFromUrl, queryToSearch, pagePathFor } from '../../web/src/lib/urlState.js';
+import {
+  plural, windowLabel, formatLabel, relativeDay, toRunRow, intervalLabel, toWatchRow,
+  resetTimeLabel, reportMeta, reportName, describeRunError, describeLoadError,
+} from '../../web/src/lib/runRows.js';
 import { authError } from '../../web/src/lib/authErrors.js';
+import { safeNext, nextSuffix, passwordStrength, looksLikeEmail } from '../../web/src/components/auth/helpers.js';
+import { memberSince, resetsText, normalizeName, deleteConfirmed } from '../../web/src/components/profile/helpers.js';
 import { charge, analysesAffordable, searchCallsPerAnalysis, unitsPerAnalysis, nextQuotaReset, quotaDay } from '../src/lib/quota.js';
 import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet } from 'jose';
 import { verifyIdToken, normalizeUser } from '../src/lib/firebaseToken.js';
@@ -2659,5 +2666,259 @@ describe('web auth: plain-words errors', () => {
   test('an error of ours passes through untouched', () => {
     const ours = Object.assign(new Error('Accounts are not set up on this server yet.'), { code: 'NOT_CONFIGURED' });
     assert.equal(authError(ours), ours);
+  });
+});
+
+describe('safeNext (post-login redirect)', () => {
+  test('keeps same-site paths, with their query and hash', () => {
+    assert.equal(safeNext('/explore'), '/explore');
+    assert.equal(safeNext('/r/abc123?lang=ta#top'), '/r/abc123?lang=ta#top');
+    assert.equal(safeNext('/channel?url=https%3A%2F%2Fyoutube.com%2F%40x'), '/channel?url=https%3A%2F%2Fyoutube.com%2F%40x');
+  });
+  test('falls back to the dashboard for anything missing or not a string', () => {
+    for (const bad of [undefined, null, '', 42, {}, [], 'dashboard', 'explore']) assert.equal(safeNext(bad), '/dashboard');
+    assert.equal(safeNext(undefined, '/'), '/');
+  });
+  test('rejects protocol-relative, absolute and scheme URLs', () => {
+    for (const bad of ['//evil.com', '//evil.com/x', 'https://evil.com', 'http://evil.com/x', 'javascript:alert(1)', 'data:text/html,hi', '/\\evil.com', '/\\/evil.com', '\\\\evil.com']) {
+      assert.equal(safeNext(bad), '/dashboard', bad);
+    }
+  });
+  test('rejects control characters that browsers strip before parsing', () => {
+    for (const bad of ['/\t/evil.com', '/\n/evil.com', '/\r/evil.com', '/ok\u0000', '/a\\b']) assert.equal(safeNext(bad), '/dashboard');
+  });
+  test('does not send people back to a sign-in page', () => {
+    for (const bad of ['/login', '/login?next=/x', '/signup', '/reset-password/']) assert.equal(safeNext(bad), '/dashboard');
+  });
+  test('nextSuffix carries only a safe value onto a link', () => {
+    assert.equal(nextSuffix('/explore?x=1'), '?next=%2Fexplore%3Fx%3D1');
+    assert.equal(nextSuffix('//evil.com'), '');
+    assert.equal(nextSuffix(undefined), '');
+    assert.equal(nextSuffix('/login'), '');
+  });
+});
+
+describe('passwordStrength (a hint, never a gate)', () => {
+  test('empty is null; below Firebase minimum is too short and not ok', () => {
+    assert.equal(passwordStrength(''), null);
+    assert.equal(passwordStrength(undefined), null);
+    const s = passwordStrength('abc');
+    assert.equal(s.label, 'Too short');
+    assert.equal(s.ok, false);
+    assert.equal(s.score, 0);
+  });
+  test('six characters is allowed (ok) but weak', () => {
+    const s = passwordStrength('k3Z!pq');
+    assert.equal(s.ok, true);
+    assert.equal(s.label, 'Weak');
+  });
+  test('obvious choices are weak whatever their length', () => {
+    for (const pw of ['password', '12345678', 'aaaaaaaaaaaa', 'qwertyui', 'Password123']) {
+      assert.equal(passwordStrength(pw).score, 1, pw);
+      assert.equal(passwordStrength(pw).ok, true);
+    }
+  });
+  test('one kind of character at eight is weak; variety makes it okay', () => {
+    assert.equal(passwordStrength('lmnopqrs').label, 'Weak');
+    assert.equal(passwordStrength('lmnopqr9').label, 'Okay');
+  });
+  test('length and variety reach strong; a long phrase is strong', () => {
+    assert.equal(passwordStrength('river-Stone-42-lamp').label, 'Strong');
+    assert.equal(passwordStrength('correct horse battery').label, 'Strong');
+    assert.equal(passwordStrength('Zk9!mQ2x7p').label, 'Strong');
+  });
+  test('counts characters, not UTF-16 units, so non-Latin passwords are not penalised', () => {
+    assert.equal(passwordStrength('தமிழ்').ok, false); // 5 code points
+    assert.equal(passwordStrength('தமிழ்நாடு!').ok, true);
+  });
+});
+
+describe('looksLikeEmail', () => {
+  test('accepts plausible addresses and rejects obvious typos', () => {
+    assert.equal(looksLikeEmail('a@b.co'), true);
+    assert.equal(looksLikeEmail(' you@example.com '), true);
+    for (const bad of ['', 'you', 'you@', 'you@example', '@example.com', 'a b@c.com', null]) assert.equal(looksLikeEmail(bad), false, String(bad));
+  });
+});
+
+describe('profile helpers', () => {
+  test('memberSince formats month and year, or null', () => {
+    assert.equal(memberSince('2026-03-14T10:00:00.000Z', { locale: 'en-US' }), 'March 2026');
+    assert.equal(memberSince(null), null);
+    assert.equal(memberSince('not a date'), null);
+  });
+  test('resetsText says midnight Pacific and the visitor\'s own time', () => {
+    const resetsAt = '2026-10-28T07:00:00.000Z'; // midnight PDT
+    const now = new Date('2026-10-27T09:00:00.000Z');
+    assert.equal(resetsText(resetsAt, { now, locale: 'en-US', timeZone: 'America/Los_Angeles' }), 'Resets at midnight Pacific (12:00 AM PDT tomorrow, your time).');
+    // Morning in India: the reset is later the same day there.
+    assert.equal(resetsText(resetsAt, { now: new Date('2026-10-28T03:00:00.000Z'), locale: 'en-US', timeZone: 'Asia/Kolkata' }), 'Resets at midnight Pacific (12:30 PM GMT+5:30, your time).');
+    assert.equal(resetsText(resetsAt, { now, locale: 'en-US', timeZone: 'Asia/Kolkata' }), 'Resets at midnight Pacific (12:30 PM GMT+5:30 tomorrow, your time).');
+  });
+  test('resetsText survives a missing or bad date', () => {
+    assert.equal(resetsText(undefined), 'Resets at midnight Pacific.');
+    assert.equal(resetsText('nope'), 'Resets at midnight Pacific.');
+  });
+  test('normalizeName trims, collapses spaces and caps length', () => {
+    assert.equal(normalizeName('  Asha   Rao \n'), 'Asha Rao');
+    assert.equal(normalizeName(null), '');
+    assert.equal(normalizeName('x'.repeat(200)).length, 80);
+  });
+  test('deleteConfirmed needs the exact word', () => {
+    assert.equal(deleteConfirmed('DELETE'), true);
+    assert.equal(deleteConfirmed(' DELETE '), true);
+    for (const bad of ['delete', 'Delete', 'DELET', '', undefined]) assert.equal(deleteConfirmed(bad), false);
+  });
+});
+
+describe('report URLs', () => {
+  test('a report lives under its own page', () => {
+    assert.equal(reportPathFor('niche', 'abc-123'), '/r/abc-123');
+    assert.equal(reportPathFor('channel', 'abc-123'), '/channel/r/abc-123');
+    assert.equal(pagePathFor('niche'), '/explore');
+    assert.equal(pagePathFor('channel'), '/channel');
+  });
+
+  test('a report opened under the wrong page is sent to the right one', () => {
+    assert.equal(correctReportPath('niche', false, 'x1'), null);
+    assert.equal(correctReportPath('channel', true, 'x1'), null);
+    assert.equal(correctReportPath('niche', true, 'x1'), '/channel/r/x1');
+    assert.equal(correctReportPath('channel', false, 'x1'), '/r/x1');
+    assert.equal(correctReportPath('channel', undefined, 'x1'), '/r/x1');
+  });
+
+  test('the run id round-trips through the path', () => {
+    assert.equal(runIdFromPath(reportPathFor('niche', 'a_b-9')), 'a_b-9');
+    assert.equal(runIdFromPath(reportPathFor('channel', 'a_b-9')), 'a_b-9');
+    assert.equal(runIdFromPath('/explore'), null);
+  });
+
+  test('a search keeps only what differs from the defaults', () => {
+    assert.equal(queryToSearch({ niche: 'home espresso', window: '7d', contentType: 'both' }), '?niche=home+espresso');
+    assert.deepEqual(queryFromUrl('?niche=home+espresso&window=30d&deepScan=true&minViews=500'), {
+      niche: 'home espresso', window: '30d', deepScan: true, minViews: 500,
+    });
+  });
+});
+
+describe('dashboard rows', () => {
+  const now = new Date(2026, 9, 27, 15, 0);
+  const at = (days, hour = 9) => new Date(2026, 9, 27 - days, hour).toISOString();
+
+  test('relativeDay counts calendar days, not 24-hour blocks', () => {
+    assert.equal(relativeDay(at(0, 1), now), 'today');
+    assert.equal(relativeDay(at(1, 23), now), 'yesterday');
+    assert.equal(relativeDay(at(3), now), '3 days ago');
+    assert.equal(relativeDay('not a date', now), '');
+    assert.equal(relativeDay(undefined, now), '');
+  });
+
+  test('labels for the search window and format', () => {
+    assert.equal(windowLabel('7d'), 'Last 7 days');
+    assert.equal(windowLabel('24h'), 'Last 24 hours');
+    assert.match(windowLabel('custom', '2026-10-01T00:00:00Z'), /^Since /);
+    assert.equal(windowLabel('custom', 'junk'), 'Custom range');
+    assert.equal(formatLabel('both'), 'Long-form and Shorts');
+    assert.equal(formatLabel(undefined), 'Long-form and Shorts');
+    assert.equal(formatLabel('shorts'), 'Shorts');
+    assert.equal(formatLabel('long'), 'Long-form');
+    assert.equal(plural(1, 'gap'), '1 gap');
+    assert.equal(plural(0, 'topic'), '0 topics');
+  });
+
+  test('a niche run row links to /r/<id>', () => {
+    const row = toRunRow({
+      runId: 'r1', niche: 'sourdough starter', window: '7d', contentType: 'both', channelMode: false,
+      generatedAt: at(0), gapsFound: 5, topicsFound: 7, thinPool: false,
+    }, now);
+    assert.equal(row.href, '/r/r1');
+    assert.equal(row.title, 'sourdough starter');
+    assert.deepEqual(row.meta, ['Last 7 days', 'Long-form and Shorts', 'today']);
+    assert.equal(row.counts, '5 gaps \u00b7 7 topics');
+    assert.equal(row.thin, false);
+  });
+
+  test('a channel run row is titled by the channel and links under /channel', () => {
+    const row = toRunRow({
+      runId: 'c1', niche: '', channelMode: true, channelTitle: 'Some Channel', window: '90d', contentType: 'long',
+      generatedAt: at(1), gapsFound: 1, topicsFound: 1, thinPool: true,
+    }, now);
+    assert.equal(row.href, '/channel/r/c1');
+    assert.equal(row.title, 'Some Channel');
+    assert.deepEqual(row.meta, ['Channel', 'Last 90 days', 'Long-form', 'yesterday']);
+    assert.equal(row.counts, '1 gap \u00b7 1 topic');
+    assert.equal(row.thin, true);
+    assert.equal(toRunRow({ runId: 'c2', channelMode: true, generatedAt: at(0) }, now).title, 'Channel report');
+  });
+
+  test('watch rows say what the watch itself records', () => {
+    assert.equal(intervalLabel(24), 'Every 24 hours');
+    assert.equal(intervalLabel(168), 'Every 7 days');
+    assert.equal(intervalLabel(12), 'Every 12 hours');
+    const base = { id: 'w', label: 'cast iron restoration', intervalHours: 24, enabled: true, input: { niche: 'cast iron restoration' } };
+    const ok = toWatchRow({ ...base, lastRunAt: at(0), lastRunId: 'r9' }, now);
+    assert.equal(ok.detail, 'Every 24 hours \u00b7 last run today');
+    assert.equal(ok.href, '/r/r9');
+    assert.equal(toWatchRow({ ...base, lastRunAt: null }, now).status, 'pending');
+    assert.equal(toWatchRow({ ...base, enabled: false }, now).detail, 'Every 24 hours \u00b7 paused');
+    const failed = toWatchRow({ ...base, lastRunAt: at(1), lastError: 'quota' }, now);
+    assert.equal(failed.status, 'failed');
+    assert.equal(failed.error, 'quota');
+    const channel = toWatchRow({ ...base, input: { channelId: '@x' }, lastRunId: 'r8', lastRunAt: at(0) }, now);
+    assert.equal(channel.href, '/channel/r/r8');
+  });
+});
+
+describe('report header and run errors', () => {
+  test('the meta line and the name come from the saved report', () => {
+    const result = {
+      query: { niche: 'sourdough starter', window: '7d', contentType: 'both' },
+      stats: { videosAnalyzed: 50, commentsAnalyzed: 1550 },
+    };
+    assert.deepEqual(reportMeta(result), ['Last 7 days', 'Long-form and Shorts', '50 videos', '1,550 comments read']);
+    assert.equal(reportName(result), 'sourdough starter');
+    assert.equal(reportName({ ...result, channel: { title: 'A Channel' }, channelMode: true }), 'A Channel');
+    assert.equal(reportName({ query: {}, channelMode: true }), 'Channel report');
+  });
+
+  test('a reset time reads as a local time of day', () => {
+    const now = new Date(2026, 9, 27, 15, 0);
+    assert.match(resetTimeLabel(new Date(2026, 9, 27, 18, 0).toISOString(), now, 'en-US'), /^at 6:00\s?PM$/);
+    assert.match(resetTimeLabel(new Date(2026, 9, 28, 1, 30).toISOString(), now, 'en-US'), /^tomorrow at 1:30\s?AM$/);
+    assert.equal(resetTimeLabel('junk', now), '');
+  });
+
+  test('a spent daily allowance names the limit and the reset', () => {
+    const now = new Date(2026, 9, 27, 15, 0);
+    const err = Object.assign(new Error('x'), { code: 'DAILY_LIMIT', status: 429, resetsAt: new Date(2026, 9, 27, 18, 0).toISOString() });
+    const d = describeRunError(err, { limit: 3, now, locale: 'en-US' });
+    assert.equal(d.kind, 'daily');
+    assert.match(d.title, /used your 3 analyses for today/);
+    assert.match(d.message, /They reset at 6:00\s?PM\./);
+    assert.match(describeRunError(err, { limit: 1, now }).title, /your 1 analysis for today/);
+  });
+
+  test('each server error picks its own recovery', () => {
+    assert.equal(describeRunError(Object.assign(new Error('x'), { code: 'EMAIL_NOT_VERIFIED', status: 403 })).kind, 'verify');
+    assert.equal(describeRunError(Object.assign(new Error('x'), { code: 'AUTH_REQUIRED', status: 401 })).kind, 'auth');
+    assert.equal(describeRunError(Object.assign(new Error('x'), { status: 401 })).kind, 'auth');
+    const quota = describeRunError(Object.assign(new Error('x'), { code: 'QUOTA_EXHAUSTED' }));
+    assert.equal(quota.kind, 'quota');
+    assert.match(quota.message, /saved reports still works/);
+    const generic = describeRunError(new Error('Niche must be at least 2 characters.'));
+    assert.equal(generic.kind, 'generic');
+    assert.equal(generic.tone, 'bad');
+    assert.equal(generic.message, 'Niche must be at least 2 characters.');
+  });
+
+  test('an expired or missing report is calm, anything else is a fault', () => {
+    const expired = describeLoadError(Object.assign(new Error('This report was removed.'), { code: 'RUN_EXPIRED', status: 410 }));
+    assert.equal(expired.kind, 'gone');
+    assert.equal(expired.title, 'This report has expired');
+    assert.equal(expired.message, 'This report was removed.');
+    assert.equal(describeLoadError(Object.assign(new Error('Report not found or pruned.'), { code: 'RUN_NOT_FOUND', status: 404 })).tone, 'info');
+    const fault = describeLoadError(Object.assign(new Error('boom'), { code: 'NETWORK' }));
+    assert.equal(fault.kind, 'load');
+    assert.equal(fault.tone, 'bad');
   });
 });
