@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react';
-import { Button } from '../ui/index.js';
+import { ShinyButton } from '../ui/index.js';
 import { navigate } from '../../lib/router.jsx';
 import { useAuth } from '../../lib/auth.jsx';
 
@@ -35,7 +35,7 @@ export default function SearchConsole() {
       className="mt-7 max-w-[780px] md:mt-11"
     >
       <div
-        className="flex flex-col gap-2 rounded-[14px] border border-line-strong bg-surface-2 p-2 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_24px_48px_-24px_rgba(0,0,0,0.6)] has-[input:focus-visible]:border-focus has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-focus sm:flex-row sm:rounded-2xl"
+        className="flex flex-col gap-2 rounded-[14px] border border-line-strong bg-surface p-2 shadow-[0_24px_48px_-28px_rgba(15,30,46,0.25)] has-[input:focus-visible]:border-focus has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-focus sm:flex-row sm:rounded-2xl"
       >
         <label htmlFor={id} className="sr-only">Your niche</label>
         <input
@@ -53,9 +53,9 @@ export default function SearchConsole() {
           aria-describedby={error ? errorId : undefined}
           className="min-h-[52px] min-w-0 flex-1 rounded-control bg-transparent px-3 text-lg font-medium text-fg outline-none placeholder:text-fg-3 sm:px-4 sm:text-xl"
         />
-        <Button type="submit" size="lg" className="w-full !text-[17px] sm:w-auto sm:!px-[26px] !rounded-[11px]">
+        <ShinyButton type="submit" className="w-full sm:w-auto sm:!px-8">
           Find gaps
-        </Button>
+        </ShinyButton>
       </div>
       {error && (
         <p id={errorId} role="alert" className="mt-3 text-[15px] text-bad-fg">{error}</p>

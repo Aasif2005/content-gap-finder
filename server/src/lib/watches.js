@@ -1,8 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
-import { withLock } from './fileLock.js';
+import { col } from './mongo.js';
 import { cacheKey } from './cache.js';
 
 /**
@@ -13,42 +10,18 @@ import { cacheKey } from './cache.js';
  * can only build that baseline if something actually re-runs the analysis. A
  * watch is what does the re-running.
  *
- * Flat JSON under a lock, like the quota ledger: there are a handful of these,
- * they change rarely, and a watch list is not worth a database.
+ * One MongoDB document per watch (collection watches, _id = the watch id). Each
+ * change is a single atomic update, so two concurrent edits can't clobber.
  */
-const STATE_DIR = path.resolve(fileURLToPath(new URL('../../.state', import.meta.url)));
-const FILE = path.join(STATE_DIR, 'watches.json');
+const strip = ({ _id, ...w }) => w;
 
-function read() {
-  try {
-    const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-    return Array.isArray(raw.watches) ? raw.watches : [];
-  } catch {
-    return [];
-  }
+export async function list() {
+  return (await col('watches').find({}).toArray()).map(strip);
 }
 
-function write(watches) {
-  fs.mkdirSync(STATE_DIR, { recursive: true });
-  const tmp = `${FILE}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ watches }, null, 2));
-  fs.renameSync(tmp, FILE);
-}
-
-/** Mutates the list under a lock, so two concurrent edits can't clobber. */
-function mutate(fn) {
-  return withLock(FILE, () => {
-    const watches = read();
-    const result = fn(watches);
-    write(watches);
-    return result;
-  });
-}
-
-export const list = () => read();
-
-export function get(id) {
-  return read().find((w) => w.id === id) ?? null;
+export async function get(id) {
+  const d = await col('watches').findOne({ _id: id });
+  return d ? strip(d) : null;
 }
 
 /**
@@ -56,14 +29,14 @@ export function get(id) {
  * /api/analyze takes. Storing it whole means a watch re-runs the exact query
  * that was saved, including filters, rather than a reconstruction of it.
  */
-export function create({ input, intervalHours, label, ownerUid = null }) {
+export async function create({ input, intervalHours, label, ownerUid = null }) {
   const watch = {
     id: crypto.randomUUID(),
     // Who made it. A watch with none predates accounts: it keeps running and is
     // visible to nobody, so it cannot be edited or deleted through the API.
     ownerUid,
     label: String(label || input.channelId || input.niche || '').slice(0, 120),
-    input,
+    input: JSON.parse(JSON.stringify(input)), // exactly what JSON stored before (cacheKey() compares these)
     intervalHours,
     enabled: true,
     createdAt: new Date().toISOString(),
@@ -75,7 +48,7 @@ export function create({ input, intervalHours, label, ownerUid = null }) {
     // drain the day's quota in one burst.
     nextRunAt: new Date(Date.now() + Math.random() * 60_000).toISOString(),
   };
-  mutate((watches) => watches.push(watch));
+  await col('watches').insertOne({ _id: watch.id, ...watch });
   return watch;
 }
 
@@ -100,43 +73,32 @@ export const hasDuplicate = (list, uid, input) => {
 };
 
 /** Deletes every watch an account owns; returns how many. */
-export function removeOwned(uid) {
-  let n = 0;
+export async function removeOwned(uid) {
   if (!uid) return 0;
-  mutate((watches) => {
-    for (let i = watches.length - 1; i >= 0; i--) {
-      if (watches[i].ownerUid === uid) { watches.splice(i, 1); n += 1; }
-    }
-  });
-  return n;
+  return (await col('watches').deleteMany({ ownerUid: uid })).deletedCount;
 }
 
-export function update(id, patch) {
-  return mutate((watches) => {
-    const w = watches.find((x) => x.id === id);
-    if (!w) return null;
-    Object.assign(w, patch);
-    return w;
-  });
+export async function update(id, patch) {
+  const d = await col('watches').findOneAndUpdate({ _id: id }, { $set: patch }, { returnDocument: 'after' });
+  return d ? strip(d) : null;
 }
 
-export function remove(id) {
-  let removed = false;
-  mutate((watches) => {
-    const i = watches.findIndex((w) => w.id === id);
-    if (i >= 0) { watches.splice(i, 1); removed = true; }
-  });
-  return removed;
+export async function remove(id) {
+  return (await col('watches').deleteOne({ _id: id })).deletedCount > 0;
 }
 
 /** Watches that are enabled and whose next run time has passed. */
-export function due(now = Date.now()) {
-  return read().filter((w) => w.enabled && (!w.nextRunAt || new Date(w.nextRunAt).getTime() <= now));
+export async function due(now = Date.now()) {
+  const iso = new Date(now).toISOString(); // ISO strings sort the same as the dates they name
+  const rows = await col('watches')
+    .find({ enabled: true, $or: [{ nextRunAt: null }, { nextRunAt: { $lte: iso } }] })
+    .toArray();
+  return rows.map(strip);
 }
 
 /** Records the outcome of a run and schedules the next one. */
-export function recordRun(id, { runId, error }) {
-  const w = get(id);
+export async function recordRun(id, { runId, error }) {
+  const w = await get(id);
   if (!w) return null;
   const next = new Date(Date.now() + w.intervalHours * 3600_000).toISOString();
   return update(id, {
@@ -154,7 +116,7 @@ export function recordRun(id, { runId, error }) {
  * exhausted daily quota, say -- so a skip doesn't reset the cadence or look
  * like a failure.
  */
-export function defer(id, minutes, lastError) {
+export async function defer(id, minutes, lastError) {
   return update(id, {
     nextRunAt: new Date(Date.now() + minutes * 60_000).toISOString(),
     // Only set when the caller has a reason worth showing the owner.

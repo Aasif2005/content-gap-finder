@@ -448,7 +448,7 @@ Inclusive is the default because "covered, but badly" is usually the more action
 for a creator: demand is proven and the bar is low.
 
 **Rate limiting** — 10 analyses per IP per hour, plus a hard daily YouTube unit budget
-(9,000 of the 10,000 default quota) tracked in `server/.state/quota.json`. The ledger
+(9,000 of the 10,000 default quota) tracked in MongoDB. The ledger
 resets on YouTube's own midnight-Pacific boundary, not UTC. Cache hits bypass both, and so
 does an identical request while one is running: it joins that job instead of paying for a
 second run (a double-click used to spend the quota twice and write the gap history twice).
@@ -508,14 +508,10 @@ This is why a run spends as few search calls as the request allows, why `videos.
 so it runs per-video against the top `MAX_COMMENT_VIDEOS` (default 25) and is capped for
 latency as much as for quota.
 
-The daily ledger (`server/.state/quota.json`) is written under a cross-process lock
-([`lib/fileLock.js`](server/src/lib/fileLock.js)) with a tmp+rename swap. Within one process
-the read-check-write was always atomic — there is no `await` between the read and the write,
-and Node doesn't interleave JS across synchronous statements — so the real exposure was two
-server processes losing each other's increments. The more dangerous half was the write
-itself: a torn ledger parsed as `used: 0`, which would have the app believe it had a full
-budget and keep hammering YouTube until YouTube started returning `quotaExceeded`. That path
-now logs loudly instead of failing silently.
+The daily ledger is one document in MongoDB (`quota`, `_id: "youtube"`). Every spend is a
+revision-guarded write that retries when another server instance got in first, so two
+processes cannot lose each other's increments. An unreadable ledger fails loudly rather than
+reading as `used: 0`, which would have the app believe it had a full budget.
 
 ---
 
@@ -622,10 +618,13 @@ curl -X POST localhost:8787/api/analyze -H 'Content-Type: application/json' -d '
 
 ---
 
+## Database (MongoDB Atlas)
+
+All state lives in MongoDB Atlas: set `MONGODB_URI` and `MONGODB_DB` in `.env` (see `.env.example`). Indexes and TTLs are created on boot; reports, drafts, logs and the cache expire on their own.
+
 ## Audit log — verifying the model stayed on the niche
 
-Every run writes a human-readable log to `server/logs/runs/<runId>.log`. Open it directly,
-`tail -f` it, or fetch it from the app itself — every report's footer has a **"view full
+Every run writes a human-readable log to the `audit_runs` collection in MongoDB. Fetch it from the app itself — every report's footer has a **"view full
 audit log"** link, and `GET /api/logs` lists recent runs.
 
 The log has four sections, in the order the pipeline actually produced them:
@@ -712,7 +711,7 @@ to topics and `nicheRelevant` to avoid entries in `pipeline.js`, and rendering t
 `⚠ tag-only` badge per video from the `tagOnlyMatch` flag that was already being sent to the
 client and simply never rendered.
 
-Logs aren't committed (`server/logs/` is gitignored) since they contain full comment text.
+Logs live only in the database (30-day TTL) since they contain full comment text.
 
 ### Off-niche demand and fabricated suggestions
 
@@ -930,10 +929,10 @@ server/
       watches.js           saved-watch list
       jobs.js              in-process job registry (swap for BullMQ here)
       quota.js             daily unit ledger, locked
-      fileLock.js          cross-process mutex for the state files
+      mongo.js             shared MongoDB Atlas connection + indexes (TTLs)
       rateLimit.js         per-IP sliding window
       relevance.js         keyword-overlap niche relevance check (off in channel mode)
-      auditLog.js          per-run human-readable log (server/logs/, gitignored)
+      auditLog.js          per-run human-readable log (audit_runs collection)
   test/unit.test.js
 web/
   src/

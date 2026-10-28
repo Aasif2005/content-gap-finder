@@ -21,11 +21,11 @@ export function UsageMeter({ label, used, limit, unit = 'used', className }) {
         aria-valuemax={limit}
         aria-valuenow={Math.min(used, limit)}
         aria-valuetext={`${used} of ${limit} ${unit}`}
-        className="mt-2 h-1.5 overflow-hidden rounded-[3px] bg-line"
+        className="mt-2 h-1.5 overflow-hidden rounded-full bg-line"
       >
         <div
           style={{ width: `${pct}%` }}
-          className={cx('h-full rounded-[3px] transition-[width] duration-200 ease-[var(--ease-out)]', spent ? 'bg-bad-fg' : 'bg-ink')}
+          className={cx('h-full rounded-full transition-[width] duration-200 ease-[var(--ease-out)]', spent ? 'bg-bad-fg' : 'bg-focus')}
         />
       </div>
     </div>

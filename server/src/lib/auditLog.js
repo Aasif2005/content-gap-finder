@@ -1,18 +1,12 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { config } from '../config.js';
+import { col } from './mongo.js';
 
-// One human-readable .log per run (so it can be opened and read directly) plus
-// one line per run appended to an index.jsonl (so the API can list/filter runs
-// without opening every file). This exists to answer one question at a glance:
-// did the model actually extract information about the niche, or did it drift.
-const LOG_DIR = path.resolve(fileURLToPath(new URL('../../logs', import.meta.url)));
-const RUNS_DIR = path.join(LOG_DIR, 'runs');
-const INDEX_FILE = path.join(LOG_DIR, 'index.jsonl');
-
-function ensureDirs() {
-  fs.mkdirSync(RUNS_DIR, { recursive: true });
-}
+// One human-readable log per run (a MongoDB document in audit_runs: the summary
+// the API lists, plus the full text so it can be read directly). This exists to
+// answer one question at a glance: did the model actually extract information
+// about the niche, or did it drift. A log quotes titles and comments, so it falls
+// under the same 30-day limit as a report.
+const DAY_MS = 24 * 3600 * 1000;
 
 /** Builds up one run's log across the pipeline's phases, then flushes it. */
 export class RunLogger {
@@ -253,9 +247,8 @@ export class RunLogger {
     this.section('ERROR', [err.message, err.stack ?? '']);
   }
 
-  /** Writes the .log file and appends the index line. Call exactly once. */
-  finish({ status, topicRelevance, gapRelevance, avoidRelevance }) {
-    ensureDirs();
+  /** Stores the log and its index summary. Call exactly once. */
+  async finish({ status, topicRelevance, gapRelevance, avoidRelevance }) {
     this.summary = {
       runId: this.runId,
       startedAt: new Date(this.startedAt).toISOString(),
@@ -293,8 +286,12 @@ export class RunLogger {
       .map((s) => `${'-'.repeat(78)}\n${s.title}\n${'-'.repeat(78)}\n${s.lines.join('\n')}`)
       .join('\n\n');
 
-    fs.writeFileSync(path.join(RUNS_DIR, `${this.runId}.log`), header + body + '\n');
-    fs.appendFileSync(INDEX_FILE, JSON.stringify(this.summary) + '\n');
+    const startedAt = new Date(this.startedAt);
+    await col('audit_runs').replaceOne(
+      { _id: this.runId },
+      { summary: JSON.parse(JSON.stringify(this.summary)), text: header + body + '\n', startedAt, expireAt: new Date(startedAt.getTime() + (config.store.maxDataDays + 1) * DAY_MS) },
+      { upsert: true }
+    );
     return this.summary;
   }
 }
@@ -313,44 +310,18 @@ function truncate(s, n) {
 }
 
 /** Most recent runs, newest first, for the log-listing endpoint. */
-export function listRuns(limit = 30) {
-  try {
-    const lines = fs.readFileSync(INDEX_FILE, 'utf8').trim().split('\n').filter(Boolean);
-    return lines.slice(-limit).reverse().map((l) => JSON.parse(l));
-  } catch {
-    return [];
-  }
+export async function listRuns(limit = 30) {
+  const rows = await col('audit_runs').find({}, { projection: { summary: 1 } }).sort({ startedAt: -1 }).limit(limit).toArray();
+  return rows.map((r) => r.summary);
 }
 
 /** Raw text of one run's log, for opening directly or serving over the API. */
-export function readRunLog(runId) {
-  const file = path.join(RUNS_DIR, `${runId}.log`);
-  if (!/^[a-zA-Z0-9_-]+$/.test(runId) || !fs.existsSync(file)) return null;
-  return fs.readFileSync(file, 'utf8');
+export async function readRunLog(runId) {
+  if (!/^[a-zA-Z0-9_-]+$/.test(runId ?? '')) return null;
+  return (await col('audit_runs').findOne({ _id: runId }, { projection: { text: 1 } }))?.text ?? null;
 }
 
-/**
- * Deletes run logs older than `cutoffMs`, and their index lines. A log quotes
- * video titles and comments, so it falls under the same 30-day limit as a report.
- */
-export function sweepLogs(cutoffMs) {
-  let n = 0;
-  try {
-    for (const f of fs.readdirSync(RUNS_DIR)) {
-      const p = path.join(RUNS_DIR, f);
-      try {
-        if (fs.statSync(p).mtimeMs < cutoffMs) { fs.unlinkSync(p); n += 1; }
-      } catch { /* raced with another delete */ }
-    }
-    const lines = fs.readFileSync(INDEX_FILE, 'utf8').split('\n').filter(Boolean);
-    const keep = lines.filter((l) => {
-      try { return !(new Date(JSON.parse(l).startedAt).getTime() < cutoffMs); } catch { return false; }
-    });
-    if (keep.length !== lines.length) fs.writeFileSync(INDEX_FILE, keep.map((l) => `${l}\n`).join(''));
-  } catch { /* no logs yet */ }
-  return n;
-}
-
-export function logDir() {
-  return LOG_DIR;
+/** Deletes run logs older than `cutoffMs`. */
+export async function sweepLogs(cutoffMs) {
+  return (await col('audit_runs').deleteMany({ startedAt: { $lt: new Date(cutoffMs) } })).deletedCount;
 }

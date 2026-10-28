@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getSite } from '../lib/api.js';
 import { Link, goBackOr } from '../lib/router.jsx';
 
@@ -33,26 +33,81 @@ function Contact({ email }) {
     : <span className="font-medium text-warn-fg">[contact email not set: add CONTACT_EMAIL to .env]</span>;
 }
 
+/** Section headings found in the article, with a stable id each, and the one in view. */
+function useOutline(ref) {
+  const [items, setItems] = useState([]);
+  const [active, setActive] = useState(null);
+
+  useEffect(() => {
+    const heads = [...(ref.current?.querySelectorAll('h2') ?? [])];
+    heads.forEach((h, i) => { h.id = h.id || `section-${i + 1}`; h.classList.add('scroll-mt-28'); });
+    setItems(heads.map((h) => ({ id: h.id, text: h.textContent })));
+    setActive(heads[0]?.id ?? null);
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const seen = entries.filter((e) => e.isIntersecting).sort((x, y) => x.boundingClientRect.top - y.boundingClientRect.top)[0];
+        if (seen) setActive(seen.target.id);
+      },
+      { rootMargin: '-15% 0px -70% 0px' }
+    );
+    heads.forEach((h) => io.observe(h));
+    return () => io.disconnect();
+  }, [ref]);
+
+  return { items, active };
+}
+
 function LegalLayout({ title, children }) {
+  const body = useRef(null);
+  const { items, active } = useOutline(body);
   return (
-    <div className="mx-auto max-w-[1200px] px-5 pb-16 pt-6 sm:px-10 sm:pb-24 sm:pt-10">
-      <article className="max-w-2xl">
+    <div className="mx-auto max-w-[1200px] px-5 pb-20 pt-12 sm:px-10 md:pt-20">
+      <header>
         <a
           href="/"
           onClick={(e) => { e.preventDefault(); goBackOr('/'); }}
-          className="inline-flex min-h-11 items-center text-sm text-fg-2 hover:text-fg"
+          className="inline-flex min-h-11 items-center gap-1 text-sm text-fg-2 transition-colors hover:text-fg"
         >
           &larr; Back to Gapstronaut
         </a>
-        <h1 className="mt-3 text-4xl font-semibold leading-tight tracking-[-0.03em]">{title}</h1>
-        <p className="mt-2 font-mono text-[13px] text-fg-3">Effective {EFFECTIVE}</p>
-        <div className="legal mt-8 space-y-7 text-[15px] leading-relaxed text-fg-2">{children}</div>
-      </article>
+        <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-accent">Legal</p>
+        <h1 className="mt-3 text-[clamp(2.5rem,1.6rem+3vw,4rem)] font-semibold leading-[1.05] tracking-[-0.035em]">{title}</h1>
+        <p className="mt-3 font-mono text-[13px] text-fg-3">Effective {EFFECTIVE}</p>
+      </header>
+
+      <div className="mt-12 grid gap-10 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-16">
+        {items.length > 1 && (
+          <nav aria-label="On this page" className="lg:sticky lg:top-8 lg:self-start">
+            <div className="rounded-[1.5rem] bg-surface-2 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-fg-3">On this page</p>
+              <ol className="mt-3 grid list-none gap-0.5">
+                {items.map((it) => (
+                  <li key={it.id}>
+                    <a
+                      href={`#${it.id}`}
+                      aria-current={active === it.id ? 'location' : undefined}
+                      className={`flex min-h-10 items-center border-l-[3px] py-1 pl-3 text-[15px] leading-snug transition-colors ${
+                        active === it.id ? 'border-focus font-semibold text-fg' : 'border-transparent text-fg-2 hover:text-fg'
+                      }`}
+                    >
+                      {it.text}
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </nav>
+        )}
+        <article ref={body} className="min-w-0 max-w-[680px]">
+          <div className="legal space-y-9 text-[17px] leading-[1.65] text-fg-2">{children}</div>
+        </article>
+      </div>
     </div>
   );
 }
 
-const H = ({ children }) => <h2 className="text-lg font-semibold tracking-[-0.01em] text-fg">{children}</h2>;
+const H = ({ children }) => <h2 className="text-[28px] font-semibold leading-tight tracking-[-0.025em] text-fg">{children}</h2>;
 const List = ({ children }) => <ul className="mt-2 list-disc space-y-1.5 pl-5">{children}</ul>;
 
 export function PrivacyPage() {
@@ -93,7 +148,7 @@ export function PrivacyPage() {
         <H>What we store, and for how long</H>
         <List>
           <li>
-            <b>Reports.</b> When you run an analysis, the report is saved on our server so it can be reopened and shared.
+            <b>Reports.</b> When you run an analysis, the report is saved in our database (MongoDB Atlas) so it can be reopened and shared.
             It contains the YouTube data above, plus our own analysis of it. Reports, the drafts made from them
             (&ldquo;Make it&rdquo;), the short-lived result cache and the run logs are <b>deleted after {dataMaxDays} days</b>.
           </li>
@@ -125,6 +180,10 @@ export function PrivacyPage() {
         <H>Who we share data with</H>
         <List>
           <li><b>YouTube / Google</b> receives the API requests that fetch public data.</li>
+          <li>
+            <b>MongoDB Atlas</b> (MongoDB, Inc.) hosts our database, so it stores everything described above: account records,
+            reports, drafts, watches and usage counts. It acts on our instructions and does not use the data for its own purposes.
+          </li>
           <li><b>Google (Firebase Authentication)</b> handles sign-in, and so receives your email address, password or Google account details when you log in.</li>
           <li>
             <b>DeepSeek</b> (deepseek.com), an AI model provider, receives video titles, statistics and comment text from

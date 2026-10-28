@@ -671,8 +671,8 @@ const inFlight = new Map();
 const briefKey = (runId, index, language) => `${runId}:${index}:${String(language ?? '').trim().toLowerCase()}`;
 
 /** Cheap pre-check for the route: does the gap exist, and is a draft already running? */
-export function peekBrief(runId, index, language = '') {
-  const run = store.readRun(runId);
+export async function peekBrief(runId, index, language = '') {
+  const run = await store.readRun(runId);
   if (!run?.gaps?.[index]) return { missing: true };
   return { missing: false, jobId: inFlight.get(briefKey(runId, index, language)) ?? null };
 }
@@ -684,15 +684,15 @@ export function peekBrief(runId, index, language = '') {
  * `targetMinutes` reshape a redraft; the result replaces the saved brief for
  * that language.
  */
-export function startBrief(runId, index, { force = false, language = '', format: formatOverride = '', style = '', targetMinutes = null, core = false, planFrom = null } = {}) {
-  const run = store.readRun(runId);
+export async function startBrief(runId, index, { force = false, language = '', format: formatOverride = '', style = '', targetMinutes = null, core = false, planFrom = null } = {}) {
+  const run = await store.readRun(runId);
   const gap = run?.gaps?.[index];
   if (!gap) {
     throw Object.assign(new Error('That gap was not found in this report.'), { status: 404, code: 'GAP_NOT_FOUND' });
   }
 
   if (!force) {
-    const saved = store.readBrief(runId, index, language);
+    const saved = await store.readBrief(runId, index, language);
     if (saved) return { status: 'done', cached: true, brief: saved };
   }
 
@@ -715,10 +715,11 @@ export function startBrief(runId, index, { force = false, language = '', format:
   // A full long-form script is several times the words of an outline.
   const maxTokens = style !== 'points' && !isShortFormat(format) ? 22000 : 14000;
 
-  // The plan comes from the saved brief on disk, never from the request body.
+  // The plan comes from the saved brief in the database, never from the request body.
   // A core cut is that plan minus the optional (single-comment) essentials, so
   // it is decided in code rather than by asking the model to drop something.
-  const saved = planFrom !== null ? store.readBrief(runId, index, planFrom) : null;
+  // A read failure here must not leave the draft marked running forever.
+  const saved = planFrom !== null ? await store.readBrief(runId, index, planFrom).catch(() => null) : null;
   let plan = (saved?.essentials ?? []).map(({ point, answers, seconds, demo, thin }) => ({ point, answers, seconds, demo, thin }));
   if (core && plan.length) plan = plan.filter((e) => !e.thin);
   if (isShortFormat(format) && !isShortFormat(saved?.runtime?.format)) plan = []; // a Short re-plans: it holds at most 2
@@ -735,7 +736,7 @@ export function startBrief(runId, index, { force = false, language = '', format:
       const languageRepair = await repairLanguage(data, language);
       return { data, usage, languageRepair };
     })
-    .then(({ data, usage, languageRepair }) => {
+    .then(async ({ data, usage, languageRepair }) => {
       const brief = {
         ...finalizeBrief(data, {
           title: gap.suggestedTitle, thumbnailText: gap.thumbnailText, corpus, nameCorpus, format, sensitive,
@@ -752,7 +753,7 @@ export function startBrief(runId, index, { force = false, language = '', format:
         generatedAt: new Date().toISOString(),
         usage: { total_tokens: usage?.total_tokens ?? null },
       };
-      try { store.saveBrief(runId, index, brief, language); } catch (err) { console.error(`[brief ${id}] could not persist:`, err.message); }
+      try { await store.saveBrief(runId, index, brief, language); } catch (err) { console.error(`[brief ${id}] could not persist:`, err.message); }
       jobs.finish(id, brief);
     })
     .catch((err) => {

@@ -33,7 +33,7 @@ async function tick() {
   if (running) return; // a long pipeline outlasting the interval must not overlap itself
   running = true;
   try {
-    const dueNow = watches.due();
+    const dueNow = await watches.due();
     for (const w of dueNow) {
       const shape = {
         contentType: w.input.contentType,
@@ -41,10 +41,10 @@ async function tick() {
         channelMode: Boolean(w.input.channelId),
       };
 
-      if (!canAfford(shape)) {
+      if (!(await canAfford(shape))) {
         // Try again after the Pacific-midnight reset rather than failing.
-        watches.defer(w.id, 60);
-        const q = quotaStatus(shape);
+        await watches.defer(w.id, 60);
+        const q = await quotaStatus(shape);
         console.warn(`[scheduler] deferring watch "${w.label}": needs ${q.unitsPerAnalysis} units + ${q.searchCallsPerAnalysis} searches, ${q.remaining} units + ${q.searchRemaining} searches left today`);
         continue;
       }
@@ -57,11 +57,11 @@ async function tick() {
       let consumed = null;
       if (w.ownerUid) {
         const day = quotaDay();
-        const got = tryConsume(w.ownerUid, day, 'analyses', config.users.dailyAnalyses);
+        const got = await tryConsume(w.ownerUid, day, 'analyses', config.users.dailyAnalyses);
         if (!got.ok) {
           // Allowances reset with the quota, so there is no point asking again before then.
           const minutes = Math.ceil((Date.parse(nextQuotaReset()) - Date.now()) / 60_000) + 1;
-          watches.defer(w.id, minutes, `Skipped: your ${got.limit} analyses for today are used up. This watch tries again after the reset at midnight Pacific.`);
+          await watches.defer(w.id, minutes, `Skipped: your ${got.limit} analyses for today are used up. This watch tries again after the reset at midnight Pacific.`);
           console.warn(`[scheduler] deferring watch "${w.label}": owner has used ${got.used}/${got.limit} analyses today`);
           continue;
         }
@@ -77,27 +77,34 @@ async function tick() {
         // cached copy of the last one. See the note above.
         startAnalysis(w.input, {
           force: true,
-          onFinish: (err, result) => {
+          onFinish: async (err, result) => {
             try {
               if (err) {
                 // Same policy as an interactive run: a failure gives the analysis back.
-                if (consumed) refund(w.ownerUid, consumed, 'analyses');
-                watches.recordRun(w.id, { error: err.message });
+                if (consumed) await refund(w.ownerUid, consumed, 'analyses');
+                await watches.recordRun(w.id, { error: err.message });
                 console.error(`[scheduler] watch "${w.label}" failed:`, err.message);
               } else {
-                watches.recordRun(w.id, { runId: result.runId });
+                await watches.recordRun(w.id, { runId: result.runId });
                 // Without this the owner's report history would never show what their watch found.
-                if (w.ownerUid) linkRun(w.ownerUid, result.runId);
+                if (w.ownerUid) await linkRun(w.ownerUid, result.runId);
                 const newGaps = (result.gaps ?? []).filter((g) => g.recurrence?.status === 'new').length;
                 const recurring = (result.gaps ?? []).filter((g) => g.recurrence?.status === 'recurring').length;
                 console.log(
                   `[scheduler] watch "${w.label}" done: ${(result.gaps ?? []).length} gaps (${newGaps} new, ${recurring} recurring), ${result.resolvedGaps?.length ?? 0} closed`
                 );
               }
+            } catch (e) {
+              console.error(`[scheduler] bookkeeping for watch "${w.label}" failed:`, e.message);
             } finally {
               resolve();
             }
           },
+        }).catch(async (e) => {
+          // The run never started (a storage error, say): give the analysis back and move on.
+          console.error(`[scheduler] watch "${w.label}" could not start:`, e.message);
+          if (consumed) await refund(w.ownerUid, consumed, 'analyses').catch(() => {});
+          resolve();
         });
       }), new Promise((resolve) => {
         timeout = setTimeout(() => {
@@ -136,10 +143,10 @@ export function stop() {
  * did not. Reads from the stored reports rather than recomputing anything, so
  * asking for a digest costs no quota.
  */
-export function digest(watchId) {
-  const w = watches.get(watchId);
+export async function digest(watchId) {
+  const w = await watches.get(watchId);
   if (!w?.lastRunId) return null;
-  const latest = store.readRun(w.lastRunId);
+  const latest = await store.readRun(w.lastRunId);
   if (!latest) return null;
 
   const gaps = latest.gaps ?? [];

@@ -1,7 +1,7 @@
 import { cx } from '../../lib/cx.js';
 
 /**
- * The one level of container: a surface, a hairline, a soft shadow. Never put
+ * The one level of container: a surface, a hairline, a large faint shadow. Never put
  * a Panel inside a Panel; separate things inside it with hairline rows instead.
  * `padding="none"` is for panels whose rows carry their own padding.
  */

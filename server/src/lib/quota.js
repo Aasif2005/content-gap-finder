@@ -1,12 +1,9 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
-import { withLock } from './fileLock.js';
+import { col } from './mongo.js';
 import { searchPlan } from './searchPlan.js';
 
-const STATE_DIR = path.resolve(fileURLToPath(new URL('../../.state', import.meta.url)));
-const LEDGER = path.join(STATE_DIR, 'quota.json');
+// The shared YouTube budget ledger is one document in MongoDB (collection quota).
+const LEDGER_ID = 'youtube';
 
 // YouTube resets project quota at midnight Pacific, not UTC. Per-account
 // allowances (lib/db.js) use the same day so they reset together.
@@ -53,23 +50,15 @@ export function nextQuotaReset(now = new Date()) {
   throw new Error('Could not resolve the next Pacific midnight.');
 }
 
-function read() {
-  try {
-    const raw = JSON.parse(fs.readFileSync(LEDGER, 'utf8'));
-    if (raw.day === quotaDay()) return raw;
-    // A different day: the ledger is genuinely stale, so starting at 0 is correct.
-  } catch (err) {
-    // A missing ledger is just the first run of the day. Anything else means the
-    // file exists but could not be read or parsed -- and silently resetting to 0
-    // there is the dangerous case, not a harmless one: the app would believe it
-    // has a full 9,000 units and keep hammering YouTube until YouTube itself
-    // starts returning 403 quotaExceeded. Atomic writes (below) make a torn file
-    // essentially impossible, but if it happens anyway, say so loudly.
-    if (err.code !== 'ENOENT') {
-      console.error(`[quota] ledger at ${LEDGER} is unreadable (${err.message}); today's spend is being recounted from 0. If YouTube starts returning quotaExceeded, this is why.`);
-    }
-  }
-  return { day: quotaDay(), used: 0, searchCalls: 0, calls: {} };
+const fresh = () => ({ day: quotaDay(), used: 0, searchCalls: 0, calls: {} });
+
+/** The ledger document as stored, or null. */
+const readDoc = () => col('quota').findOne({ _id: LEDGER_ID });
+
+/** Today's ledger: the stored one when it is for today, else a new day starting at 0. */
+async function read() {
+  const doc = await readDoc();
+  return doc && doc.day === quotaDay() ? doc : fresh();
 }
 
 // Since 2026-06-01 search.list has its own bucket: a cap on CALLS (1 unit
@@ -78,33 +67,34 @@ function read() {
 // project could afford and ignored the cap that actually runs out first.
 const isSearch = (kind) => kind === 'search';
 
-function write(state) {
-  fs.mkdirSync(STATE_DIR, { recursive: true });
-  // tmp + rename, the same trick lib/cache.js uses. A bare writeFileSync can be
-  // interrupted (crash, full disk, container SIGKILL) partway through and leave
-  // truncated JSON behind; rename(2) is atomic, so a reader sees either the old
-  // ledger or the new one and never a half-written one.
-  const tmp = `${LEDGER}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
-  fs.renameSync(tmp, LEDGER);
-}
-
 /**
  * Reserve units before an API call. Throws if it would exceed the daily budget.
  *
- * The read-check-write runs under a cross-process lock. Within one process it
- * never needed one -- there is no await between the read and the write, and
- * Node does not interleave JS across synchronous statements -- but two server
- * processes sharing this directory could both read the same `used`, both decide
- * they had room, and both write, losing one increment and drifting the ledger
- * below real spend. See lib/fileLock.js.
+ * Read, check, write back with a revision guard (`rev`): if another request or
+ * another server instance changed the ledger in between, the write matches
+ * nothing and this retries on the fresh state. Two callers can therefore never
+ * both spend the same remaining unit, and none is lost, even with several
+ * server processes sharing the one database.
  */
-export function spend(kind, times = 1) {
-  return withLock(LEDGER, () => {
-    const state = charge(read(), kind, times);
-    write(state);
-    return state.used;
-  });
+export async function spend(kind, times = 1) {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const doc = await readDoc();
+    const base = doc && doc.day === quotaDay() ? doc : fresh();
+    const next = charge(base, kind, times); // throws QUOTA_EXHAUSTED
+    const fields = { day: next.day, used: next.used, searchCalls: next.searchCalls, calls: next.calls };
+    if (doc) {
+      const r = await col('quota').updateOne({ _id: LEDGER_ID, rev: doc.rev ?? 0 }, { $set: { ...fields, rev: (doc.rev ?? 0) + 1 } });
+      if (r.matchedCount) return next.used;
+    } else {
+      try {
+        await col('quota').insertOne({ _id: LEDGER_ID, ...fields, rev: 1 });
+        return next.used;
+      } catch (err) {
+        if (err?.code !== 11000) throw err; // someone created it first: retry against theirs
+      }
+    }
+  }
+  throw Object.assign(new Error('Could not update the YouTube quota ledger (too much contention). Try again.'), { status: 503, code: 'QUOTA_BUSY' });
 }
 
 /** The ledger after one charge, or a QUOTA_EXHAUSTED throw. Pure, so it is testable. */
@@ -175,8 +165,8 @@ export function analysesAffordable(state, shape = {}) {
   return Math.min(byUnits, bySearch);
 }
 
-export function quotaStatus(shape = {}) {
-  const state = read();
+export async function quotaStatus(shape = {}) {
+  const state = await read();
   const remaining = Math.max(0, config.youtube.dailyUnitBudget - state.used);
   const searchCalls = state.searchCalls ?? 0;
   const cost = (s) => ({ units: unitsPerAnalysis(s), searchCalls: searchCallsPerAnalysis(s) });
@@ -206,4 +196,4 @@ export function quotaStatus(shape = {}) {
 }
 
 /** Whether one more analysis of this shape fits in today's budgets. */
-export const canAfford = (shape = {}) => analysesAffordable(read(), shape) >= 1;
+export const canAfford = async (shape = {}) => analysesAffordable(await read(), shape) >= 1;

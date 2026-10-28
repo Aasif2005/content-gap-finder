@@ -3,7 +3,7 @@ import { cx } from '../lib/cx.js';
 import { Panel } from './ui/Panel.jsx';
 import { Skeleton } from './Bits.jsx';
 
-const PHASES = [
+export const PHASES = [
   { key: 'searching', label: 'Finding videos' },
   { key: 'stats', label: 'Pulling stats' },
   { key: 'comments', label: 'Reading comments' },

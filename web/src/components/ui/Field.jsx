@@ -53,7 +53,7 @@ export const Input = forwardRef(function Input({ trailing, invalid, className, i
         aria-invalid={bad || undefined}
         aria-describedby={describedBy ?? field?.describedBy}
         className={cx(
-          'box-border min-h-12 w-full rounded-control border bg-surface px-3.5 text-base text-fg',
+          'box-border min-h-[52px] w-full rounded-control border bg-surface px-4 text-base text-fg',
           'placeholder:text-fg-3 transition-colors duration-150',
           'hover:border-fg-3 disabled:cursor-not-allowed disabled:opacity-55',
           bad ? 'border-bad-fg' : 'border-line-strong',

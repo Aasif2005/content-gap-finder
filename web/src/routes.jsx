@@ -3,6 +3,7 @@ import Login from './pages/Login.jsx';
 import Signup from './pages/Signup.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import Welcome from './pages/Welcome.jsx';
 import Profile from './pages/Profile.jsx';
 import Explorer from './pages/Explorer.jsx';
 import NotFound from './pages/NotFound.jsx';
@@ -28,7 +29,6 @@ export const routes = [
     title: null,
     shell: 'marketing',
     shellProps: {
-      theme: 'night',
       anchors: [
         { href: '#how', label: 'How it works' },
         { href: '#get', label: 'What you get' },
@@ -43,6 +43,7 @@ export const routes = [
   { path: '/reset-password', title: 'Reset your password', shell: 'bare', auth: 'public', element: <ResetPassword /> },
   { path: '/privacy', title: 'Privacy Policy', shell: 'marketing', auth: 'public', element: <PrivacyPage /> },
   { path: '/terms', title: 'Terms of Service', shell: 'marketing', auth: 'public', element: <TermsPage /> },
+  { path: '/welcome', title: 'Welcome', shell: 'bare', auth: 'required', element: <Welcome /> },
   { path: '/dashboard', title: 'Dashboard', shell: 'app', auth: 'required', element: <Dashboard /> },
   { path: '/explore', title: 'Explore a niche', shell: 'app', auth: 'required', element: <Explorer key="niche" mode="niche" /> },
   { path: '/channel', title: 'Analyze a channel', shell: 'app', auth: 'required', element: <Explorer key="channel" mode="channel" /> },

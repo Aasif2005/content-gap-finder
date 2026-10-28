@@ -30,13 +30,13 @@ function notify(onFinish, err, result) {
   try { onFinish(err, result); } catch (e) { console.error('[runner] onFinish failed:', e.message); }
 }
 
-export function startAnalysis(input, { force = false, onFinish } = {}) {
+export async function startAnalysis(input, { force = false, onFinish } = {}) {
   const key = cache.cacheKey(input);
 
   if (!force) {
-    const hit = cache.get(key);
+    const hit = await cache.get(key);
     // A cached result whose report was pruned would hand out a dead link.
-    if (hit && (!hit.value?.runId || store.readRun(hit.value.runId))) {
+    if (hit && (!hit.value?.runId || await store.readRun(hit.value.runId))) {
       return { status: 'done', cached: true, cacheAgeSeconds: hit.ageSeconds, result: hit.value };
     }
   }
@@ -51,12 +51,12 @@ export function startAnalysis(input, { force = false, onFinish } = {}) {
 
   runPipeline(input, jobs.reporter(id), id)
     .then(
-      (result) => {
+      async (result) => {
         // Both writes are guarded so a storage failure can never lose someone a
         // run they paid quota for -- the in-memory job still holds it either way.
-        try { cache.set(key, result); } catch (err) { console.error(`[job ${id}] could not cache report:`, err.message); }
+        try { await cache.set(key, result); } catch (err) { console.error(`[job ${id}] could not cache report:`, err.message); }
         // The cache expires in hours; this is what keeps the report addressable.
-        try { store.saveRun(result); } catch (err) { console.error(`[job ${id}] could not persist report:`, err.message); }
+        try { await store.saveRun(result); } catch (err) { console.error(`[job ${id}] could not persist report:`, err.message); }
         jobs.finish(id, result);
         notify(onFinish, null, result);
       },

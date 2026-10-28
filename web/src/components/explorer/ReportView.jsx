@@ -1,4 +1,4 @@
-import { Alert, Badge, Panel } from '../ui/index.js';
+import { Alert, Badge } from '../ui/index.js';
 import { StatRow } from '../Bits.jsx';
 import { ThinPoolNotice } from '../ThinPoolNotice.jsx';
 import { EvidencePanel } from '../EvidencePanel.jsx';
@@ -6,12 +6,13 @@ import { VideoTitlesProvider } from '../CommentQuote.jsx';
 import { ReportHeader } from './ReportHeader.jsx';
 import { ReportTabs } from './ReportTabs.jsx';
 import { ReportFooter } from './ReportFooter.jsx';
+import { SummaryBand } from './SummaryBand.jsx';
 
 /**
- * A finished report, top to bottom: header and provenance, `extras` (the
- * history and watch controls, only for someone who can run analyses), the
- * stats row, the notices that qualify every number below them, the tabs and
- * the footer.
+ * A finished report in one calm column: header and provenance, the stats
+ * line, the notices that qualify every number below them, the top three gaps,
+ * the tabs, `extras` (the watch controls, only for someone who can run
+ * analyses) and the footer.
  *
  * `canRun` is false for a logged-out visitor on a shared link: no Refresh, no
  * form, no Make it. `onRerun(patch)` re-runs with changed filters.
@@ -24,19 +25,17 @@ export function ReportView({ result, cacheInfo, busy, canRun, canMake, formOpen,
 
   return (
     <VideoTitlesProvider result={result}>
-      <div className="space-y-6">
+      <div className="mx-auto max-w-[760px] space-y-8">
         <ReportHeader result={result} canRun={canRun} busy={busy} formOpen={formOpen} onToggleForm={onToggleForm} onRefresh={onRefresh} />
 
-        {extras}
-
-        <Panel padding="none" className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-y border-line py-4">
           <StatRow stats={result.stats} />
           {cacheInfo?.cached && (
             <Badge tone="info" title="Served from cache, so it cost no API quota.">
               cached {Math.max(1, Math.round((cacheInfo.ageSeconds ?? 0) / 60))}m ago
             </Badge>
           )}
-        </Panel>
+        </div>
 
         {/* A thin pool is not a warning among warnings: it undermines every
             number below it, so it gets its own callout with one-click ways out. */}
@@ -64,9 +63,13 @@ export function ReportView({ result, cacheInfo, busy, canRun, canMake, formOpen,
           </Alert>
         )}
 
+        <SummaryBand gaps={result.gaps} />
+
         <div className="pt-2">
           <ReportTabs key={result.runId} result={result} canMake={canMake} canRun={canRun} />
         </div>
+
+        {extras}
 
         <ReportFooter result={result} />
       </div>

@@ -83,7 +83,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     return await runPhases();
   } catch (err) {
     log.logError(err);
-    log.finish({ status: 'error' });
+    await log.finish({ status: 'error' }).catch((e) => console.error('[pipeline] could not store the audit log:', e.message));
     throw err;
   }
 
@@ -457,7 +457,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   let runsCompared = 0;
   const historyKey = channelMode ? `channel:${channel.channelId}` : niche;
   try {
-    const history = store.readGapHistory(historyKey, { excludeRunId: runId });
+    const history = await store.readGapHistory(historyKey, { excludeRunId: runId });
     // Only runs mined under the same filters are comparable.
     // A 24h run compared against 90d runs reported 24 gaps "no longer showing
     // up": different windows read different comments.
@@ -478,7 +478,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     if (classified.recentSkipped) {
       warnings.push(`${classified.recentSkipped} run${classified.recentSkipped === 1 ? '' : 's'} of this subject from the last ${config.recurrence.minHours} hours ${classified.recentSkipped === 1 ? 'was' : 'were'} not compared: a re-run that soon reads the same comments, so it is not a second sighting of the demand.`);
     }
-    store.appendGapHistory(historyKey, runId, new Date().toISOString(), flaggedGaps, { filters: historyFilters, comments: gapComments.length });
+    await store.appendGapHistory(historyKey, runId, new Date().toISOString(), flaggedGaps, { filters: historyFilters, comments: gapComments.length });
   } catch (err) {
     console.error(`[pipeline] recurrence comparison failed:`, err.message);
     warnings.push('Could not compare against earlier runs of this subject, so gaps are not marked new or recurring.');
@@ -536,7 +536,8 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   exclusions.shortfall = shortfall;
   log.logEvidence(evidence, shortfall);
 
-  log.finish({ status: 'done', ...relevanceSummary });
+  // The audit log is a diagnostic: failing to store it must never fail a run people paid quota for.
+  await log.finish({ status: 'done', ...relevanceSummary }).catch((e) => console.error('[pipeline] could not store the audit log:', e.message));
 
   onProgress('done', 'Complete', 100);
 

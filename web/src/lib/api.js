@@ -13,31 +13,63 @@
 let tokenGetter = async () => null;
 export const setTokenGetter = (fn) => { tokenGetter = fn; };
 
+// No call waits forever: a hung request used to leave skeletons on screen with
+// no way out. Reading the token and the call itself each get a bound; analyses
+// run in the background, so the longest foreground read is short.
+const TOKEN_TIMEOUT_MS = 8_000;
+const REQUEST_TIMEOUT_MS = 10_000; // reads only: a "Make it" draft is a POST and can legitimately take a minute
+
+const timeoutError = (what) => {
+  console.warn(`[api] ${what} timed out`);
+  return Object.assign(new Error('Gapstronaut is taking too long to answer. Try again.'), { code: 'TIMEOUT' });
+};
+
+/** Rejects with a TIMEOUT error if `promise` has not settled within `ms`. */
+const within = (promise, ms, what) => {
+  let timer;
+  const clock = new Promise((_, reject) => { timer = setTimeout(() => reject(timeoutError(what)), ms); });
+  return Promise.race([promise, clock]).finally(() => clearTimeout(timer));
+};
+
 async function request(path, { method = 'GET', body, headers } = {}) {
   const h = { ...headers };
   if (body !== undefined) h['Content-Type'] = 'application/json';
   try {
-    const token = await tokenGetter();
+    const token = await within(tokenGetter(), TOKEN_TIMEOUT_MS, `reading the sign-in token for ${path}`);
     if (token) h.Authorization = `Bearer ${token}`;
-  } catch { /* a token that cannot be read is the same as being logged out */ }
+  } catch (err) {
+    // A token that cannot be read in time is the same as being logged out; the
+    // call below then fails with a clear 401 instead of hanging.
+    if (err.code === 'TIMEOUT') console.warn('[api] continuing without a token');
+  }
 
+  const controller = new AbortController();
+  const abort = method === 'GET' ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS) : null;
   let res;
   try {
-    res = await fetch(path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
-  } catch {
+    res = await fetch(path, { method, headers: h, signal: controller.signal, body: body === undefined ? undefined : JSON.stringify(body) });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw timeoutError(`${method} ${path}`);
     throw Object.assign(new Error('Could not reach Gapstronaut. Check your connection and try again.'), { code: 'NETWORK' });
+  } finally {
+    if (abort) clearTimeout(abort);
   }
 
   if (res.status === 204) return null;
-  const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch(() => null);
+  // A 5xx with no JSON body did not come from our API: it is the dev proxy or a
+  // gateway answering for a server that is not running.
+  if (!res.ok && !data && res.status >= 500) {
+    throw Object.assign(new Error("Gapstronaut's server isn't reachable. Make sure it is running and try again."), { code: 'SERVER_DOWN', status: res.status });
+  }
   if (!res.ok) {
-    const err = new Error(data.error || `Request failed (${res.status})`);
-    err.code = data.code;
+    const err = new Error(data?.error || `Request failed (${res.status})`);
+    err.code = data?.code;
     err.status = res.status;
-    if (data.resetsAt) err.resetsAt = data.resetsAt;
+    if (data?.resetsAt) err.resetsAt = data.resetsAt;
     throw err;
   }
-  return data;
+  return data ?? {};
 }
 
 // --- accounts ---------------------------------------------------------------

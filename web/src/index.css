@@ -4,39 +4,41 @@
  * Design tokens. Semantic names, each with a light and a dark value, exposed to
  * Tailwind below so `bg-bg`, `bg-surface`, `text-fg-2`, `border-line` just work.
  *
- * The app follows the OS. `.theme-night` forces the dark values (the marketing
- * homepage lives on a night ground), `.theme-day` forces the light ones. Both
- * work on any element, so a dark section can sit inside a light page.
+ * Light is Lunar Cream, dark is Saturn Dusk. The whole site follows the OS until
+ * the visitor picks a mode with the switch, which pins <html data-mode>.
+ * `.theme-day` forces the light values on an element; `.theme-night` pins a dark
+ * ground (the footer, the sign-in brand panel) that also follows the mode.
  */
 
 :root,
 .theme-day {
   color-scheme: light;
 
-  --bg: #F5F7FA;
+  --bg: #FBF8F3;
   --surface: #FFFFFF;
-  --surface-2: #EEF2FA;
-  --hover: #EEF2FA;
-  --line: #E3E8F0;
-  --line-soft: #EEF1F6;
-  --line-strong: #C5CEDD; /* inputs and secondary buttons */
+  --surface-2: #F4F0E8;
+  --hover: #F1ECE3;
+  --line: #E7E3DC;
+  --line-soft: #EFEBE4;
+  --line-strong: #D6D0C5; /* inputs and secondary buttons */
 
-  --fg: #0E1626;
-  --fg-2: #4A5670;
-  --fg-3: #5C6985;
+  --fg: #0F1E2E;
+  --fg-2: #5B6274;
+  --fg-3: #646B7C;
 
-  --ink: #0A1220; /* primary button ground */
+  --ink: #0F1E2E; /* primary button ground */
   --on-ink: #FFFFFF;
 
-  --focus: #2F5FD0;
-  --mark: #F6C453; /* the amber highlighter: real viewer evidence only */
-  --mark-soft: #FBE7A8;
+  --focus: #2F5BEA;
+  --accent: #2F5BEA; /* accent text, links and meters */
+  --mark: #F3DFAE; /* the highlighter: real viewer evidence only */
+  --mark-soft: #F3DFAE;
   --mark-bg: var(--mark-soft); /* what an EvidenceMark paints behind its text */
   --on-mark: var(--fg);
 
   --good-bg: #E3F4EC; --good-fg: #1E6B4B;
   --bad-bg: #FBE9E6;  --bad-fg: #9A2F22;
-  --warn-bg: #FCEBDD; --warn-fg: #8F4410; /* burnt orange: kept clear of the amber highlighter */
+  --warn-bg: #FCEBDD; --warn-fg: #8F4410; /* burnt orange: kept clear of the highlighter */
   --info-bg: #E6EEFC; --info-fg: #2850B0;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -44,35 +46,65 @@
   --dur-2: 200ms;
 }
 
-/* Dark: the OS asked for it, unless a section has pinned itself to day. */
+/* Saturn Dusk: the OS asked for it, unless the visitor chose light. */
 @media (prefers-color-scheme: dark) {
-  :root:not(.theme-day) {
+  :root:not(.theme-day):not([data-mode="light"]),
+  :root:not(.theme-day):not([data-mode="light"]) .theme-night {
     color-scheme: dark;
-    --bg: #0A1220;
-    --surface: #0E182B;
-    --surface-2: #131F36;
-    --hover: #1B2A47;
-    --line: #1E2C4B;
-    --line-soft: #18243F;
-    --line-strong: #26355A;
-    --fg: #EEF2FA;
-    --fg-2: #AAB6CD;
-    --fg-3: #8190AB;
-    --ink: #EEF2FA;
-    --on-ink: #0A1220;
-    --focus: #7FA2F5;
-    --mark: #F6C453;
-    --mark-soft: #4A3A12; /* selection ground: amber, but quiet enough for light text */
-    --mark-bg: color-mix(in oklab, var(--mark) 88%, var(--surface)); /* a touch softer than the swatch: big blocks stay calm */
-    --on-mark: #0A1220;
+    --bg: #0C0818;
+    --surface: #161029;
+    --surface-2: #1B1433;
+    --hover: #221A3D;
+    --line: #2A2145;
+    --line-soft: #231B3B;
+    --line-strong: #6B5C9A;
+    --fg: #F2EEF8;
+    --fg-2: #B7ACCF;
+    --fg-3: #9C90B8;
+    --ink: #F2EEF8;
+    --on-ink: #0C0818;
+    --focus: #B79CFF;
+    --accent: #B79CFF;
+    --mark: #E9D2A0;
+    --mark-soft: #E9D2A0;
+    --mark-bg: #E9D2A0;
+    --on-mark: #0C0818;
     --good-bg: #12302A; --good-fg: #6FD0A0;
     --bad-bg: #3A1B1E;  --bad-fg: #F19A8E;
     --warn-bg: #3A2414; --warn-fg: #F0955A;
-    --info-bg: #16264A; --info-fg: #9DB8F7;
+    --info-bg: #241B45; --info-fg: #B79CFF;
   }
 }
 
-/* The same dark values, forced. Kept in step with the block above. */
+/* The same dark values, chosen with the switch. Kept in step with the block above. */
+:root[data-mode="dark"],
+:root[data-mode="dark"] .theme-night {
+  color-scheme: dark;
+  --bg: #0C0818;
+  --surface: #161029;
+  --surface-2: #1B1433;
+  --hover: #221A3D;
+  --line: #2A2145;
+  --line-soft: #231B3B;
+  --line-strong: #6B5C9A;
+  --fg: #F2EEF8;
+  --fg-2: #B7ACCF;
+  --fg-3: #9C90B8;
+  --ink: #F2EEF8;
+  --on-ink: #0C0818;
+  --focus: #B79CFF;
+  --accent: #B79CFF;
+  --mark: #E9D2A0;
+  --mark-soft: #E9D2A0;
+  --mark-bg: #E9D2A0;
+  --on-mark: #0C0818;
+  --good-bg: #12302A; --good-fg: #6FD0A0;
+  --bad-bg: #3A1B1E;  --bad-fg: #F19A8E;
+  --warn-bg: #3A2414; --warn-fg: #F0955A;
+  --info-bg: #241B45; --info-fg: #B79CFF;
+}
+
+/* A pinned dark ground inside the light theme: deep navy. */
 .theme-night {
   color-scheme: dark;
   --bg: #0A1220;
@@ -81,17 +113,18 @@
   --hover: #1B2A47;
   --line: #1E2C4B;
   --line-soft: #18243F;
-  --line-strong: #26355A;
+  --line-strong: #3A4A72;
   --fg: #EEF2FA;
   --fg-2: #AAB6CD;
   --fg-3: #8190AB;
   --ink: #EEF2FA;
   --on-ink: #0A1220;
-  --focus: #7FA2F5;
-  --mark: #F6C453;
-  --mark-soft: #4A3A12;
-  --mark-bg: color-mix(in oklab, var(--mark) 88%, var(--surface));
-  --on-mark: #0A1220;
+  --focus: #8FA9FF;
+  --accent: #8FA9FF;
+  --mark: #F3DFAE;
+  --mark-soft: #F3DFAE;
+  --mark-bg: #F3DFAE;
+  --on-mark: #0F1E2E;
   --good-bg: #12302A; --good-fg: #6FD0A0;
   --bad-bg: #3A1B1E;  --bad-fg: #F19A8E;
   --warn-bg: #3A2414; --warn-fg: #F0955A;
@@ -112,6 +145,7 @@
   --color-ink: var(--ink);
   --color-on-ink: var(--on-ink);
   --color-focus: var(--focus);
+  --color-accent: var(--accent);
   --color-mark: var(--mark);
   --color-mark-soft: var(--mark-soft);
   --color-on-mark: var(--on-mark);
@@ -132,9 +166,9 @@
     'Noto Sans Devanagari Variable', 'Noto Sans Devanagari', system-ui, sans-serif;
   --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
 
-  --radius-panel: 14px;
-  --radius-control: 10px;
-  --shadow-panel: 0 1px 2px rgb(14 22 38 / 0.04);
+  --radius-panel: 24px;
+  --radius-control: 14px;
+  --shadow-panel: 0 24px 60px -34px rgb(15 30 46 / 0.22);
 
 
 }
@@ -231,3 +265,352 @@ input, textarea, [contenteditable] { caret-color: var(--focus); }
     color: var(--on-mark);
   }
 }
+
+/* Rotating headline word: the phrases stack in one grid cell, so the line is as
+   wide as the longest and never jumps. Only the active one is visible. */
+.rotator { color: var(--accent); display: inline-grid; vertical-align: bottom; overflow: hidden; padding-bottom: 0.12em; margin-bottom: -0.12em; }
+.rotator > span {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(70%);
+  transition: opacity 500ms var(--ease-out), transform 600ms var(--ease-out);
+}
+.rotator > span[data-on="true"] { opacity: 1; transform: none; }
+.rotator > span[data-past="true"] { transform: translateY(-70%); }
+@media (prefers-reduced-motion: reduce) {
+  .rotator > span { transition: none; }
+}
+
+/* Niche strip: two copies of the row slide left by one row's width, then loop. */
+@keyframes marquee { to { transform: translateX(-50%); } }
+.marquee { animation: marquee 48s linear infinite; }
+.marquee:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .marquee { animation: none; flex-wrap: wrap; width: auto; justify-content: center; row-gap: 0.75rem; padding: 0 1.25rem; }
+  .marquee > ul[aria-hidden] { display: none; }
+}
+
+/* Footer entrance, kept slow and quiet: the panel never moves. A glow warms its
+   top edge and each column fades up a few pixels, one after another, once. */
+.footer-glow {
+  background: radial-gradient(60% 100% at 50% 0%, color-mix(in oklab, var(--focus) 22%, transparent), transparent 70%);
+  opacity: 0;
+  transition: opacity 1800ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.footer-rise[data-seen="true"] .footer-glow { opacity: 1; }
+.footer-item {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 1200ms cubic-bezier(0.22, 1, 0.36, 1), transform 1400ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: calc(200ms + var(--i, 0) * 130ms);
+}
+.footer-rise[data-seen="true"] .footer-item { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .footer-glow, .footer-item { opacity: 1; transform: none; transition: none; }
+}
+
+/* --- Shiny call-to-action ------------------------------------------------------
+   Adapted from 21st.dev's ShinyButton: a conic light runs round the border, dots
+   and a shimmer sit inside, and hover/focus brightens it. Colours come from the
+   theme tokens, so it is navy + Ion Blue in light and cream + lilac in dark. */
+@property --gradient-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@property --gradient-angle-offset { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@property --gradient-percent { syntax: "<percentage>"; initial-value: 5%; inherits: false; }
+@property --gradient-shine { syntax: "<color>"; initial-value: white; inherits: false; }
+
+.shiny-cta {
+  --shiny-bg: var(--ink);
+  --shiny-bg-subtle: color-mix(in oklab, var(--ink) 82%, var(--bg));
+  --shiny-fg: var(--on-ink);
+  --shiny-highlight: var(--focus);
+  --shiny-highlight-subtle: color-mix(in oklab, var(--focus) 55%, white);
+  --animation: gradient-angle linear infinite;
+  --duration: 3s;
+  --shadow-size: 2px;
+  --transition: 800ms cubic-bezier(0.25, 1, 0.5, 1);
+
+  isolation: isolate;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  outline-offset: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 1.75rem;
+  font-size: 1.0625rem;
+  line-height: 1.2;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  color: var(--shiny-fg);
+  background:
+    linear-gradient(var(--shiny-bg), var(--shiny-bg)) padding-box,
+    conic-gradient(
+      from calc(var(--gradient-angle) - var(--gradient-angle-offset)),
+      transparent,
+      var(--shiny-highlight) var(--gradient-percent),
+      var(--gradient-shine) calc(var(--gradient-percent) * 2),
+      var(--shiny-highlight) calc(var(--gradient-percent) * 3),
+      transparent calc(var(--gradient-percent) * 4)
+    ) border-box;
+  box-shadow: inset 0 0 0 1px var(--shiny-bg-subtle);
+  transition: var(--transition);
+  transition-property: --gradient-angle-offset, --gradient-percent, --gradient-shine;
+}
+
+.shiny-cta::before,
+.shiny-cta::after,
+.shiny-cta > span::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-start: 50%;
+  translate: -50% -50%;
+  z-index: -1;
+}
+
+.shiny-cta:active { translate: 0 1px; }
+
+/* Dots pattern */
+.shiny-cta::before {
+  --size: calc(100% - var(--shadow-size) * 3);
+  --position: 2px;
+  --space: calc(var(--position) * 2);
+  width: var(--size);
+  height: var(--size);
+  background: radial-gradient(circle at var(--position) var(--position), var(--shiny-fg) calc(var(--position) / 4), transparent 0) padding-box;
+  background-size: var(--space) var(--space);
+  background-repeat: space;
+  mask-image: conic-gradient(from calc(var(--gradient-angle) + 45deg), black, transparent 10% 90%, black);
+  border-radius: inherit;
+  opacity: 0.35;
+  z-index: -1;
+}
+
+/* Inner shimmer */
+.shiny-cta::after {
+  --animation: shimmer linear infinite;
+  width: 100%;
+  aspect-ratio: 1;
+  background: linear-gradient(-50deg, transparent, var(--shiny-highlight), transparent);
+  mask-image: radial-gradient(circle at bottom, transparent 40%, black);
+  opacity: 0.45;
+}
+
+.shiny-cta > span { z-index: 1; }
+
+.shiny-cta > span::before {
+  --size: calc(100% + 1rem);
+  width: var(--size);
+  height: var(--size);
+  box-shadow: inset 0 -1ex 2rem 4px var(--shiny-highlight);
+  opacity: 0;
+  transition: opacity var(--transition);
+  animation: calc(var(--duration) * 1.5) shiny-breathe linear infinite;
+}
+
+.shiny-cta,
+.shiny-cta::before,
+.shiny-cta::after {
+  animation: var(--animation) var(--duration), var(--animation) calc(var(--duration) / 0.4) reverse paused;
+  animation-composition: add;
+}
+
+.shiny-cta:is(:hover, :focus-visible) {
+  --gradient-percent: 20%;
+  --gradient-angle-offset: 95deg;
+  --gradient-shine: var(--shiny-highlight-subtle);
+}
+.shiny-cta:is(:hover, :focus-visible),
+.shiny-cta:is(:hover, :focus-visible)::before,
+.shiny-cta:is(:hover, :focus-visible)::after { animation-play-state: running; }
+.shiny-cta:is(:hover, :focus-visible) > span::before { opacity: 1; }
+
+.shiny-cta:disabled { cursor: not-allowed; opacity: 0.55; }
+.shiny-cta[data-loading],
+.shiny-cta[data-loading]::before,
+.shiny-cta[data-loading]::after { animation-play-state: paused; }
+
+@keyframes gradient-angle { to { --gradient-angle: 360deg; } }
+@keyframes shimmer { to { rotate: 360deg; } }
+@keyframes shiny-breathe { from, to { scale: 1; } 50% { scale: 1.2; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .shiny-cta, .shiny-cta::before, .shiny-cta::after, .shiny-cta > span::before { animation: none !important; transition: none; }
+}
+
+/* --- Thinking orb (components/orb) ---------------------------------------------
+   The 21st.dev "AI thinking orb" effect. Its keyframes are the original's; the
+   engine drives the --w/--h/--r/--o* variables below. The stage sits on a pinned
+   night ground (.theme-night), so the dots and glows keep their original look. */
+@property --angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+
+@keyframes mo-spin { to { --angle: 360deg; } }
+@keyframes mo-drift { from { transform: translateX(-14%); } to { transform: translateX(14%); } }
+@keyframes mo-shimmer { from { background-position: 150% 0; } to { background-position: -100% 0; } }
+@keyframes mo-dot { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+@keyframes mo-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes mo-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-6px); } }
+@keyframes mo-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mo-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes mo-shake {
+  0%, 100% { transform: translate(-50%, -50%); }
+  25% { transform: translate(calc(-50% - 4px), -50%); }
+  75% { transform: translate(calc(-50% + 4px), -50%); }
+}
+
+.mo-root { position: relative; height: clamp(460px, 62vh, 600px); border-radius: 28px; border: 1px solid var(--line); background: var(--bg); overflow: hidden; color: var(--fg); font-family: inherit; }
+.mo-root[data-phase="reset"] { pointer-events: none; }
+.mo-bg { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 0%, color-mix(in oklab, var(--accent) 12%, var(--bg)), var(--bg) 70%); animation: mo-fade-in 450ms var(--ease-out) both; }
+.mo-root[data-phase="reset"] .mo-bg { animation: mo-fade-out 260ms var(--ease-out) forwards; }
+.mo-halo {
+  position: absolute; left: 50%; top: 46%; width: min(760px, 100%); aspect-ratio: 1; translate: -50% -50%;
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--accent) 30%, transparent), transparent 72%);
+  opacity: var(--oCenter, 0); pointer-events: none;
+}
+
+.mo-mover { position: absolute; left: 50%; top: 46%; width: 0; height: 0; will-change: transform; }
+.mo-trail {
+  position: absolute; left: 0; top: 0; width: 100px; height: 100px; border-radius: 50%; opacity: 0; pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--accent) 55%, transparent), transparent);
+}
+
+.mo-actor {
+  position: absolute; left: 0; top: 0; width: var(--w, 560px); height: var(--h, 60px); border-radius: var(--r, 999px);
+  transform: translate(-50%, -50%) scale(var(--cs, 1));
+}
+.mo-actor > * { position: absolute; }
+.mo-underglow { inset: -6px; border-radius: inherit; filter: blur(22px); background: color-mix(in oklab, var(--accent) 34%, transparent); opacity: var(--oGlow, 1); }
+.mo-halo-accent {
+  left: 50%; top: 50%; width: 260%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--accent) 42%, transparent), transparent 70%);
+  opacity: var(--oHalo, 0);
+}
+.mo-surface {
+  inset: 0; border-radius: inherit; overflow: hidden; opacity: var(--oPill, 1);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  box-shadow: inset 0 0 0 1px var(--line), 0 24px 60px -28px rgb(0 0 0 / 0.6);
+}
+.mo-aurora { position: absolute; inset: 0; opacity: var(--oAur, 1); }
+.mo-aurora i {
+  position: absolute; top: -40%; width: 46%; height: 180%; border-radius: 50%; filter: blur(26px); opacity: 0.5;
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--accent) 60%, transparent), transparent);
+  animation: mo-drift 7s ease-in-out infinite alternate;
+}
+.mo-aurora i:nth-child(1) { left: -6%; }
+.mo-aurora i:nth-child(2) { left: 24%; animation-duration: 9s; animation-delay: -3s; opacity: 0.35; }
+.mo-aurora i:nth-child(3) { left: 52%; animation-duration: 8s; animation-delay: -5s; }
+.mo-aurora i:nth-child(4) { left: 74%; animation-duration: 11s; animation-delay: -2s; opacity: 0.3; }
+
+.mo-ball {
+  inset: 0; border-radius: 50%; opacity: var(--oBall, 0);
+  background: radial-gradient(circle at 34% 28%, #fff, color-mix(in oklab, var(--accent) 70%, #fff) 38%, var(--accent) 72%, color-mix(in oklab, var(--accent) 40%, #000));
+  box-shadow: 0 0 40px color-mix(in oklab, var(--accent) 55%, transparent);
+}
+.mo-done {
+  left: 50%; top: 50%; width: 64px; height: 64px; translate: -50% -50%; border-radius: 50%; display: grid; place-items: center;
+  opacity: var(--oGreen, 0); transform: scale(var(--gs, 0.55));
+  background: var(--accent); color: var(--on-ink);
+  box-shadow: 0 0 44px color-mix(in oklab, var(--accent) 60%, transparent);
+}
+.mo-done svg { width: 30px; height: 30px; }
+.mo-card {
+  inset: 0; border-radius: var(--r, 20px); opacity: var(--oCard, 0);
+  background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong), 0 0 calc(var(--bloom, 1) * 56px) -12px color-mix(in oklab, var(--accent) 45%, transparent), 0 30px 70px -30px rgb(0 0 0 / 0.65);
+}
+.mo-ring {
+  inset: 0; border-radius: inherit; opacity: var(--oRing, 1); pointer-events: none; border: 1px solid transparent;
+  background: linear-gradient(transparent, transparent) padding-box, conic-gradient(from var(--angle), transparent 55%, var(--accent), transparent 95%) border-box;
+  animation: mo-spin 5s linear infinite;
+}
+
+.mo-input {
+  inset: 0; display: flex; align-items: center; gap: 12px; padding: 0 22px; opacity: var(--oInput, 1);
+  transform: scale(var(--inScale, 1)); color: var(--fg); font-size: 17px; font-weight: 500;
+}
+.mo-spark { width: 20px; height: 20px; flex: none; color: var(--accent); }
+.mo-query { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.mo-orb { left: 50%; top: 50%; width: 220px; height: 220px; translate: -50% -50%; pointer-events: none; }
+.mo-pulse {
+  left: 50%; top: 50%; width: 132px; height: 132px; translate: -50% -50%; border-radius: 50%; opacity: 0; pointer-events: none;
+  border: 1px solid var(--accent);
+}
+
+.mo-answer { inset: 0; padding: 16px 22px; display: flex; flex-direction: column; gap: 8px; justify-content: center; opacity: var(--hOp, 0); text-align: left; overflow: hidden; }
+.mo-a-head { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-3); }
+.mo-a-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); transform: scale(var(--dotS, 0)); }
+.mo-a-body { margin: 0; font-size: 16px; line-height: 1.35; font-weight: 500; letter-spacing: -0.01em; color: var(--fg); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.mo-w { display: inline-block; opacity: 0; will-change: opacity, transform, filter; }
+
+.mo-status {
+  position: absolute; left: 50%; top: calc(46% + 112px); width: max-content; height: 28px;
+  opacity: var(--sOp, 0); transform: translate(-50%, calc(var(--sTy, 6) * 1px)); pointer-events: none;
+}
+.mo-lab { display: inline-flex; align-items: center; gap: 6px; font-size: 17px; font-weight: 500; white-space: nowrap; }
+.mo-lab.mo-in { animation: mo-in 360ms var(--ease-out) both; }
+.mo-lab.mo-out { position: absolute; left: 50%; top: 0; translate: -50% 0; animation: mo-out 260ms var(--ease-out) both; }
+.mo-lab-t { color: var(--fg-2); }
+.mo-lab-done { color: var(--accent); font-weight: 600; }
+.mo-dots { display: inline-flex; gap: 3px; }
+.mo-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--fg-2); animation: mo-dot 1.2s infinite both; }
+.mo-dots i:nth-child(2) { animation-delay: 0.2s; }
+.mo-dots i:nth-child(3) { animation-delay: 0.4s; }
+
+.mo-chips {
+  position: absolute; left: 50%; top: calc(46% + 150px); translate: -50% 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+  margin: 0; padding: 0 16px; list-style: none; width: max-content; max-width: 100%; opacity: var(--sOp, 0); pointer-events: none;
+}
+.mo-chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: var(--fg-3); background: color-mix(in oklab, var(--fg) 6%, transparent); transition: color 300ms, background 300ms; }
+.mo-chip i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.5; }
+.mo-chip[data-state="now"] { color: var(--accent); background: color-mix(in oklab, var(--accent) 16%, transparent); }
+.mo-chip[data-state="now"] i { opacity: 1; animation: mo-dot 1.2s infinite both; }
+.mo-chip[data-state="done"] { color: var(--fg-2); }
+.mo-actions { position: absolute; left: 50%; top: calc(46% + 204px); translate: -50% 0; display: flex; justify-content: center; }
+.mo-root[data-phase="answered"] .mo-actions { top: calc(46% + 96px); }
+.mo-root[data-phase="answered"] .mo-chips { opacity: 0; }
+.mo-root[data-leaving] { animation: mo-stage-out 560ms cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+@keyframes mo-stage-out { to { opacity: 0; transform: translateY(-10px) scale(0.985); filter: blur(6px); } }
+.mo-opening { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; font-weight: 500; color: var(--fg-2); }
+.report-in { animation: report-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes report-in { from { opacity: 0; transform: translateY(18px) scale(0.992); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+.mo-fade { animation: mo-fade-in 320ms var(--ease-out) both; }
+.mo-key { margin-left: 6px; padding: 1px 7px; border-radius: 6px; border: 1px solid var(--line-strong); font-size: 12px; color: var(--fg-3); }
+.mo-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mo-ring, .mo-aurora i, .mo-dots i, .report-in, .mo-root[data-leaving] { animation: none; }
+}
+
+/* StudioLights. When all three lamps are steady the cones swell once, then breathe very slowly;
+   the words come up one after another like light travelling along the line, under a one-time halo. */
+.sl-cones { animation: sl-cone-bloom 1.4s ease-out, sl-breathe 6s ease-in-out 1.4s infinite alternate; }
+@keyframes sl-cone-bloom { 0% { opacity: 0.7; } 45% { opacity: 1; filter: brightness(1.45); } 100% { opacity: 1; filter: brightness(1); } }
+@keyframes sl-breathe { from { opacity: 0.82; } to { opacity: 1; } }
+
+.sl-bloom { animation: sl-bloom 1.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes sl-bloom {
+  0% { text-shadow: 0 0 0 transparent; }
+  35% { text-shadow: 0 0 64px color-mix(in oklab, var(--accent) 75%, transparent), 0 0 8px color-mix(in oklab, var(--accent) 45%, transparent); }
+  100% { text-shadow: 0 0 30px color-mix(in oklab, var(--accent) 55%, transparent), 0 0 4px color-mix(in oklab, var(--accent) 25%, transparent); }
+}
+/* One glint crossing the words: a bright band moves through the ink (set --sh to the word colour). */
+.sl-sheen {
+  color: transparent;
+  background-image: linear-gradient(105deg, var(--sh) 40%, #fff 50%, var(--sh) 60%);
+  background-size: 260% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: sl-sheen 1.3s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+@keyframes sl-sheen { to { background-position: 0% 0; } }
+/* The bright letters under a steady beam shimmer with it. */
+.sl-copy-breathe { animation: sl-breathe 6s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .sl-copy-breathe { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .sl-cones, .sl-bloom, .sl-sheen { animation: none; } .sl-sheen { background-position: 0% 0; } }

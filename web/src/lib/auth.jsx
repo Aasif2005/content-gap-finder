@@ -42,6 +42,8 @@ const toUser = (fb) => fb && ({
   photoUrl: fb.photoURL ?? null,
   emailVerified: fb.emailVerified,
   provider: providerOf(fb),
+  // Firebase knows when the account was made, so the profile page need not wait for our server.
+  createdAt: fb.metadata?.creationTime ? new Date(fb.metadata.creationTime).toISOString() : null,
 });
 
 const AuthContext = createContext(null);

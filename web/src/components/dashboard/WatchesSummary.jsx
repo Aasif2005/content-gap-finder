@@ -44,7 +44,7 @@ export function WatchesSummary({ status, rows, max, error, onRetry }) {
   return (
     <Panel as="section" aria-labelledby="watches-h">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id="watches-h" className="text-[19px] font-semibold tracking-[-0.01em]">Watches</h2>
+        <h2 id="watches-h" className="text-[26px] font-semibold tracking-[-0.02em]">Watches</h2>
         {status === 'ready' && max != null && (
           <span className="nums font-mono text-[13px] text-fg-3">{rows.length} of {max}</span>
         )}
@@ -66,7 +66,9 @@ export function WatchesSummary({ status, rows, max, error, onRetry }) {
 
       {status === 'ready' && rows.length > 0 && <ul className="mt-3">{rows.map((r) => <WatchRow key={r.id} row={r} />)}</ul>}
 
-      <Button variant="secondary" href="/explore" className="mt-4">Manage</Button>
+      <p className="mt-4 text-[13px] leading-relaxed text-fg-3">
+        Open a watch to see its report. To add one, open any report and use Watches at the bottom.
+      </p>
     </Panel>
   );
 }

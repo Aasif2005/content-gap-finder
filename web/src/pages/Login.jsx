@@ -4,7 +4,7 @@ import AuthLayout, { AuthHeading, OrDivider } from '../components/auth/AuthLayou
 import { GoogleButton } from '../components/auth/GoogleButton.jsx';
 import { LegalLinks } from '../components/auth/LegalLinks.jsx';
 import { NotConfiguredAlert } from '../components/auth/NotConfiguredAlert.jsx';
-import { looksLikeEmail, nextSuffix, safeNext } from '../components/auth/helpers.js';
+import { looksLikeEmail, nextSuffix, welcomeNext } from '../components/auth/helpers.js';
 import { Link, navigate, useRoute } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -28,7 +28,7 @@ export default function Login() {
 
   // Already signed in (or just now): go where they were headed.
   useEffect(() => {
-    if (!loading && user) navigate(safeNext(next), { replace: true });
+    if (!loading && user) navigate(welcomeNext(next), { replace: true });
   }, [loading, user, next]);
 
   // A failed submit moves focus to the message, so a keyboard or screen reader user lands on it.

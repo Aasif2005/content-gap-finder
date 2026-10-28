@@ -17,9 +17,9 @@ export { Skeleton } from './ui/Skeleton.jsx';
 export function HeatBar({ value, label = 'Heat' }) {
   return (
     <div className="flex items-center gap-2" title={`${label} ${value}/100, relative to this result set. ${DERIVED_NOTE}`}>
-      <div className="h-1.5 w-20 overflow-hidden rounded-[3px] bg-line">
+      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-line">
         <div
-          className="h-full rounded-[3px] bg-ink transition-[width] duration-200 ease-[var(--ease-out)] motion-reduce:transition-none"
+          className="h-full rounded-full bg-focus transition-[width] duration-200 ease-[var(--ease-out)] motion-reduce:transition-none"
           style={{ width: `${Math.max(2, Math.min(100, value))}%` }}
         />
       </div>

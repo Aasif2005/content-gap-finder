@@ -3,9 +3,9 @@ import { ArrowUpRight, Heart } from 'lucide-react';
 import { Badge, Derived, EvidenceMark, Panel, Skeleton } from '../ui/index.js';
 import { cx } from '../../lib/cx.js';
 
-const SOFT = 'text-[#C9D2E4]';
+const SOFT = 'text-fg-2';
 const STRENGTH_TONE = { high: 'bad', medium: 'warn', low: 'neutral' };
-const hairline = 'border-[#1E2C4B]';
+const hairline = 'border-line';
 
 const coverageText = (c) => (c === 'none' ? 'nobody covers this' : 'weakly covered');
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -154,7 +154,7 @@ export default function SampleReport({ view }) {
       as="section"
       padding="none"
       aria-label={loading ? 'Sample report' : `Sample report: ${view.niche}`}
-      className="!rounded-[18px] !border-line-strong overflow-hidden !shadow-[0_40px_80px_-40px_rgba(0,0,0,0.7)]"
+      className="!rounded-[18px] !border-line-strong overflow-hidden !shadow-[0_40px_80px_-40px_rgba(15,30,46,0.18)]"
     >
       <div className={cx('flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b px-4 py-3.5 md:px-6 md:py-4', hairline)}>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg-2 md:text-[15px]">

@@ -259,3 +259,20 @@ Gentle, consistent corners: panels and alerts 14px, controls (buttons, inputs) 1
 - **Don't** mark callouts with a coloured left border; use a tinted Alert.
 - **Don't** use amber for status, buttons or charts; warnings are burnt orange.
 - **Don't** add new colours outside the semantic tokens.
+
+## Homepage: Lunar Cream (2026-10-27, pending owner review)
+
+The homepage pins `.theme-lunar` (see `src/index.css`): warm paper `#FBF8F3`, white surfaces, navy ink `#0F1E2E`, Ion Blue `#2F5BEA` for focus and accents, evidence highlight `#F3DFAE` behind ink text. The footer pins `.theme-night`. The signed-in app is unchanged for now.
+
+- Layout: floating pill nav, rotating-word headline, an interactive Earth horizon (`ui/EarthBlaze.jsx`, WebGL, self-hosted NASA Blue Marble in `public/img/`), niche strip, soft text cards around a giant faint word, a statement, two split sections with an accent-bar list, four text-only lens cards, one example quote, a closing card. 3rem radius on big containers, 16–24px on cards, depth from large faint shadows.
+- Rules: no photos in cards; no invented numbers, names, upvote counts or testimonials (every quote is labelled "Example comment"); highlight colour means viewer words only; motion is limited to the headline word, the niche strip and the Earth scene, all of which stop under `prefers-reduced-motion`; no third-party requests.
+
+### Homepage dark mode: Saturn Dusk (follows the OS)
+
+Page `#0C0818`, surface `#161029`, surface-2 `#1B1433`, text `#F2EEF8` (17:1), secondary `#B7ACCF` (9:1), hint `#9C90B8` (6:1), accent and focus lilac `#B79CFF` (8.7:1), input/outline border `#6B5C9A` (3.4:1). The primary button is a cream pill (`--ink #F2EEF8`, text `#0C0818`). The viewer-quote highlight is `#E9D2A0` with dark text (13:1). The footer's pinned night ground takes the same values. From Stitch's generated system we did not take the olive tertiary `#B9AF2D` (gold stays reserved for viewer words) nor Inter / JetBrains Mono (fonts stay self-hosted). `--accent` (blue `#2F5BEA` in light, lilac in dark) colours the rotating headline word.
+
+## Whole app on Lunar Cream / Saturn Dusk (2026-10-28)
+
+The tokens in `src/index.css` are now global: light is Lunar Cream, dark is Saturn Dusk, from the OS or the header switch (`<html data-mode>`, stored by `lib/colorMode.js`, shared with Profile → Appearance). `.theme-night` pins a dark ground (footer, sign-in brand panel, 404 panel): navy in light mode, lifted violet in dark. The old `.theme-lunar` class is gone.
+
+Shapes: pill buttons and segmented controls, 14px fields (52px tall), 24px panels, 3rem for hero and brand panels. Every page uses the floating pill header (`MarketingShell`, `AppShell`) and the curved footer (`home/SiteFooter.jsx`; `newTab` in the signed-in app so policies never tear down a running analysis). Tabs, filter pills and usage meters use the accent (`--focus`); the quote highlight is still viewer words only.

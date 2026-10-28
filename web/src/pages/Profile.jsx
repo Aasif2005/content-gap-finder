@@ -9,6 +9,8 @@ import { useAuth } from '../lib/auth.jsx';
 import { useMe } from '../lib/me.jsx';
 import { updateDisplayName } from '../lib/profile.js';
 import { navigate } from '../lib/router.jsx';
+import { useColorMode } from '../lib/colorMode.js';
+import { cx } from '../lib/cx.js';
 
 function NameForm({ user }) {
   const { reloadUser } = useAuth();
@@ -115,6 +117,39 @@ function Allowance({ me, error, loading, refresh }) {
   );
 }
 
+const CHOICES = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
+/** System / Light / Dark, shared with the switch in the header. */
+function Appearance() {
+  const { choice, choose } = useColorMode();
+  return (
+    <div role="radiogroup" aria-label="Appearance" className="inline-flex rounded-full bg-surface-2 p-1">
+      {CHOICES.map((c) => {
+        const on = choice === c.value;
+        return (
+          <button
+            key={c.value}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => choose(c.value)}
+            className={cx(
+              'min-h-10 rounded-full px-5 text-[15px] transition-colors',
+              on ? 'bg-surface font-semibold text-fg shadow-[0_6px_18px_-10px_rgba(15,30,46,0.35)]' : 'text-fg-2 hover:text-fg'
+            )}
+          >
+            {c.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Your account: who you are, how you log in, today's allowance, your data, log out, delete. */
 export default function Profile() {
   const { user, signOutUser } = useAuth();
@@ -125,7 +160,7 @@ export default function Profile() {
 
   if (!user) return null; // the route guard sends a logged-out visitor to log in
 
-  const since = memberSince(me?.user?.createdAt);
+  const since = memberSince(user.createdAt ?? me?.user?.createdAt);
   const display = user.name || user.email?.split('@')[0] || 'Your account';
 
   const logOut = async () => {
@@ -147,7 +182,7 @@ export default function Profile() {
           <h1 className="break-words text-[32px] font-semibold leading-[1.1] tracking-[-0.03em]">{display}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-base text-fg-2">
             <span className="break-all">{user.email}</span>
-            {since ? <span>· member since {since}</span> : (loading && <Skeleton className="h-4 w-36" />)}
+            {since && <span>· member since {since}</span>}
           </div>
         </div>
       </header>
@@ -163,6 +198,10 @@ export default function Profile() {
 
         <SettingRow title="Today’s allowance" description={resetsText(me?.resetsAt)}>
           <Allowance me={me} error={error} loading={loading} refresh={refresh} />
+        </SettingRow>
+
+        <SettingRow title="Appearance" description="Light is Lunar Cream, dark is Saturn Dusk. System follows your device.">
+          <Appearance />
         </SettingRow>
 
         <SettingRow title="Your data" description="What we keep.">

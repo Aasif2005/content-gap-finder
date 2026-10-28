@@ -14,7 +14,7 @@ export function AllowancePanel({ me, error, loading, onRetry }) {
   const reset = me ? resetTimeLabel(me.resetsAt) : '';
   return (
     <Panel as="section" aria-labelledby="allowance-h">
-      <h2 id="allowance-h" className="text-[19px] font-semibold tracking-[-0.01em]">Today&rsquo;s allowance</h2>
+      <h2 id="allowance-h" className="text-[26px] font-semibold tracking-[-0.02em]">Today&rsquo;s allowance</h2>
       {loading || !me ? (
         <div role="status" aria-label="Loading your allowance" className="mt-5 space-y-5">
           <Skeleton className="h-10 w-full" />

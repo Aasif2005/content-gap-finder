@@ -2,6 +2,7 @@ import { cloneElement, useId, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cx } from '../lib/cx.js';
 import { Button } from './ui/Button.jsx';
+import { ShinyButton } from './ui/ShinyButton.jsx';
 import { Checkbox } from './ui/Checkbox.jsx';
 import { Field, Input } from './ui/Field.jsx';
 import { Panel } from './ui/Panel.jsx';
@@ -25,7 +26,7 @@ const TYPES = [
 
 function Pills({ options, value, onChange, name, disabled }) {
   return (
-    <div role="radiogroup" aria-label={name} className="inline-flex flex-wrap rounded-control bg-surface-2 p-0.5">
+    <div role="radiogroup" aria-label={name} className="inline-flex flex-wrap gap-0.5 rounded-full bg-surface-2 p-1">
       {options.map((o) => (
         <button
           key={o.value}
@@ -35,10 +36,10 @@ function Pills({ options, value, onChange, name, disabled }) {
           disabled={disabled}
           onClick={() => onChange(o.value)}
           className={cx(
-            'min-h-11 rounded-[8px] border px-3.5 text-[15px] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-55',
+            'min-h-10 rounded-full px-4 text-[15px] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-55',
             value === o.value
-              ? 'border-line-strong bg-surface font-semibold text-fg'
-              : 'border-transparent font-medium text-fg-2 hover:bg-hover hover:text-fg'
+              ? 'bg-ink font-semibold text-on-ink'
+              : 'font-medium text-fg-2 hover:bg-hover hover:text-fg'
           )}
         >
           {o.label}
@@ -69,11 +70,18 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
   );
 
   const filtersId = useId();
+  const [options, setOptions] = useState(Boolean(initial.window && initial.window !== '7d') || Boolean(initial.contentType && initial.contentType !== 'both') || advanced);
+  const windowText = window === 'custom' ? 'Custom range' : `Last ${WINDOWS.find((w) => w.value === window)?.label ?? '7 days'}`;
+  const formatText = contentType === 'both' ? 'Both formats' : (TYPES.find((t) => t.value === contentType)?.label ?? 'Both formats');
+  const summaryLine = `${windowText} · ${formatText}`;
   const channelMode = mode === 'channel';
   const ready = channelMode ? channelId.trim().length > 1 : niche.trim().length >= 2;
 
   const submit = (e) => {
     e.preventDefault();
+    // Where the search pill is on screen: the thinking orb flies out from there.
+    const box = e.currentTarget.querySelector('[data-orb-origin]')?.getBoundingClientRect();
+    const origin = box ? { x: box.left + box.width / 2, y: box.top + box.height / 2, w: box.width } : undefined;
     if (!ready || busy) return;
     if (window === 'custom' && !customAfter) return;
     onSubmit({
@@ -90,13 +98,13 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
       regionCode: channelMode ? undefined : regionCode.trim() || undefined,
       relevanceLanguage: channelMode ? undefined : relevanceLanguage.trim() || undefined,
       deepScan: channelMode ? false : deepScan,
-    });
+    }, { origin });
   };
 
   return (
-    <form onSubmit={submit} className="space-y-4">
+    <form onSubmit={submit} className="space-y-5">
       {/* The search console: one panel, the field and the button on one line. */}
-      <Panel padding="none" className="flex flex-col gap-2 p-2 sm:flex-row">
+      <Panel padding="none" data-orb-origin="" className="flex flex-col gap-2 rounded-[2rem] p-2.5 sm:flex-row">
         {channelMode ? (
           <input
             value={channelId}
@@ -116,59 +124,77 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
             className={mainInputCls}
           />
         )}
-        <Button type="submit" size="lg" disabled={busy || !ready} className="shrink-0">
+        <ShinyButton type="submit" disabled={busy || !ready} loading={busy} className="shrink-0">
           {busy ? 'Analyzing…' : 'Find gaps'}
-        </Button>
+        </ShinyButton>
       </Panel>
 
-      <p className="max-w-[68ch] text-sm leading-relaxed text-fg-3">
-        {channelMode
-          ? 'Analyses that channel\u2019s own recent uploads and its own viewers\u2019 comments — what your audience keeps asking for and you have not made. Cheaper and more precise than a niche search, because there is no question what the videos are about.'
-          : 'Searches YouTube for the niche, then mines the comments on what it finds.'}
-      </p>
+      {channelMode && (
+        <p className="text-center text-[13px] text-fg-3">
+          Scoped to this channel&rsquo;s own uploads and its viewers&rsquo; comments.
+        </p>
+      )}
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        {/* Not <label>: a label forwards clicks to its first button, so clicking
-            the word "Published" silently switched the window to 24 hours. */}
-        <div className="flex flex-wrap items-center gap-3 text-sm text-fg-2">
-          <span className="font-medium" aria-hidden="true">Published</span>
-          <Pills name="Published: time window" options={WINDOWS} value={window} onChange={setWindow} disabled={busy} />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 text-sm text-fg-2">
-          <span className="font-medium" aria-hidden="true">Format</span>
-          <Pills name="Format: content type" options={TYPES} value={contentType} onChange={setContentType} disabled={busy} />
-        </div>
-
-        {window === 'custom' && (
-          <label className="flex items-center gap-3 text-sm text-fg-2">
-            <span className="font-medium">Since</span>
-            <input
-              type="date"
-              value={customAfter}
-              max={todayISO()}
-              min={daysAgoISO(365)}
-              onChange={(e) => setCustomAfter(e.target.value)}
-              disabled={busy}
-              aria-label="Custom range start date"
-              className={cx(controlCls, 'min-h-11 font-mono nums')}
-            />
-          </label>
-        )}
-
-        <Button
-          variant="ghost"
-          onClick={() => setAdvanced((v) => !v)}
-          aria-expanded={advanced}
-          aria-controls={filtersId}
-          className="-ml-2"
+      {/* One quiet line stands in for the controls; it opens them. */}
+      <div className="flex flex-col items-center gap-4">
+        <button
+          type="button"
+          onClick={() => setOptions((v) => !v)}
+          aria-expanded={options}
+          aria-controls={`${filtersId}-options`}
+          className="inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-[15px] text-fg-2 transition-colors hover:bg-hover hover:text-fg"
         >
-          {advanced ? 'Hide filters' : 'More filters'}
-          <ChevronDown aria-hidden className={cx('h-4 w-4', advanced && 'rotate-180')} />
-        </Button>
+          {summaryLine}
+          <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform', options && 'rotate-180')} />
+        </button>
+
+        <Collapse open={options} id={`${filtersId}-options`}>
+          <div className="flex w-full flex-col items-center gap-4 pt-1">
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+              {/* Not <label>: a label forwards clicks to its first button, so clicking
+                  the word "Published" silently switched the window to 24 hours. */}
+              <div className="flex flex-wrap items-center gap-3 text-sm text-fg-2">
+                <span className="font-medium" aria-hidden="true">Published</span>
+                <Pills name="Published: time window" options={WINDOWS} value={window} onChange={setWindow} disabled={busy} />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 text-sm text-fg-2">
+                <span className="font-medium" aria-hidden="true">Format</span>
+                <Pills name="Format: content type" options={TYPES} value={contentType} onChange={setContentType} disabled={busy} />
+              </div>
+            </div>
+
+            {window === 'custom' && (
+              <label className="flex items-center gap-3 text-sm text-fg-2">
+                <span className="font-medium">Since</span>
+                <input
+                  type="date"
+                  value={customAfter}
+                  max={todayISO()}
+                  min={daysAgoISO(365)}
+                  onChange={(e) => setCustomAfter(e.target.value)}
+                  disabled={busy}
+                  aria-label="Custom range start date"
+                  className={cx(controlCls, 'min-h-11 font-mono nums')}
+                />
+              </label>
+            )}
+
+            <Button
+              variant="ghost"
+              onClick={() => setAdvanced((v) => !v)}
+              aria-expanded={advanced}
+              aria-controls={filtersId}
+            >
+              {advanced ? 'Hide filters' : 'More filters'}
+              <ChevronDown aria-hidden className={cx('h-4 w-4', advanced && 'rotate-180')} />
+            </Button>
+          </div>
+        </Collapse>
       </div>
 
-      {advanced && (
+      {/* Tied to the options line: closing "Last 7 days · …" closes the filters with it. */}
+      <Collapse open={options && advanced}>
         <Panel id={filtersId} className="grid gap-x-5 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
           {/* Region and language narrow WHICH videos a niche search returns. A
               channel's own uploads are already exactly the right videos, so
@@ -212,8 +238,25 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
             </Checkbox>
           )}
         </Panel>
-      )}
+      </Collapse>
     </form>
+  );
+}
+
+/** Height-and-fade collapse (grid rows 0fr to 1fr). Children stay mounted, so their state survives; closed, they are inert. */
+function Collapse({ open, id, children }) {
+  return (
+    <div
+      id={id}
+      aria-hidden={!open}
+      inert={open ? undefined : ''}
+      className={cx(
+        'grid w-full transition-[grid-template-rows,opacity] duration-300 ease-[var(--ease-out)] motion-reduce:transition-none',
+        open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+      )}
+    >
+      <div className="-mx-2 -my-1 min-h-0 overflow-hidden px-2 py-1">{children}</div>
+    </div>
   );
 }
 

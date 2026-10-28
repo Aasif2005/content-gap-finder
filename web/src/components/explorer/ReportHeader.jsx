@@ -31,7 +31,7 @@ export function ReportHeader({ result, canRun, busy, formOpen, onToggleForm, onR
     <header>
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="min-w-0 flex-1 basis-80">
-          <h1 className="text-balance break-words text-[34px] font-semibold leading-[1.1] tracking-[-0.03em]">
+          <h1 className="text-balance break-words text-[40px] font-semibold leading-[1.05] tracking-[-0.035em] sm:text-[48px]">
             {reportName(result)}
           </h1>
           <p className="nums mt-2 text-[15px] text-fg-2">{reportMeta(result).join(' · ')}</p>
@@ -55,7 +55,7 @@ export function ReportHeader({ result, canRun, busy, formOpen, onToggleForm, onR
           )}
         </div>
 
-        <div className="flex flex-wrap gap-2.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {result.runId && (
             <Button variant="secondary" onClick={share} title="Copies a link to this saved report. Opening it costs no quota.">
               <Link2 aria-hidden className="h-4 w-4" />
@@ -65,7 +65,7 @@ export function ReportHeader({ result, canRun, busy, formOpen, onToggleForm, onR
           <ExportMenu result={result} />
           {canRun && (
             <>
-              <Button variant="secondary" onClick={onRefresh} disabled={busy} title="Re-run against live data. Spends one of today's analyses.">
+              <Button variant="ghost" onClick={onRefresh} disabled={busy} title="Re-run against live data. Spends one of today's analyses.">
                 <RefreshCw aria-hidden className="h-4 w-4" />
                 Refresh
               </Button>

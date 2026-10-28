@@ -46,14 +46,20 @@ export const tabCounts = (result) => ({
   avoid: result.avoid?.length ?? 0,
 });
 
+const PREVIEW = 3;
+
 /** The four tabs and the active one's list. Remounted per report, so each opens on Trending now. */
 export function ReportTabs({ result, canMake, canRun }) {
   const [tab, setTab] = useState('topics');
+  const [expanded, setExpanded] = useState({}); // tabs whose full list is open; the rest show the first few
+
   const uid = useId();
   const refs = useRef({});
   const channel = Boolean(result.channelMode);
   const counts = tabCounts(result);
   const active = TABS.find((t) => t.key === tab);
+  const limit = expanded[tab] ? Infinity : PREVIEW;
+  const total = counts[tab];
 
   // Roving focus: arrows, Home and End move between tabs, as in any tab list.
   const onKeyDown = (e) => {
@@ -76,7 +82,7 @@ export function ReportTabs({ result, canMake, canRun }) {
         role="tablist"
         aria-label="Report sections"
         onKeyDown={onKeyDown}
-        className="-mx-4 flex gap-7 overflow-x-auto border-b border-line-strong px-4 sm:mx-0 sm:px-0"
+        className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 sm:mx-0 sm:inline-flex sm:max-w-full sm:rounded-full sm:bg-surface-2 sm:p-1 sm:px-1"
       >
         {TABS.map((t) => {
           const on = tab === t.key;
@@ -93,12 +99,12 @@ export function ReportTabs({ result, canMake, canRun }) {
               onClick={() => setTab(t.key)}
               title={t.hint(channel)}
               className={cx(
-                '-mb-px inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 py-2.5 text-base transition-colors',
-                on ? 'border-ink font-semibold text-fg' : 'border-transparent text-fg-3 hover:text-fg'
+                'inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-[15px] transition-colors',
+                on ? 'bg-ink font-semibold text-on-ink' : 'text-fg-2 hover:bg-hover hover:text-fg'
               )}
             >
               {t.label}
-              <span className={cx('nums font-mono text-xs', on && 'text-fg-2')}>{counts[t.key]}</span>
+              <span className={cx('nums font-mono text-xs', on ? 'opacity-80' : 'text-fg-3')}>{counts[t.key]}</span>
             </button>
           );
         })}
@@ -113,7 +119,7 @@ export function ReportTabs({ result, canMake, canRun }) {
         <div className="mt-6 space-y-5">
           {tab === 'topics' &&
             (result.topics.length ? (
-              result.topics.map((t, i) => <TopicCard key={t.label + i} topic={t} rank={i + 1} />)
+              result.topics.slice(0, limit).map((t, i) => <TopicCard key={t.label + i} topic={t} rank={i + 1} />)
             ) : (
               <EmptyState title="No clear topics">
                 The videos in this window were too scattered to cluster. Try a broader niche or a longer window.
@@ -122,7 +128,7 @@ export function ReportTabs({ result, canMake, canRun }) {
 
           {tab === 'gaps' &&
             (result.gaps.length ? (
-              result.gaps.map((g, i) => (
+              result.gaps.slice(0, limit).map((g, i) => (
                 <GapCard key={`${result.runId}:${i}`} gap={g} rank={i + 1} runId={result.runId} index={i} canMake={canMake} />
               ))
             ) : (
@@ -160,7 +166,7 @@ export function ReportTabs({ result, canMake, canRun }) {
 
           {tab === 'objections' &&
             (result.objections?.length ? (
-              result.objections.map((o, i) => <ObjectionCard key={o.label + i} objection={o} rank={i + 1} />)
+              result.objections.slice(0, limit).map((o, i) => <ObjectionCard key={o.label + i} objection={o} rank={i + 1} />)
             ) : result.objections === undefined ? (
               <EmptyState title="Not computed for this report">
                 This report was saved before complaints were extracted.{canRun && ' Refresh it to get them.'}
@@ -175,7 +181,7 @@ export function ReportTabs({ result, canMake, canRun }) {
 
           {tab === 'avoid' &&
             (result.avoid.length ? (
-              result.avoid.map((a, i) => <AvoidCard key={a.label + i} item={a} rank={i + 1} />)
+              result.avoid.slice(0, limit).map((a, i) => <AvoidCard key={a.label + i} item={a} rank={i + 1} />)
             ) : (
               <EmptyState title="Nothing to avoid">
                 No angle in this set showed the high-views / low-engagement pattern. That is a good sign
@@ -183,6 +189,20 @@ export function ReportTabs({ result, canMake, canRun }) {
               </EmptyState>
             ))}
         </div>
+
+        {total > PREVIEW && (
+          <div className="mt-7 flex flex-col items-center gap-2">
+            <p className="nums text-[13px] text-fg-3">{expanded[tab] ? `All ${total}` : `Showing the top ${PREVIEW} of ${total}`}</p>
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => ({ ...e, [tab]: !e[tab] }))}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line-strong px-5 text-[15px] font-medium text-fg-2 transition-colors hover:bg-hover hover:text-fg"
+            >
+              {expanded[tab] ? 'Show fewer' : `Show all ${total}`}
+              <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform', expanded[tab] && 'rotate-180')} />
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

@@ -1,4 +1,4 @@
-import { test, describe } from 'node:test';
+import { test, describe, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -12,7 +12,7 @@ import { arrayOf } from '../src/services/analyze.js';
 import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage, namedLanguages, languageDecision, languageMismatch, languageCodeFor } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
 import { searchPlan } from '../src/lib/searchPlan.js';
-import { withLock } from '../src/lib/fileLock.js';
+import { connectMongo, closeMongo, dropDatabase, col } from '../src/lib/mongo.js';
 import { FORMULAS, classifyFormula, formulaHint, normalizeFormulaId } from '../src/lib/hookFormulas.js';
 import { scoreHook, band, weakOpener, partialHookCheck } from '../src/lib/hookScore.js';
 import { finalizeBrief, queryTest, briefPrompt, formulaList, systemPrompt, assessLength, buildOpportunity, titleCoverage, mismatchedFields } from '../src/services/brief.js';
@@ -39,13 +39,13 @@ import {
   resetTimeLabel, reportMeta, reportName, describeRunError, describeLoadError,
 } from '../../web/src/lib/runRows.js';
 import { authError } from '../../web/src/lib/authErrors.js';
-import { safeNext, nextSuffix, passwordStrength, looksLikeEmail } from '../../web/src/components/auth/helpers.js';
+import { safeNext, welcomeNext, nextSuffix, passwordStrength, looksLikeEmail } from '../../web/src/components/auth/helpers.js';
 import { memberSince, resetsText, normalizeName, deleteConfirmed } from '../../web/src/components/profile/helpers.js';
 import { charge, analysesAffordable, searchCallsPerAnalysis, unitsPerAnalysis, nextQuotaReset, quotaDay } from '../src/lib/quota.js';
 import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet } from 'jose';
 import { verifyIdToken, normalizeUser } from '../src/lib/firebaseToken.js';
 import { bearerToken, shouldTouch, requireUser, requireVerified, needsVerification } from '../src/lib/auth.js';
-import { openDb, upsertUser, getUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../src/lib/db.js';
+import { upsertUser, getUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../src/lib/db.js';
 import { ownRuns, featuredCandidates, trimFeatured } from '../src/lib/store.js';
 import { ownedBy, ownedWatch, atOwnerCap, hasDuplicate } from '../src/lib/watches.js';
 import { dailyLimitBody } from '../src/routes/api.js';
@@ -705,56 +705,6 @@ describe('searchPlan', () => {
 
   test('defaults to the cheapest single slice when given nothing', () => {
     assert.equal(searchPlan().length, 1);
-  });
-});
-
-describe('withLock', () => {
-  const tmpBase = path.join(os.tmpdir(), `cgf-lock-test-${process.pid}`);
-
-  test('runs the critical section and releases the lock afterwards', () => {
-    const target = `${tmpBase}-a`;
-    const result = withLock(target, () => 'done');
-    assert.equal(result, 'done');
-    assert.equal(fs.existsSync(`${target}.lock`), false, 'lock must not leak after a normal return');
-  });
-
-  test('releases the lock even when the critical section throws', () => {
-    const target = `${tmpBase}-b`;
-    assert.throws(() => withLock(target, () => { throw new Error('boom'); }), /boom/);
-    assert.equal(fs.existsSync(`${target}.lock`), false, 'a throw inside the lock must not wedge every later call');
-  });
-
-  test('creates the lock directory if it does not exist yet', () => {
-    // Real bug this covers: the lock file sits next to the file it guards, and
-    // callers legitimately create that directory INSIDE the locked section --
-    // that write is the thing being serialized. On the very first gap-history
-    // append for a niche, .state/niches/ did not exist, openSync(lock,'wx')
-    // threw ENOENT, and tryAcquire only handled EEXIST. The pipeline caught it
-    // and reported "could not compare against earlier runs", which looked
-    // exactly like recurrence being broken on every fresh install.
-    const nested = path.join(tmpBase + '-fresh', 'nested', 'deep', 'ledger.jsonl');
-    assert.equal(fs.existsSync(path.dirname(nested)), false, 'precondition: directory must not exist');
-    const out = withLock(nested, () => {
-      fs.mkdirSync(path.dirname(nested), { recursive: true });
-      fs.writeFileSync(nested, 'row\n');
-      return 'wrote';
-    });
-    assert.equal(out, 'wrote');
-    assert.equal(fs.existsSync(nested), true);
-    assert.equal(fs.existsSync(`${nested}.lock`), false, 'lock must still be cleaned up');
-  });
-
-  test('serializes against a lock already held, rather than running straight through', () => {
-    const target = `${tmpBase}-c`;
-    // Simulate another process holding the lock, but backdate it past the stale
-    // threshold so the spin loop reclaims it instead of waiting the full 2s.
-    fs.writeFileSync(`${target}.lock`, '');
-    const old = Date.now() - 60_000;
-    fs.utimesSync(`${target}.lock`, new Date(old), new Date(old));
-    let ran = false;
-    withLock(target, () => { ran = true; });
-    assert.equal(ran, true, 'a stale lock must be reclaimed, not block forever');
-    assert.equal(fs.existsSync(`${target}.lock`), false);
   });
 });
 
@@ -2269,114 +2219,115 @@ describe('auth middleware helpers', () => {
     assert.equal(shouldTouch(1000, 61_001), true);
   });
 
-  test('requireUser: 503 with no Firebase project, never a misleading 401', () => {
-    // The test process has no FIREBASE_PROJECT_ID, so accounts are not configured.
+  test('requireUser: 503 with no Firebase project, never a misleading 401', async () => {
+    const { config } = await import('../src/config.js');
+    const saved = config.firebase.projectId;
+    config.firebase.projectId = ''; // whatever .env says, this test is about the unconfigured case
     let sent;
     const res = { status(c) { sent = { status: c }; return this; }, json(b) { sent.body = b; } };
-    requireUser({ user: null }, res, () => assert.fail('must not pass'));
+    try {
+      requireUser({ user: null }, res, () => assert.fail('must not pass'));
+    } finally {
+      config.firebase.projectId = saved;
+    }
     assert.equal(sent.status, 503);
     assert.equal(sent.body.code, 'AUTH_NOT_CONFIGURED');
   });
 });
 
-describe('accounts database', () => {
+// These talk to a real MongoDB: a throwaway database with a random name on the
+// cluster in MONGODB_URI, dropped afterwards. Skipped when no URI is set.
+describe('accounts database', { skip: !process.env.MONGODB_URI && 'MONGODB_URI not set' }, () => {
   const DAY = '2026-10-26';
   const user = (uid) => ({ uid, email: `${uid}@x.com`, name: uid, picture: null, provider: 'password', emailVerified: false });
 
-  test('upsertUser creates once, then refreshes the profile and keeps created_at', () => {
-    const db = openDb(':memory:');
-    const first = upsertUser(user('a'), db);
+  before(() => connectMongo({ uri: process.env.MONGODB_URI, dbName: `gs_test_${process.pid}_${Date.now()}` }));
+  after(async () => { await dropDatabase(); await closeMongo(); });
+  beforeEach(async () => {
+    for (const c of ['users', 'usage', 'user_runs']) await col(c).deleteMany({});
+  });
+
+  test('upsertUser creates once, then refreshes the profile and keeps createdAt', async () => {
+    const first = await upsertUser(user('a'));
     assert.equal(first.email, 'a@x.com');
     assert.equal(first.termsAcceptedAt, null);
-    const again = upsertUser({ ...user('a'), name: 'New Name', emailVerified: true }, db);
+    const again = await upsertUser({ ...user('a'), name: 'New Name', emailVerified: true });
     assert.equal(again.name, 'New Name');
     assert.equal(again.emailVerified, true);
     assert.equal(again.createdAt, first.createdAt);
-    assert.equal(getUser('nobody', db), null);
+    assert.equal(await getUser('nobody'), null);
   });
 
-  test('acceptTerms stamps the account, and only an account that exists', () => {
-    const db = openDb(':memory:');
-    upsertUser(user('a'), db);
-    const at = acceptTerms('a', db);
-    assert.equal(getUser('a', db).termsAcceptedAt, at);
-    assert.equal(acceptTerms('ghost', db), null);
+  test('acceptTerms stamps the account, and only an account that exists', async () => {
+    await upsertUser(user('a'));
+    const at = await acceptTerms('a');
+    assert.equal((await getUser('a')).termsAcceptedAt, at);
+    assert.equal(await acceptTerms('ghost'), null);
   });
 
-  test('tryConsume allows the limit and refuses the next', () => {
-    const db = openDb(':memory:');
-    const results = [1, 2, 3, 4].map(() => tryConsume('a', DAY, 'analyses', 3, db));
+  test('tryConsume allows the limit and refuses the next', async () => {
+    const results = [];
+    for (let i = 0; i < 4; i++) results.push(await tryConsume('a', DAY, 'analyses', 3));
     assert.deepEqual(results.map((r) => r.ok), [true, true, true, false]);
     assert.deepEqual(results.map((r) => r.used), [1, 2, 3, 3]);
     assert.equal(results[3].limit, 3);
-    assert.equal(usageFor('a', DAY, db).analyses, 3);
+    assert.equal((await usageFor('a', DAY)).analyses, 3);
   });
 
-  test('kinds are counted separately, and a limit of 0 refuses everything', () => {
-    const db = openDb(':memory:');
-    assert.equal(tryConsume('a', DAY, 'briefs', 0, db).ok, false);
-    assert.equal(tryConsume('a', DAY, 'analyses', 1, db).ok, true);
-    assert.deepEqual(usageFor('a', DAY, db), { day: DAY, analyses: 1, briefs: 0 });
-    assert.throws(() => tryConsume('a', DAY, 'analyses; DROP TABLE usage', 1, db), /Unknown usage kind/);
+  test('concurrent requests cannot overspend the allowance', async () => {
+    const results = await Promise.all(Array.from({ length: 12 }, () => tryConsume('racer', DAY, 'analyses', 3)));
+    assert.equal(results.filter((r) => r.ok).length, 3);
+    assert.equal((await usageFor('racer', DAY)).analyses, 3);
   });
 
-  test('a new day starts from zero; another person is unaffected', () => {
-    const db = openDb(':memory:');
-    for (let i = 0; i < 3; i++) tryConsume('a', DAY, 'analyses', 3, db);
-    assert.equal(tryConsume('a', DAY, 'analyses', 3, db).ok, false);
-    assert.equal(tryConsume('a', '2026-10-27', 'analyses', 3, db).ok, true);
-    assert.equal(tryConsume('b', DAY, 'analyses', 3, db).ok, true);
+  test('kinds are counted separately, and a limit of 0 refuses everything', async () => {
+    assert.equal((await tryConsume('a', DAY, 'briefs', 0)).ok, false);
+    assert.equal((await tryConsume('a', DAY, 'analyses', 1)).ok, true);
+    assert.deepEqual(await usageFor('a', DAY), { day: DAY, analyses: 1, briefs: 0 });
+    await assert.rejects(() => tryConsume('a', DAY, 'analyses; DROP', 1), /Unknown usage kind/);
   });
 
-  test('refund gives one back, never below zero, and only for that day', () => {
-    const db = openDb(':memory:');
-    for (let i = 0; i < 3; i++) tryConsume('a', DAY, 'analyses', 3, db);
-    refund('a', DAY, 'analyses', db);
-    assert.equal(usageFor('a', DAY, db).analyses, 2);
-    assert.equal(tryConsume('a', DAY, 'analyses', 3, db).ok, true);
-    refund('nobody', DAY, 'analyses', db);
-    refund('a', '2026-01-01', 'analyses', db);
-    for (let i = 0; i < 5; i++) refund('a', DAY, 'briefs', db);
-    assert.equal(usageFor('a', DAY, db).briefs, 0);
+  test('a new day starts from zero; another person is unaffected', async () => {
+    for (let i = 0; i < 3; i++) await tryConsume('a', DAY, 'analyses', 3);
+    assert.equal((await tryConsume('a', DAY, 'analyses', 3)).ok, false);
+    assert.equal((await tryConsume('a', '2026-10-27', 'analyses', 3)).ok, true);
+    assert.equal((await tryConsume('b', DAY, 'analyses', 3)).ok, true);
   });
 
-  test('linkRun is idempotent, lists newest first, and ignores a deleted account', () => {
-    const db = openDb(':memory:');
-    upsertUser(user('a'), db);
-    assert.equal(linkRun('a', 'run-1', db), true);
-    assert.equal(linkRun('a', 'run-1', db), false);
-    linkRun('a', 'run-2', db);
-    assert.deepEqual(runIdsFor('a', db).sort(), ['run-1', 'run-2']);
-    assert.equal(linkRun('ghost', 'run-1', db), false); // no such account
-    assert.deepEqual(runIdsFor('ghost', db), []);
+  test('refund gives one back, never below zero, and only for that day', async () => {
+    for (let i = 0; i < 3; i++) await tryConsume('a', DAY, 'analyses', 3);
+    await refund('a', DAY, 'analyses');
+    assert.equal((await usageFor('a', DAY)).analyses, 2);
+    assert.equal((await tryConsume('a', DAY, 'analyses', 3)).ok, true);
+    await refund('nobody', DAY, 'analyses');
+    await refund('a', '2026-01-01', 'analyses');
+    for (let i = 0; i < 5; i++) await refund('a', DAY, 'briefs');
+    assert.equal((await usageFor('a', DAY)).briefs, 0);
   });
 
-  test('deleteUserData removes one account and leaves everyone else alone', () => {
-    const db = openDb(':memory:');
+  test('linkRun is idempotent, lists runs, and ignores a deleted account', async () => {
+    await upsertUser(user('a'));
+    assert.equal(await linkRun('a', 'run-1'), true);
+    assert.equal(await linkRun('a', 'run-1'), false);
+    await linkRun('a', 'run-2');
+    assert.deepEqual((await runIdsFor('a')).sort(), ['run-1', 'run-2']);
+    assert.equal(await linkRun('ghost', 'run-1'), false);
+    assert.deepEqual(await runIdsFor('ghost'), []);
+  });
+
+  test('deleteUserData removes one account and leaves everyone else alone', async () => {
     for (const uid of ['a', 'b']) {
-      upsertUser(user(uid), db);
-      linkRun(uid, 'shared-run', db);
-      tryConsume(uid, DAY, 'analyses', 3, db);
+      await upsertUser(user(uid));
+      await linkRun(uid, 'shared-run');
+      await tryConsume(uid, DAY, 'analyses', 3);
     }
-    const gone = deleteUserData('a', db);
-    assert.deepEqual(gone, { users: 1, runs: 1, usage: 1 });
-    assert.equal(getUser('a', db), null);
-    assert.deepEqual(runIdsFor('a', db), []);
-    assert.equal(usageFor('a', DAY, db).analyses, 0);
-    assert.equal(getUser('b', db).email, 'b@x.com');
-    assert.deepEqual(runIdsFor('b', db), ['shared-run']);
-    assert.equal(usageFor('b', DAY, db).analyses, 1);
-  });
-
-  test('migrations are recorded and re-opening a file does not re-run them', () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gap-db-')), 'app.db');
-    const a = openDb(file);
-    upsertUser(user('a'), a);
-    a.close();
-    const b = openDb(file);
-    assert.equal(getUser('a', b).email, 'a@x.com');
-    assert.equal(b.prepare('PRAGMA user_version').get().user_version, 1);
-    b.close();
+    assert.deepEqual(await deleteUserData('a'), { users: 1, runs: 1, usage: 1 });
+    assert.equal(await getUser('a'), null);
+    assert.deepEqual(await runIdsFor('a'), []);
+    assert.equal((await usageFor('a', DAY)).analyses, 0);
+    assert.equal((await getUser('b')).email, 'b@x.com');
+    assert.deepEqual(await runIdsFor('b'), ['shared-run']);
+    assert.equal((await usageFor('b', DAY)).analyses, 1);
   });
 });
 
@@ -2666,6 +2617,16 @@ describe('web auth: plain-words errors', () => {
   test('an error of ours passes through untouched', () => {
     const ours = Object.assign(new Error('Accounts are not set up on this server yet.'), { code: 'NOT_CONFIGURED' });
     assert.equal(authError(ours), ours);
+  });
+});
+
+describe('welcomeNext (landing after sign-in)', () => {
+  test('goes through the welcome page when there is no destination', () => {
+    for (const none of [undefined, null, '', 'dashboard', '//evil.com', '/login']) assert.equal(welcomeNext(none), '/welcome', String(none));
+  });
+  test('goes straight to a safe destination', () => {
+    assert.equal(welcomeNext('/explore'), '/explore');
+    assert.equal(welcomeNext('/r/abc?x=1'), '/r/abc?x=1');
   });
 });
 

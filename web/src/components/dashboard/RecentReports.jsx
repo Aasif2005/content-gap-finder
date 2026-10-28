@@ -1,38 +1,38 @@
-import { ChevronRight } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import { Link } from '../../lib/router.jsx';
 import { Badge, Panel, Skeleton } from '../ui/index.js';
 
 /** The user's latest reports, newest first. `rows` come from toRunRow (lib/runRows.js). */
 export function RecentReports({ rows }) {
   return (
-    <Panel padding="none">
-      <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-5 sm:px-6">
-        <h2 className="text-[19px] font-semibold tracking-[-0.01em]">Recent reports</h2>
+    <section aria-labelledby="recent-h">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 id="recent-h" className="text-[26px] font-semibold tracking-[-0.02em]">Recent reports</h2>
+        <p className="text-sm text-fg-3">Kept for 30 days</p>
       </div>
-      <ul>
+      <ul className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {rows.map((r) => (
-          <li key={r.id} className="border-b border-line-soft">
+          <li key={r.id}>
             <Link
               href={r.href}
-              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-[18px] transition-colors hover:bg-hover sm:px-6"
+              className="group flex h-full min-h-[168px] flex-col justify-between rounded-panel border border-line bg-surface p-6 shadow-panel transition-colors hover:border-line-strong"
             >
-              <span className="min-w-0 flex-[1_1_220px]">
-                <span className="block break-words text-[17px] font-semibold leading-snug">{r.title}</span>
-                <span className="mt-1 block text-sm text-fg-2">{r.meta.join(' · ')}</span>
+              <span className="flex items-start justify-between gap-3">
+                <span className="text-[12px] font-semibold uppercase tracking-[0.12em] text-fg-3">{r.meta.slice(0, 2).join(' · ')}</span>
+                <ArrowUpRight aria-hidden className="h-4 w-4 shrink-0 text-fg-3 transition-colors group-hover:text-fg" />
               </span>
-              <span className="flex flex-none items-center gap-3 sm:gap-4">
-                {r.thin && <Badge tone="warn" title="Too few videos for the ranking to mean much">thin</Badge>}
-                <span className="nums font-mono text-[13px] text-fg-2">{r.counts}</span>
-                <ChevronRight aria-hidden className="h-4 w-4 text-fg-3" />
+              <span className="mt-4 block">
+                <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                  <span className="break-words text-[22px] font-semibold leading-tight tracking-[-0.015em]">{r.title}</span>
+                  {r.thin && <Badge tone="warn" title="Too few videos for the ranking to mean much">thin</Badge>}
+                </span>
+                <span className="nums mt-3 block border-t border-line-soft pt-3 font-mono text-[13px] text-fg-2">{r.counts}</span>
               </span>
             </Link>
           </li>
         ))}
       </ul>
-      <p className="px-5 py-4 text-sm text-fg-3 sm:px-6">
-        Reports are kept for 30 days, then removed to follow YouTube&rsquo;s data rules.
-      </p>
-    </Panel>
+    </section>
   );
 }
 

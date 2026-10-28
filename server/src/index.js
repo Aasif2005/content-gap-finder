@@ -8,6 +8,7 @@ import { config, assertConfig } from './config.js';
 import { router } from './routes/api.js';
 import * as scheduler from './services/scheduler.js';
 import * as retention from './services/retention.js';
+import { connectMongo, closeMongo } from './lib/mongo.js';
 
 assertConfig();
 
@@ -38,16 +39,33 @@ app.use((err, _req, res, _next) => {
   res.status(status).json({ error: err.message || 'Internal error', code: err.code ?? 'INTERNAL' });
 });
 
+// The database must be reachable before anything is served: every route reads it.
+try {
+  await connectMongo();
+} catch (err) {
+  console.error(`\n  ${err.message}\n`);
+  process.exit(1);
+}
+
 // Saved watches re-run themselves; see services/scheduler.js for why it is
 // deliberately conservative about quota and concurrency.
 scheduler.start();
 retention.start();
 
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   console.log(`  Gapstronaut API  http://localhost:${config.port}`);
+  console.log(`  database: MongoDB Atlas (${config.mongo.dbName})`);
   console.log(`  models: ${config.deepseek.analysisModel} (analysis)`);
   console.log(config.firebase.projectId
     ? `  accounts: Firebase project ${config.firebase.projectId}`
     : '  accounts: NOT CONFIGURED (set FIREBASE_PROJECT_ID); analyses, briefs and watches answer 503');
   console.log(`  youtube budget: ${config.youtube.searchDailyCalls} searches + ${config.youtube.dailyUnitBudget} units/day; data kept ${config.store.maxDataDays} days`);
 });
+
+// Let in-flight requests finish and close the database cleanly on stop/redeploy.
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.once(sig, () => {
+    server.close(() => closeMongo().finally(() => process.exit(0)));
+    setTimeout(() => process.exit(0), 5000).unref();
+  });
+}

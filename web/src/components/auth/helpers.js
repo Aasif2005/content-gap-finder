@@ -26,6 +26,15 @@ export function safeNext(next, fallback = FALLBACK_NEXT) {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+/**
+ * Where to go right after signing in or up. Someone headed somewhere specific (a report link, a
+ * page that sent them to log in) goes straight there. Otherwise they pass through the welcome
+ * page, which hands on to the dashboard.
+ */
+export function welcomeNext(next) {
+  return safeNext(next, null) ?? '/welcome';
+}
+
 /** `?next=...` to carry onto a link between the sign-in pages, or ''. Only a safe value is carried. */
 export function nextSuffix(next) {
   const safe = safeNext(next, null);

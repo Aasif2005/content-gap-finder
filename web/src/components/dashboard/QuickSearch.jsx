@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { Button } from '../ui/index.js';
+import { ShinyButton } from '../ui/index.js';
 import { formatLabel, windowLabel } from '../../lib/runRows.js';
 
 /**
@@ -13,7 +13,7 @@ export function QuickSearch({ value, onChange, onSubmit, error, inputRef }) {
   const errorId = `${id}-error`;
   return (
     <form onSubmit={onSubmit} noValidate className="mt-7">
-      <div className="flex flex-wrap gap-2.5 rounded-panel border border-line-strong bg-surface p-2 shadow-panel focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
+      <div className="flex flex-wrap gap-2.5 rounded-[2rem] border border-line-strong bg-surface p-2 pl-3 shadow-panel focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
         <label htmlFor={id} className="sr-only">Niche</label>
         <input
           ref={inputRef}
@@ -31,7 +31,7 @@ export function QuickSearch({ value, onChange, onSubmit, error, inputRef }) {
           <span>{windowLabel('7d')}</span>
           <span>{formatLabel('both')}</span>
         </p>
-        <Button type="submit" className="max-sm:w-full">Find gaps</Button>
+        <ShinyButton type="submit" className="max-sm:w-full">Find gaps</ShinyButton>
       </div>
       {error && <p id={errorId} role="alert" className="mt-2 text-[13px] leading-relaxed text-bad-fg">{error}</p>}
     </form>

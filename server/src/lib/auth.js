@@ -59,7 +59,7 @@ export async function loadUser(req, _res, next) {
       lastSweep = now;
     }
     if (shouldTouch(touched.get(user.uid), now)) {
-      upsertUser(user);
+      await upsertUser(user);
       touched.set(user.uid, now);
     }
     req.user = user;

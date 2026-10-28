@@ -8,7 +8,7 @@ export { searchPlan };
 const { base, apiKey } = config.youtube;
 
 async function call(endpoint, params, quotaKind, quotaTimes = 1) {
-  spend(quotaKind, quotaTimes); // reserve first: never fire a call we can't afford
+  await spend(quotaKind, quotaTimes); // reserve first: never fire a call we can't afford
   const url = new URL(`${base}/${endpoint}`);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));

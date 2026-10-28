@@ -16,6 +16,11 @@ import { getUser, upsertUser, acceptTerms, linkRun, runIdsFor, usageFor, tryCons
 
 export const router = express.Router();
 
+/** Express 4 does not catch a rejected promise, so every async handler goes through this. */
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+/** Account bookkeeping that runs when a job settles must never become an unhandled rejection. */
+const quietly = (p) => Promise.resolve(p).catch((err) => console.error('[account] bookkeeping failed:', err.message));
+
 // Who is calling, for every route below. Public routes ignore req.user; the ones
 // that need an account say so with requireUser.
 router.use(loadUser);
@@ -101,9 +106,9 @@ function validate(body) {
   return { niche, window, customAfter, contentType, gapMode, minViews, regionCode, relevanceLanguage, deepScan, channelId };
 }
 
-router.get('/health', (_req, res) => {
-  res.json({ ok: true, quota: quotaStatus(), cache: cache.stats(), store: store.stats(), phases: jobs.PHASES });
-});
+router.get('/health', wrap(async (_req, res) => {
+  res.json({ ok: true, quota: await quotaStatus(), cache: await cache.stats(), store: await store.stats(), phases: jobs.PHASES });
+}));
 
 /**
  * Starts an analysis. Returns immediately with either a cached result or a job
@@ -115,14 +120,9 @@ router.get('/health', (_req, res) => {
  * no YouTube quota and so is free -- and either way the report is linked to the
  * caller, so it shows up in their history.
  */
-router.post('/analyze', requireUser, requireVerified, (req, res, next) => {
+router.post('/analyze', requireUser, requireVerified, wrap(async (req, res) => {
   const uid = req.user.uid;
-  let input;
-  try {
-    input = validate(req.body ?? {});
-  } catch (err) {
-    return next(err);
-  }
+  const input = validate(req.body ?? {}); // a 400 reaches the error handler through wrap()
 
   const force = req.body?.force === true;
   const key = cache.cacheKey(input);
@@ -130,9 +130,9 @@ router.post('/analyze', requireUser, requireVerified, (req, res, next) => {
   // A cache hit costs nothing, so it bypasses the rate limit entirely --
   // browsing already-computed reports should never be throttled.
   if (!force) {
-    const hit = cache.get(key);
+    const hit = await cache.get(key);
     if (hit) {
-      linkRun(uid, hit.value?.runId);
+      await linkRun(uid, hit.value?.runId);
       return res.json({ status: 'done', cached: true, cacheAgeSeconds: hit.ageSeconds, result: hit.value });
     }
   }
@@ -142,7 +142,7 @@ router.post('/analyze', requireUser, requireVerified, (req, res, next) => {
   // server, so it still happens if the browser stops polling.
   const running = runner.runningJobFor(key);
   if (running) {
-    jobs.whenSettled(running, (err, result) => { if (!err) linkRun(uid, result?.runId); });
+    jobs.whenSettled(running, (err, result) => { if (!err) quietly(linkRun(uid, result?.runId)); });
     return res.status(202).json({ status: 'running', jobId: running, cached: false, joined: true });
   }
 
@@ -150,39 +150,41 @@ router.post('/analyze', requireUser, requireVerified, (req, res, next) => {
   // analyses is told so, rather than burning their hourly limit on refusals and
   // then seeing a misleading "rate limit" message.
   const day = quotaDay();
-  const used = tryConsume(uid, day, 'analyses', config.users.dailyAnalyses);
+  const used = await tryConsume(uid, day, 'analyses', limitsFor(req.user).analyses);
   if (!used.ok) return res.status(429).json(dailyLimitBody(used.limit, ['analysis', 'analyses']));
 
-  let proceeded = false;
-  rateLimit(req, res, () => {
-    proceeded = true;
-    let started;
-    try {
-      started = runner.startAnalysis(input, { force });
-    } catch (err) {
-      refund(uid, day, 'analyses');
-      return next(err);
-    }
-    if (started.status === 'done' || started.joined) {
-      // Raced into a hit or a join after all: nothing was spent.
-      refund(uid, day, 'analyses');
-      if (started.status === 'done') linkRun(uid, started.result?.runId);
-      else jobs.whenSettled(started.jobId, (err, result) => { if (!err) linkRun(uid, result?.runId); });
-    } else {
-      // Refund on ANY failure. Telling "failed before spending YouTube quota"
-      // from "failed after" would need the pipeline to report its spend, and the
-      // person who sees a failed run is owed the analysis either way; the quota
-      // ledger is what protects the project, not this counter.
-      jobs.whenSettled(started.jobId, (err, result) => {
-        if (err) refund(uid, day, 'analyses');
-        else linkRun(uid, result?.runId);
-      });
-    }
-    res.status(started.status === 'done' ? 200 : 202).json(started);
+  // The limiter answers 429 itself when it refuses; the allowance taken above was then never used.
+  const allowed = await new Promise((resolve) => {
+    let called = false;
+    rateLimit(req, res, () => { called = true; resolve(true); });
+    if (!called) resolve(false);
   });
-  // The limiter answered 429 itself; the allowance taken above was never used.
-  if (!proceeded) refund(uid, day, 'analyses');
-});
+  if (!allowed) return void (await refund(uid, day, 'analyses'));
+
+  let started;
+  try {
+    started = await runner.startAnalysis(input, { force });
+  } catch (err) {
+    await refund(uid, day, 'analyses');
+    throw err;
+  }
+  if (started.status === 'done' || started.joined) {
+    // Raced into a hit or a join after all: nothing was spent.
+    await refund(uid, day, 'analyses');
+    if (started.status === 'done') await linkRun(uid, started.result?.runId);
+    else jobs.whenSettled(started.jobId, (err, result) => { if (!err) quietly(linkRun(uid, result?.runId)); });
+  } else {
+    // Refund on ANY failure. Telling "failed before spending YouTube quota"
+    // from "failed after" would need the pipeline to report its spend, and the
+    // person who sees a failed run is owed the analysis either way; the quota
+    // ledger is what protects the project, not this counter.
+    jobs.whenSettled(started.jobId, (err, result) => {
+      if (err) quietly(refund(uid, day, 'analyses'));
+      else quietly(linkRun(uid, result?.runId));
+    });
+  }
+  res.status(started.status === 'done' ? 200 : 202).json(started);
+}));
 
 router.get('/jobs/:id', (req, res) => {
   const job = jobs.get(req.params.id);
@@ -205,18 +207,18 @@ router.get('/site', (_req, res) => {
   res.json({ contactEmail: config.site.contactEmail || null, dataMaxDays: config.store.maxDataDays });
 });
 
-router.get('/quota', (req, res) => {
+router.get('/quota', wrap(async (req, res) => {
   res.json({
-    ...quotaStatus({
+    ...(await quotaStatus({
       contentType: req.query.contentType,
       deepScan: req.query.deepScan === 'true',
       channelMode: req.query.channelMode === 'true',
-    }),
-    cache: cache.stats(),
+    })),
+    cache: await cache.stats(),
     cacheTtlSeconds: config.cache.ttlSeconds,
     rateLimitPerHour: config.rateLimit.perHour,
   });
-});
+}));
 
 /**
  * Report history, newest first. One row per persisted run with the counts and
@@ -229,12 +231,12 @@ const firstParam = (v) => (Array.isArray(v) ? v[0] : v) == null ? undefined : St
 // No upper bound let 1e20 overflow the next-run date and crash the scheduler.
 export const validInterval = (h) => Number.isFinite(h) && h >= config.scheduler.minIntervalHours && h <= config.scheduler.maxIntervalHours;
 
-router.get('/runs', (req, res) => {
+router.get('/runs', wrap(async (req, res) => {
   // Your history is the reports you ran or joined, not everyone's: the index is shared.
   if (!req.user) return res.json({ runs: [] });
   const limit = clampLimit(req.query.limit, 30, 200);
   res.json({
-    runs: store.ownRuns(store.listRuns({
+    runs: store.ownRuns(await store.listRuns({
       limit: Infinity,
       // Same key derivation the pipeline and the store use, so "runs of this
       // subject" means one thing everywhere.
@@ -244,9 +246,9 @@ router.get('/runs', (req, res) => {
       // Scopes history to one page's mode (niche explorer vs channel analyzer)
       // when the caller isn't already asking for one specific subject.
       channelMode: req.query.mode === 'channel' ? true : req.query.mode === 'niche' ? false : undefined,
-    }), runIdsFor(req.user.uid)).slice(0, limit),
+    }), await runIdsFor(req.user.uid)).slice(0, limit),
   });
-});
+}));
 
 /**
  * A finished report, by run id. This is what makes a report shareable and
@@ -254,9 +256,9 @@ router.get('/runs', (req, res) => {
  * 3-hour query-hash cache, so a page reload lost it and there was no URL to
  * send anyone. Costs no quota -- it is a disk read of an already-paid-for run.
  */
-router.get('/runs/:runId', (req, res) => {
-  const result = store.readRun(req.params.runId);
-  if (!result && store.wasExpired(req.params.runId)) {
+router.get('/runs/:runId', wrap(async (req, res) => {
+  const result = await store.readRun(req.params.runId);
+  if (!result && await store.wasExpired(req.params.runId)) {
     return res.status(410).json({
       error: `This report was removed: YouTube data is kept for ${config.store.maxDataDays} days. Run the search again to see current numbers.`,
       code: 'RUN_EXPIRED',
@@ -264,22 +266,22 @@ router.get('/runs/:runId', (req, res) => {
   }
   if (!result) return res.status(404).json({ error: 'Report not found or pruned.', code: 'RUN_NOT_FOUND' });
   res.json({ status: 'done', persisted: true, result });
-});
+}));
 
 /**
  * "Make it": hooks, script beats and SEO for one gap of a saved report. A saved
  * brief is a disk read; generating one is a single DeepSeek call, polled through
  * the job registry like an analysis (a reasoning model can take over a minute).
  */
-router.get('/runs/:runId/gaps/:i/brief', (req, res) => {
+router.get('/runs/:runId/gaps/:i/brief', wrap(async (req, res) => {
   // 200 with a null brief rather than a 404: "none yet" is the normal state of
   // most gaps, and the page asks for every one on load.
   const language = String(req.query.language ?? '').slice(0, 40);
-  const saved = store.readBrief(req.params.runId, Number(req.params.i), language);
+  const saved = await store.readBrief(req.params.runId, Number(req.params.i), language);
   res.json({ status: saved ? 'done' : 'none', cached: Boolean(saved), brief: saved });
-});
+}));
 
-router.post('/runs/:runId/gaps/:i/brief', requireUser, requireVerified, (req, res, next) => {
+router.post('/runs/:runId/gaps/:i/brief', requireUser, requireVerified, wrap(async (req, res) => {
   const uid = req.user.uid;
   const index = Number(req.params.i);
   const force = req.body?.force === true;
@@ -289,13 +291,13 @@ router.post('/runs/:runId/gaps/:i/brief', requireUser, requireVerified, (req, re
   const style = ['points', 'script'].includes(req.body?.style) ? req.body.style : '';
   const minutes = Number(req.body?.targetMinutes);
   const targetMinutes = Number.isInteger(minutes) && minutes >= 1 && minutes <= config.brief.maxMinutes ? minutes : null;
-  try {
+  {
     // Saved briefs and joins of a running job cost nothing, so they skip the limiter.
-    const free = !force && (store.readBrief(req.params.runId, index, language) || null);
+    const free = !force && ((await store.readBrief(req.params.runId, index, language)) || null);
     if (free) return res.json({ status: 'done', cached: true, brief: free });
     // Joining a draft already running, and asking for a gap that does not exist,
     // cost nothing, so neither is charged to the hourly allowance.
-    const peek = brief.peekBrief(req.params.runId, index, language);
+    const peek = await brief.peekBrief(req.params.runId, index, language);
     if (peek.missing) return res.status(404).json({ error: 'That gap was not found in this report.', code: 'GAP_NOT_FOUND' });
     if (peek.jobId) {
       if (force) return res.status(409).json({ error: 'A draft of this brief is already running. Wait for it, then redraft.', code: 'BRIEF_RUNNING', jobId: peek.jobId });
@@ -304,29 +306,28 @@ router.post('/runs/:runId/gaps/:i/brief', requireUser, requireVerified, (req, re
     // Only a NEW generation (one DeepSeek call) takes a daily brief; see /analyze
     // for why the allowance comes before the hourly limiter.
     const day = quotaDay();
-    const used = tryConsume(uid, day, 'briefs', config.users.dailyBriefs);
+    const used = await tryConsume(uid, day, 'briefs', limitsFor(req.user).briefs);
     if (!used.ok) return res.status(429).json(dailyLimitBody(used.limit, ['brief', 'briefs']));
 
-    let proceeded = false;
-    briefRateLimit(req, res, () => {
-      proceeded = true;
-      try {
-        const started = brief.startBrief(req.params.runId, index, { force, language, format, style, targetMinutes, core: req.body?.core === true,
-          // Which saved brief's essentials to keep; null re-plans from scratch.
-          planFrom: typeof req.body?.planFrom === 'string' ? req.body.planFrom.trim().slice(0, 40) : null });
-        if (started.status === 'done' || !started.jobId) refund(uid, day, 'briefs');
-        else jobs.whenSettled(started.jobId, (err) => { if (err) refund(uid, day, 'briefs'); }); // a failed draft is owed back
-        res.status(started.status === 'done' ? 200 : 202).json(started);
-      } catch (err) {
-        refund(uid, day, 'briefs');
-        next(err);
-      }
+    const allowed = await new Promise((resolve) => {
+      let called = false;
+      briefRateLimit(req, res, () => { called = true; resolve(true); });
+      if (!called) resolve(false);
     });
-    if (!proceeded) refund(uid, day, 'briefs');
-  } catch (err) {
-    next(err);
+    if (!allowed) return void (await refund(uid, day, 'briefs'));
+    try {
+      const started = await brief.startBrief(req.params.runId, index, { force, language, format, style, targetMinutes, core: req.body?.core === true,
+        // Which saved brief's essentials to keep; null re-plans from scratch.
+        planFrom: typeof req.body?.planFrom === 'string' ? req.body.planFrom.trim().slice(0, 40) : null });
+      if (started.status === 'done' || !started.jobId) await refund(uid, day, 'briefs');
+      else jobs.whenSettled(started.jobId, (err) => { if (err) quietly(refund(uid, day, 'briefs')); }); // a failed draft is owed back
+      res.status(started.status === 'done' ? 200 : 202).json(started);
+    } catch (err) {
+      await refund(uid, day, 'briefs');
+      throw err;
+    }
   }
-});
+}));
 
 // ------------------------------------------------------------- watches ----
 
@@ -335,139 +336,141 @@ router.post('/runs/:runId/gaps/:i/brief', requireUser, requireVerified, (req, re
  * the baseline gap recurrence needs -- without something re-running the
  * analysis, "recurring" can never become true.
  */
-router.get('/watches', requireUser, (req, res) => {
+router.get('/watches', requireUser, wrap(async (req, res) => {
   res.json({
-    watches: watches.ownedBy(watches.list(), req.user.uid).map(publicWatch),
+    watches: watches.ownedBy(await watches.list(), req.user.uid).map(publicWatch),
     minIntervalHours: config.scheduler.minIntervalHours,
     // What THIS person may keep, not the server-wide ceiling.
     maxWatches: config.users.maxWatches,
     schedulerEnabled: config.scheduler.enabled,
   });
-});
+}));
 
-router.post('/watches', requireUser, requireVerified, (req, res, next) => {
+router.post('/watches', requireUser, requireVerified, wrap(async (req, res) => {
   const uid = req.user.uid;
-  let input;
-  try {
-    input = validate(req.body ?? {});
+  const input = validate(req.body ?? {});
 
-    const existing = watches.list();
-    if (watches.atOwnerCap(existing, uid, config.users.maxWatches)) {
-      throw bad(`You can keep ${config.users.maxWatches} ${config.users.maxWatches === 1 ? 'watch' : 'watches'}. Delete one first.`);
-    }
-    if (existing.length >= config.scheduler.maxWatches) {
-      throw bad(`At most ${config.scheduler.maxWatches} watches. Delete one first.`);
-    }
-
-    const intervalHours = Number(req.body.intervalHours ?? 24 * 7);
-    if (!validInterval(intervalHours)) {
-      // A floor, not a preference: each run spends real quota unattended, and a
-      // watch on a 1-hour interval would drain the day's budget while nobody
-      // was looking.
-      throw bad(`intervalHours must be between ${config.scheduler.minIntervalHours} and ${config.scheduler.maxIntervalHours}.`);
-    }
-
-    // The same subject watched twice would just double-spend quota to append
-    // duplicate history for one niche.
-    if (watches.hasDuplicate(existing, uid, input)) {
-      throw bad('That exact query is already being watched.');
-    }
-
-    res.status(201).json({ watch: publicWatch(watches.create({ input, intervalHours, label: req.body.label, ownerUid: uid })) });
-  } catch (err) {
-    next(err);
+  const existing = await watches.list();
+  if (watches.atOwnerCap(existing, uid, config.users.maxWatches)) {
+    throw bad(`You can keep ${config.users.maxWatches} ${config.users.maxWatches === 1 ? 'watch' : 'watches'}. Delete one first.`);
   }
-});
+  if (existing.length >= config.scheduler.maxWatches) {
+    throw bad(`At most ${config.scheduler.maxWatches} watches. Delete one first.`);
+  }
+
+  const intervalHours = Number(req.body.intervalHours ?? 24 * 7);
+  if (!validInterval(intervalHours)) {
+    // A floor, not a preference: each run spends real quota unattended, and a
+    // watch on a 1-hour interval would drain the day's budget while nobody
+    // was looking.
+    throw bad(`intervalHours must be between ${config.scheduler.minIntervalHours} and ${config.scheduler.maxIntervalHours}.`);
+  }
+
+  // The same subject watched twice would just double-spend quota to append
+  // duplicate history for one niche.
+  if (watches.hasDuplicate(existing, uid, input)) {
+    throw bad('That exact query is already being watched.');
+  }
+
+  res.status(201).json({ watch: publicWatch(await watches.create({ input, intervalHours, label: req.body.label, ownerUid: uid })) });
+}));
 
 // Someone else's watch answers exactly like a missing one: 404, never 403, so a
 // guessed id does not confirm that it exists.
 const notYourWatch = (res) => res.status(404).json({ error: 'Watch not found.', code: 'WATCH_NOT_FOUND' });
 
-router.patch('/watches/:id', requireUser, (req, res, next) => {
-  try {
-    if (!watches.ownedWatch(watches.list(), req.params.id, req.user.uid)) return notYourWatch(res);
-    const patch = {};
-    if (req.body?.enabled !== undefined) patch.enabled = Boolean(req.body.enabled);
-    if (req.body?.label !== undefined) patch.label = String(req.body.label).slice(0, 120);
-    if (req.body?.intervalHours !== undefined) {
-      const h = Number(req.body.intervalHours);
-      if (!validInterval(h)) {
-        throw bad(`intervalHours must be between ${config.scheduler.minIntervalHours} and ${config.scheduler.maxIntervalHours}.`);
-      }
-      patch.intervalHours = h;
+router.patch('/watches/:id', requireUser, wrap(async (req, res) => {
+  if (!watches.ownedWatch(await watches.list(), req.params.id, req.user.uid)) return notYourWatch(res);
+  const patch = {};
+  if (req.body?.enabled !== undefined) patch.enabled = Boolean(req.body.enabled);
+  if (req.body?.label !== undefined) patch.label = String(req.body.label).slice(0, 120);
+  if (req.body?.intervalHours !== undefined) {
+    const h = Number(req.body.intervalHours);
+    if (!validInterval(h)) {
+      throw bad(`intervalHours must be between ${config.scheduler.minIntervalHours} and ${config.scheduler.maxIntervalHours}.`);
     }
-    const updated = watches.update(req.params.id, patch);
-    if (!updated) return notYourWatch(res);
-    res.json({ watch: publicWatch(updated) });
-  } catch (err) {
-    next(err);
+    patch.intervalHours = h;
   }
-});
+  const updated = await watches.update(req.params.id, patch);
+  if (!updated) return notYourWatch(res);
+  res.json({ watch: publicWatch(updated) });
+}));
 
-router.delete('/watches/:id', requireUser, (req, res) => {
-  if (!watches.ownedWatch(watches.list(), req.params.id, req.user.uid) || !watches.remove(req.params.id)) {
+router.delete('/watches/:id', requireUser, wrap(async (req, res) => {
+  if (!watches.ownedWatch(await watches.list(), req.params.id, req.user.uid) || !(await watches.remove(req.params.id))) {
     return notYourWatch(res);
   }
   res.status(204).end();
-});
+}));
 
 /** What the newest run of a watch found that the previous one did not. Free. */
-router.get('/watches/:id/digest', requireUser, (req, res) => {
-  if (!watches.ownedWatch(watches.list(), req.params.id, req.user.uid)) return notYourWatch(res);
-  const d = scheduler.digest(req.params.id);
+router.get('/watches/:id/digest', requireUser, wrap(async (req, res) => {
+  if (!watches.ownedWatch(await watches.list(), req.params.id, req.user.uid)) return notYourWatch(res);
+  const d = await scheduler.digest(req.params.id);
   if (!d) return res.status(404).json({ error: 'No completed run for that watch yet.', code: 'NO_DIGEST' });
   res.json({ digest: d });
-});
+}));
 
 // -------------------------------------------------------------- account ----
 
+/** Daily allowances for this account: the standard ones, or the larger ones for a listed tester email. */
+function limitsFor(user) {
+  const u = config.users;
+  const tester = Boolean(user?.email) && u.testerEmails.includes(String(user.email).toLowerCase());
+  return {
+    analyses: tester ? u.testerDailyAnalyses : u.dailyAnalyses,
+    briefs: tester ? u.testerDailyBriefs : u.dailyBriefs,
+    watches: u.maxWatches,
+  };
+}
+
 /** The signed-in person, today's usage and what the limits are. */
-router.get('/me', requireUser, (req, res) => {
+router.get('/me', requireUser, wrap(async (req, res) => {
   const { uid } = req.user;
   // The row exists after loadUser unless it was just deleted; recreate rather than 500.
-  const user = getUser(uid) ?? upsertUser(req.user);
+  const user = (await getUser(uid)) ?? (await upsertUser(req.user));
   const day = quotaDay();
-  const usage = usageFor(uid, day);
+  const usage = await usageFor(uid, day);
   res.json({
     user: {
       uid: user.uid, email: user.email, name: user.name, photoUrl: user.photoUrl, provider: user.provider,
       emailVerified: user.emailVerified, createdAt: user.createdAt, termsAcceptedAt: user.termsAcceptedAt,
     },
     usage: { day, analyses: usage.analyses, briefs: usage.briefs },
-    limits: { analyses: config.users.dailyAnalyses, briefs: config.users.dailyBriefs, watches: config.users.maxWatches },
+    limits: limitsFor(req.user),
     resetsAt: nextQuotaReset(),
-    watches: watches.ownedBy(watches.list(), uid).length,
+    watches: watches.ownedBy(await watches.list(), uid).length,
   });
-});
+}));
 
 /** Records that the person accepted the Terms and Privacy Policy. */
-router.post('/me/consent', requireUser, (req, res) => {
-  upsertUser(req.user); // make sure the row exists before stamping it
-  res.json({ ok: true, termsAcceptedAt: acceptTerms(req.user.uid) });
-});
+router.post('/me/consent', requireUser, wrap(async (req, res) => {
+  await upsertUser(req.user); // make sure the row exists before stamping it
+  res.json({ ok: true, termsAcceptedAt: await acceptTerms(req.user.uid) });
+}));
 
 /**
  * Deletes everything held about the account: profile, report links, usage and
- * watches. Report and brief FILES stay: other people may have the same report
+ * watches. Reports and drafts stay: other people may have the same report
  * linked, it holds no personal data about the deleted person, and the retention
  * sweep removes it within YOUTUBE_DATA_MAX_DAYS regardless. The browser deletes
  * the Firebase account itself (the server holds no admin credentials).
  */
-router.delete('/me', requireUser, (req, res) => {
+router.delete('/me', requireUser, wrap(async (req, res) => {
   const { uid } = req.user;
-  watches.removeOwned(uid);
-  deleteUserData(uid);
+  await watches.removeOwned(uid);
+  await deleteUserData(uid);
   forgetUser(uid);
   res.json({ ok: true });
-});
+}));
 
 // ------------------------------------------------------------- featured ----
 
 /** A trimmed sample report for the marketing homepage. Public; nothing in it is per-user. */
-router.get('/featured', (_req, res) => {
+router.get('/featured', wrap(async (_req, res) => {
   res.set('Cache-Control', 'public, max-age=300');
-  res.json({ featured: store.featuredReport() });
-});
+  res.json({ featured: await store.featuredReport() });
+}));
 
 // ------------------------------------------------------------ audit log ----
 
@@ -476,14 +479,14 @@ router.get('/featured', (_req, res) => {
  * requested niche. One row per run, newest first, with the relevance summary
  * so drift is visible without opening every log.
  */
-router.get('/logs', (req, res) => {
+router.get('/logs', wrap(async (req, res) => {
   const limit = clampLimit(req.query.limit, 30, 100);
-  res.json({ runs: listAuditRuns(limit) });
-});
+  res.json({ runs: await listAuditRuns(limit) });
+}));
 
 /** The full human-readable log for one run -- the thing to actually read. */
-router.get('/logs/:runId', (req, res) => {
-  const text = readRunLog(req.params.runId);
+router.get('/logs/:runId', wrap(async (req, res) => {
+  const text = await readRunLog(req.params.runId);
   if (text === null) return res.status(404).json({ error: 'Log not found or expired.', code: 'LOG_NOT_FOUND' });
   res.type('text/plain').send(text);
-});
+}));

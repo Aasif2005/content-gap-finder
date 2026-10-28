@@ -26,7 +26,7 @@ export function GoogleButton({ children, loading = false, disabled = false, clas
       disabled={off}
       aria-busy={loading || undefined}
       className={cx(
-        'relative flex min-h-[50px] w-full select-none items-center justify-center gap-3 rounded-control border border-[#C5CEDD] bg-white px-4',
+        'relative flex min-h-[50px] w-full select-none items-center justify-center gap-3 rounded-full border border-[#C5CEDD] bg-white px-4',
         'text-base font-medium text-[#0E1626] transition-colors duration-150 hover:bg-[#F3F6FB]',
         off && 'cursor-not-allowed opacity-55 hover:bg-white',
         className

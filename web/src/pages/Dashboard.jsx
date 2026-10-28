@@ -5,12 +5,13 @@ import { RecentReports, RecentReportsSkeleton } from '../components/dashboard/Re
 import { FirstRun } from '../components/dashboard/FirstRun.jsx';
 import { AllowancePanel } from '../components/dashboard/AllowancePanel.jsx';
 import { WatchesSummary } from '../components/dashboard/WatchesSummary.jsx';
+import { EntryCards, LatestReport, StatStrip, Tips } from '../components/dashboard/Overview.jsx';
 import { getRuns, getWatches } from '../lib/api.js';
 import { useMe } from '../lib/me.jsx';
 import { navigate } from '../lib/router.jsx';
 import { toRunRow, toWatchRow } from '../lib/runRows.js';
 
-const loadRecentRuns = () => getRuns({ limit: 8 });
+const loadRecentRuns = () => getRuns({ limit: 30 });
 
 /** `load` must be a stable function. Returns `[{ status, data, error }, reload]`. */
 function useLoad(load) {
@@ -35,8 +36,9 @@ function useLoad(load) {
 }
 
 /**
- * /dashboard: search, the latest reports, today's allowance and the watches.
- * It reads; running and managing happen in the Explorer.
+ * /dashboard: the one place for the workspace overview: search, numbers about
+ * the reports kept, the latest report, the recent ones, watches and today's
+ * allowance. It reads; running happens in the Explorer.
  */
 export default function Dashboard() {
   const { me, error: meError, loading: meLoading, refresh: refreshMe } = useMe();
@@ -67,45 +69,59 @@ export default function Dashboard() {
   const runRows = useMemo(() => (runs.data?.runs ?? []).map((r) => toRunRow(r)), [runs.data]);
   const watchRows = useMemo(() => (watches.data?.watches ?? []).map((w) => toWatchRow(w)), [watches.data]);
 
+  const runList = runs.data?.runs ?? [];
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning.' : hour < 18 ? 'Good afternoon.' : 'Good evening.';
+
   return (
-    <div className="fade-in">
-      <h1 className="text-4xl font-semibold leading-[1.1] tracking-[-0.03em]">Welcome back.</h1>
-      <p className="mt-2.5 text-[17px] text-fg-2">Search a niche, or pick up where you left off.</p>
-
-      <QuickSearch
-        value={niche}
-        onChange={(v) => { setNiche(v); if (searchError) setSearchError(null); }}
-        onSubmit={submit}
-        error={searchError}
-        inputRef={inputRef}
-      />
-
-      <div className="mt-10 flex flex-wrap items-start gap-8">
-        <div className="min-w-0 flex-[2_1_560px]">
-          {runs.status === 'loading' && <RecentReportsSkeleton />}
-          {runs.status === 'error' && (
-            <Alert
-              tone="bad"
-              title="Could not load your reports"
-              action={<Button variant="secondary" onClick={reloadRuns}>Retry</Button>}
-            >
-              {runs.error?.message}
-            </Alert>
-          )}
-          {runs.status === 'ready' && (runRows.length ? <RecentReports rows={runRows} /> : <FirstRun onPick={pick} />)}
-        </div>
-
-        <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-8">
-          <AllowancePanel me={me} error={meError} loading={meLoading} onRetry={refreshMe} />
-          <WatchesSummary
-            status={watches.status}
-            rows={watchRows}
-            max={watches.data?.maxWatches ?? me?.limits?.watches ?? null}
-            error={watches.error}
-            onRetry={reloadWatches}
+    <div className="fade-in pb-8">
+      <div className="relative pt-4 sm:pt-8">
+        <span aria-hidden className="pointer-events-none absolute -top-24 left-1/2 h-72 w-[min(900px,100%)] -translate-x-1/2 rounded-full bg-focus/10 blur-3xl" />
+        <h1 className="relative text-[44px] font-semibold leading-[1.05] tracking-[-0.035em] sm:text-[60px]">{greeting}</h1>
+        <p className="relative mt-3 text-[18px] text-fg-2">Search a niche, or pick up where you left off.</p>
+        <div className="relative">
+          <QuickSearch
+            value={niche}
+            onChange={(v) => { setNiche(v); if (searchError) setSearchError(null); }}
+            onSubmit={submit}
+            error={searchError}
+            inputRef={inputRef}
           />
         </div>
       </div>
+
+      {runs.status === 'ready' && <StatStrip runs={runList} />}
+
+      <EntryCards />
+
+      {runs.status === 'ready' && runRows[0] && <LatestReport row={runRows[0]} summary={runList[0]} />}
+
+      <div className="mt-12">
+        {runs.status === 'loading' && <RecentReportsSkeleton />}
+        {runs.status === 'error' && (
+          <Alert
+            tone="bad"
+            title="Could not load your reports"
+            action={<Button variant="secondary" onClick={reloadRuns}>Retry</Button>}
+          >
+            {runs.error?.message}
+          </Alert>
+        )}
+        {runs.status === 'ready' && (runRows.length ? <RecentReports rows={runRows.slice(0, 6)} /> : <FirstRun onPick={pick} />)}
+      </div>
+
+      <div className="mt-12 grid items-start gap-5 lg:grid-cols-[3fr_2fr]">
+        <WatchesSummary
+          status={watches.status}
+          rows={watchRows}
+          max={watches.data?.maxWatches ?? me?.limits?.watches ?? null}
+          error={watches.error}
+          onRetry={reloadWatches}
+        />
+        <AllowancePanel me={me} error={meError} loading={meLoading} onRetry={refreshMe} />
+      </div>
+
+      <Tips />
     </div>
   );
 }

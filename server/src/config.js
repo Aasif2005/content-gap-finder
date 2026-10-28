@@ -60,6 +60,13 @@ export const config = {
     timeoutMs: num(process.env.DEEPSEEK_TIMEOUT_MS, 120_000),
   },
 
+  // MongoDB Atlas holds everything the server remembers: accounts and daily
+  // allowances, reports, drafts, watches, the YouTube quota ledger and the cache.
+  mongo: {
+    uri: (process.env.MONGODB_URI ?? '').trim(),
+    dbName: (process.env.MONGODB_DB ?? '').trim() || 'gapstronaut',
+  },
+
   cache: { ttlSeconds: num(process.env.CACHE_TTL_SECONDS, 3 * 60 * 60) },
 
   // Durable report + gap-history storage (lib/store.js). Reports are what make
@@ -84,6 +91,10 @@ export const config = {
     dailyAnalyses: num(process.env.USER_DAILY_ANALYSES, 3),
     dailyBriefs: num(process.env.USER_DAILY_BRIEFS, 20),
     maxWatches: num(process.env.USER_MAX_WATCHES, 2),
+    // Accounts that get a bigger allowance for testing (comma-separated emails in .env).
+    testerEmails: (process.env.TESTER_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean),
+    testerDailyAnalyses: num(process.env.TESTER_DAILY_ANALYSES, 100),
+    testerDailyBriefs: num(process.env.TESTER_DAILY_BRIEFS, 100),
   },
 
   // The sample report on the marketing homepage (store.pickFeatured).
@@ -184,6 +195,7 @@ export function assertConfig() {
   const missing = [];
   if (!config.youtube.apiKey) missing.push('YOUTUBE_API_KEY');
   if (!config.deepseek.apiKey) missing.push('DEEPSEEK_API_KEY');
+  if (!config.mongo.uri) missing.push('MONGODB_URI');
   if (missing.length) {
     throw new Error(
       `Missing required env var(s): ${missing.join(', ')}. Copy .env.example to .env and fill them in.`

@@ -1,59 +1,117 @@
-import { ArrowUpRight } from 'lucide-react';
-import { EvidenceMark, Logo } from '../ui/index.js';
+import { ArrowLeft } from 'lucide-react';
+import { Logo, SPOTS, StudioLights, ThemeToggle, coneClip, floodClip, useStudioFlicker } from '../ui/index.js';
+import { Link } from '../../lib/router.jsx';
 
-const BENEFITS = [
-  'Every gap quotes the real comments and links to the video.',
-  'Our own scores are marked, so you can tell them from YouTube’s numbers.',
-  'Saved reports stay for 30 days. Opening one costs nothing.',
-];
+/**
+ * Trial: true = the letters a beam falls on stay bright and everything else is lit only by
+ * spill (dimmer), like light on a printed wall. false = the earlier behaviour: the beams flood
+ * the text, a glint crosses it, and every word ends fully bright.
+ */
+const REALISTIC_LIGHT = true;
+const SPILL = { eyebrow: 0.55, phrase: 0.55, line: 0.6 }; // base-layer brightness outside the beams
 
-/** The example comment. Clearly labelled as an example: it is not a real viewer. */
-function QuoteBrand() {
+/** What the brand panel says over the lights. Phrases, not viewer quotes: nothing here pretends to be a comment. */
+const BRANDS = {
+  quote: {
+    eyebrow: 'Welcome back',
+    phrase: 'Switch the lights on what viewers are asking for.',
+    line: 'Pick up your reports where you left them.',
+  },
+  benefits: {
+    eyebrow: 'Free during beta',
+    phrase: 'Your next video is in the comments.',
+    line: 'Three fresh analyses a day. Free.',
+  },
+};
+
+function StudioBrand({ brand, lamps, bright = false }) {
+  const { eyebrow, phrase, line } = BRANDS[brand] ?? BRANDS.quote;
+  const halo = '0 0 30px color-mix(in oklab, var(--accent) 55%, transparent), 0 0 4px color-mix(in oklab, var(--accent) 25%, transparent)';
+
+  if (REALISTIC_LIGHT) {
+    // Base layer: faint while the lamps blink, then it settles to a spill level; the bright
+    // copies (BeamText) keep the letters under each beam at full strength.
+    const level = (n) => (bright ? undefined : { opacity: lamps.settled ? n : 0.1, transition: lamps.settled ? 'opacity 900ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none' });
+    return (
+      <div className="max-w-[440px]">
+        <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-fg-3" style={level(SPILL.eyebrow)}>{eyebrow}</p>
+        <p
+          className="mt-4 text-balance text-[44px] font-semibold leading-[1.08] tracking-[-0.03em]"
+          style={{ ...level(SPILL.phrase), ...(bright ? { textShadow: halo } : {}) }}
+        >
+          {phrase}
+        </p>
+        <p className="mt-5 text-[18px] leading-normal text-fg-2" style={level(SPILL.line)}>{line}</p>
+      </div>
+    );
+  }
+
+  // Base layer: faint until the beams have flooded the text, then full, with a glint crossing
+  // it once (.sl-sheen) and the halo settling (.sl-bloom). A bright copy is full strength and
+  // sits under the beams (BeamText).
+  const live = !bright && lamps.flooded;
+  const dim = !bright && !lamps.flooded ? { opacity: 0.1 } : undefined;
   return (
-    <>
-      <figure className="max-w-[460px]">
-        <blockquote className="text-[40px] font-medium leading-[1.25] tracking-[-0.025em]">
-          <EvidenceMark sweep>“can i cook it?”</EvidenceMark>
-        </blockquote>
-        <figcaption className="mt-[18px] flex flex-wrap items-center gap-x-1 text-[15px] text-fg-3">
-          Example comment · on “Example video title”
-          <ArrowUpRight aria-hidden className="h-4 w-4" />
-        </figcaption>
-      </figure>
-      <p className="mt-8 max-w-[460px] text-xl leading-normal text-fg-2">
-        Every video worth making starts as something a viewer already said.
+    <div className="max-w-[440px]">
+      <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-fg-3" style={dim}>{eyebrow}</p>
+      <p
+        className={`mt-4 text-balance text-[44px] font-semibold leading-[1.08] tracking-[-0.03em] ${live ? 'sl-sheen sl-bloom' : ''}`}
+        style={{ ...dim, '--sh': 'var(--fg)', ...(bright ? { textShadow: halo } : {}) }}
+      >
+        {phrase}
       </p>
-    </>
-  );
-}
-
-function BenefitsBrand() {
-  return (
-    <div className="max-w-[460px]">
-      <p className="text-[40px] font-semibold leading-[1.1] tracking-[-0.03em]">Three fresh analyses a day. Free.</p>
-      <ul className="mt-9 flex list-none flex-col p-0">
-        {BENEFITS.map((text, i) => (
-          <li
-            key={text}
-            className={`border-t border-line-strong py-[18px] text-[17px] leading-snug text-fg-2 ${i === BENEFITS.length - 1 ? 'border-b' : ''}`}
-          >
-            {text}
-          </li>
-        ))}
-      </ul>
+      <p
+        className={`mt-5 text-[18px] leading-normal text-fg-2 ${live ? 'sl-sheen' : ''}`}
+        style={{ ...dim, '--sh': 'var(--fg-2)' }}
+      >
+        {line}
+      </p>
     </div>
   );
 }
 
 /**
- * The two-panel frame for log in, sign up and reset. The brand side is pinned
- * to night; the form side follows the OS theme. Under 1024px the brand side
+ * While the lamps stutter, only the letters a beam falls on light up. Each lamp
+ * gets a full-size copy of the brand text (same padding and layout, so every glyph
+ * lands on the same pixels as the base) clipped to that lamp's own cone, and shown
+ * only while that lamp is on. A beam can cut a letter in half; that is the point.
+ * When all three are steady the beams open out into wide fans, merge, and light every
+ * letter; then the copies hand over to the base layer.
+ */
+function BeamText({ brand, lamps }) {
+  return SPOTS.map((x, i) => (
+    <div
+      key={x}
+      aria-hidden
+      ref={(el) => el && el.setAttribute('inert', '')}
+      className={`pointer-events-none absolute inset-0 flex flex-col justify-between px-14 py-12 ${REALISTIC_LIGHT && lamps.settled ? 'sl-copy-breathe' : ''}`}
+      style={REALISTIC_LIGHT
+        ? { clipPath: coneClip(x), opacity: lamps.on[i] ? 1 : 0 }
+        : {
+            clipPath: lamps.settled ? floodClip(x) : coneClip(x),
+            opacity: lamps.flooded ? 0 : lamps.settled || lamps.on[i] ? 1 : 0,
+            transition: lamps.settled ? 'clip-path 700ms cubic-bezier(0.16, 1, 0.3, 1), opacity 120ms linear' : 'none',
+          }}
+    >
+      <Logo href="/" size={26} className="invisible self-start" />
+      <StudioBrand brand={brand} lamps={lamps} bright />
+      <p className="invisible mt-8 text-sm">Free during beta</p>
+    </div>
+  ));
+}
+
+/**
+ * The two-panel frame for log in, sign up and reset. The brand side is a rounded
+ * panel on a pinned night ground; the form side follows the theme. Under 1024px the brand side
  * collapses to a slim strip above the form. The page's one `<h1>` belongs to
  * the form (passed as children), so the brand side uses no heading.
  *
- * `brand`: 'quote' (the example comment) or 'benefits' (what you get).
+ * `brand`: 'quote' (welcome back, for log in and reset) or 'benefits' (sign up).
+ * The brand side is a dark studio whose ceiling lights flicker on (StudioLights);
+ * its words light up with them.
  */
 export default function AuthLayout({ brand = 'quote', children }) {
+  const lamps = useStudioFlicker();
   return (
     <div className="min-h-dvh bg-bg text-fg lg:grid lg:grid-cols-[480fr_560fr]">
       <a
@@ -64,19 +122,32 @@ export default function AuthLayout({ brand = 'quote', children }) {
       </a>
 
       {/* Narrow screens: a strip, not a second screen. */}
-      <header className="theme-night flex items-center justify-between gap-4 bg-bg px-4 py-2 text-fg sm:px-6 lg:hidden">
-        <Logo href="/" size={24} />
-        <span className="text-sm text-fg-3">Free during beta</span>
-      </header>
+      <div className="theme-night px-3 pt-3 lg:hidden">
+        <header className="flex items-center justify-between gap-4 rounded-full bg-surface px-5 py-2.5 text-fg">
+          <Logo href="/" size={24} />
+          <span className="text-sm text-fg-3">Free during beta</span>
+        </header>
+      </div>
 
-      <aside className="theme-night hidden min-h-dvh flex-col justify-between bg-bg px-14 py-12 text-fg lg:flex">
-        <Logo href="/" size={26} className="self-start" />
-        <div>{brand === 'benefits' ? <BenefitsBrand /> : <QuoteBrand />}</div>
-        <p className="text-sm text-fg-3">Free during beta</p>
-      </aside>
+      {/* The brand panel floats inside the page margin: deep navy in light mode, a lifted violet in dark. */}
+      <div className="theme-night hidden p-3 lg:block">
+        <aside className="relative isolate flex h-[calc(100dvh-1.5rem)] min-h-[560px] flex-col justify-between overflow-hidden rounded-[3rem] bg-surface px-14 py-12 text-fg">
+          <StudioLights state={lamps} className="-z-10" />
+          <Logo href="/" size={26} className="self-start" />
+          <StudioBrand brand={brand} lamps={lamps} />
+          <p className="mt-8 text-sm text-fg-3">Free during beta</p>
+          <BeamText brand={brand} lamps={lamps} />
+        </aside>
+      </div>
 
-      <main id="auth-form" tabIndex={-1} className="flex items-start justify-center px-4 pb-14 pt-10 focus:outline-none sm:px-6 lg:min-h-dvh lg:items-start lg:pb-12 lg:pt-28">
-        <div className="fade-in w-full max-w-[400px]">{children}</div>
+      <main id="auth-form" tabIndex={-1} className="flex flex-col items-center px-4 pb-14 pt-6 focus:outline-none sm:px-6 lg:min-h-dvh lg:pb-12">
+        <div className="flex w-full max-w-[400px] items-center justify-between lg:max-w-[460px]">
+          <Link href="/" className="inline-flex min-h-11 items-center gap-1 text-sm text-fg-2 transition-colors hover:text-fg">
+            <ArrowLeft aria-hidden className="h-4 w-4" /> Back to overview
+          </Link>
+          <ThemeToggle className="-mr-2" />
+        </div>
+        <div className="fade-in mt-6 w-full max-w-[400px] lg:mt-16">{children}</div>
       </main>
     </div>
   );

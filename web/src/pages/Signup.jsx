@@ -7,7 +7,7 @@ import { LegalLinks } from '../components/auth/LegalLinks.jsx';
 import { NotConfiguredAlert } from '../components/auth/NotConfiguredAlert.jsx';
 import { PasswordStrength } from '../components/auth/PasswordStrength.jsx';
 import { useCooldown } from '../components/auth/useCooldown.js';
-import { MIN_PASSWORD, looksLikeEmail, nextSuffix, passwordStrength, safeNext } from '../components/auth/helpers.js';
+import { MIN_PASSWORD, looksLikeEmail, nextSuffix, passwordStrength, welcomeNext } from '../components/auth/helpers.js';
 import { Link, navigate, useRoute } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { useMe } from '../lib/me.jsx';
@@ -115,7 +115,7 @@ export default function Signup() {
   const { refresh } = useMe();
   const { query } = useRoute();
   const next = query.next;
-  const goNext = () => navigate(safeNext(next), { replace: true });
+  const goNext = () => navigate(welcomeNext(next), { replace: true });
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');

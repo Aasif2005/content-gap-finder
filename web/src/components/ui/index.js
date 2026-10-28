@@ -13,3 +13,7 @@ export { Alert } from './Alert.jsx';
 export { EvidenceMark } from './EvidenceMark.jsx';
 export { Derived, DERIVED_NOTE } from './Derived.jsx';
 export { Logo } from './Logo.jsx';
+export { ThemeToggle } from './ThemeToggle.jsx';
+export { ShinyButton } from './ShinyButton.jsx';
+export { SPOTS, StudioLights, coneClip, floodClip, useStudioFlicker } from './StudioLights.jsx';
+export { default as GlyphPortal } from './GlyphPortal.jsx';

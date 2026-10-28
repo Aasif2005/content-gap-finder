@@ -27,14 +27,20 @@ export function MeProvider({ children }) {
   const load = useCallback(async () => {
     const mine = ++seq.current;
     if (!signedIn) { setMe(null); setError(null); return null; }
-    try {
-      const next = await getMe();
-      if (mine === seq.current) { setMe(next); setError(null); }
-      return next;
-    } catch (err) {
-      if (mine === seq.current) setError(err);
-      return null;
+    // A slow or dropped first call gets one more try before we show an error.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const next = await getMe();
+        if (mine === seq.current) { setMe(next); setError(null); }
+        return next;
+      } catch (err) {
+        const again = attempt === 0 && (err.code === 'TIMEOUT' || err.code === 'NETWORK' || err.code === 'SERVER_DOWN');
+        if (again && mine === seq.current) continue;
+        if (mine === seq.current) setError(err);
+        return null;
+      }
     }
+    return null;
   }, [signedIn]);
 
   // A different account must not briefly see the last one's numbers.

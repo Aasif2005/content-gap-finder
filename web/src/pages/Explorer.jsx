@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SearchForm } from '../components/SearchForm.jsx';
 import { ProgressRail } from '../components/ProgressRail.jsx';
-import { EmptyState } from '../components/Bits.jsx';
-import { HistoryPanel } from '../components/HistoryPanel.jsx';
 import { WatchPanel } from '../components/WatchPanel.jsx';
 import { ReportView } from '../components/explorer/ReportView.jsx';
 import { ReportSkeleton } from '../components/explorer/ReportSkeleton.jsx';
 import { RunError } from '../components/explorer/RunError.jsx';
 import { PublicBanner } from '../components/explorer/PublicBanner.jsx';
+import { ThinkingOrb } from '../components/orb/ThinkingOrb.jsx';
 import { startAnalysis, pollJob, getRun } from '../lib/api.js';
 import {
   queryFromUrl,
@@ -16,7 +15,7 @@ import {
   reportPathFor,
   correctReportPath,
 } from '../lib/urlState.js';
-import { describeLoadError, describeRunError, reportName } from '../lib/runRows.js';
+import { describeLoadError, describeRunError, formatLabel, reportName, windowLabel } from '../lib/runRows.js';
 import { useConsent } from '../lib/consent.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { useMe } from '../lib/me.jsx';
@@ -31,6 +30,8 @@ import { SITE_NAME, currentPathAndSearch, navigate, useRoute } from '../lib/rout
 const PAGES = {
   niche: {
     label: 'Niche Explorer',
+    eyebrow: 'Niche explorer',
+    tagline: 'What viewers keep asking for that nobody has made.',
     navLabel: 'Explore a niche',
     subtitle: "Enter a niche. Get what's trending on YouTube right now, what viewers keep "
       + 'asking for that nobody has made, and what to avoid.',
@@ -40,6 +41,8 @@ const PAGES = {
   },
   channel: {
     label: 'Channel Analyzer',
+    eyebrow: 'Channel analyzer',
+    tagline: 'What’s working, what its viewers ask for, and what they complain about.',
     navLabel: 'Analyze a channel',
     subtitle: 'Paste a channel. See which of its own videos are working, what its own viewers keep '
       + 'asking for and have not gotten, and what they complain about.',
@@ -90,6 +93,8 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
   // used to keep the defaults, so Refresh and Find gaps ran different queries).
   const [formQuery, setFormQuery] = useState(() => (routeRunId ? {} : queryFromUrl(search)));
   const [formKey, setFormKey] = useState(0);
+  // The thinking orb that plays while a run is in flight (see components/orb).
+  const [orbJob, setOrbJob] = useState(null);
   const lastInput = useRef(null);
   // Bumped by every new run / report open / page leave; anything that resolves
   // under an older number is stale and must not touch the page.
@@ -177,7 +182,7 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
     return () => clearTimeout(t);
   }, [result]);
 
-  const run = useCallback(async (input, { force = false } = {}) => {
+  const run = useCallback(async (input, { force = false, origin } = {}) => {
     // A run reads YouTube data on the visitor's behalf; the Terms (which bind
     // them to YouTube's) and the Privacy Policy must be accepted first.
     if (!(await ensureConsent())) return;
@@ -194,6 +199,14 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
     setFormOpen(false);
     setPhase({ phase: 'searching', detail: 'Starting…', progress: 0, elapsedMs: 0 });
 
+    // The orb waits on this: it settles with the line for the finished card when the run lands.
+    const subject = (input.niche || input.channelId || '').toString();
+    const summary = [subject, windowLabel(input.window), formatLabel(input.contentType)].filter(Boolean).join(' · ');
+    let settle = null;
+    const finished = new Promise((resolve) => { settle = resolve; });
+    setOrbJob({ id: seq, text: subject, origin, onSubmit: () => finished, summary });
+    const closeOrb = () => setOrbJob((j) => (j && j.id === seq ? null : j));
+
     try {
       const started = await startAnalysis({ ...input, force });
       if (stale()) return;
@@ -204,6 +217,7 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
         loadedRunId.current = started.result?.runId ?? null;
         setResult(started.result);
         setPhase(null);
+        settle(summary);
         if (started.result?.runId) pushReportUrl(started.result.runId, mode);
         return;
       }
@@ -217,9 +231,11 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
       loadedRunId.current = final.runId;
       setResult(final);
       setPhase(null);
+      settle(summary);
       // Now the report has an id, so give it a URL worth sharing.
       pushReportUrl(final.runId, mode);
     } catch (err) {
+      closeOrb();
       if (err.cancelled || stale()) return;
       const described = describeRunError(err, { limit: me?.limits?.analyses });
       setPhase(null);
@@ -234,6 +250,12 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
     }
   }, [mode, ensureConsent, refreshMe, me?.limits?.analyses]);
 
+  /** Esc / Cancel on the orb: stop caring about the run in flight, like leaving the page does. */
+  const onOrbDismiss = useCallback(({ cancelled }) => {
+    setOrbJob(null);
+    if (cancelled) { requestSeq.current++; setPhase(null); }
+  }, []);
+
   /** The history and watch panels open a saved report by going to its URL. */
   const goToRun = useCallback((runId) => {
     if (runId && runId !== loadedRunId.current) navigate(reportPathFor(mode, runId));
@@ -246,13 +268,11 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
   const showForm = canRun && (!reportRoute || busy || formOpen || (!result && !loadingRun));
   const rerun = (patch) => run({ ...lastInput.current, ...patch }, { force: true });
 
-  const panels = canRun && (
-    <div className="flex flex-wrap items-start gap-x-6 gap-y-1">
-      <HistoryPanel onOpen={goToRun} currentRunId={result?.runId} mode={mode} />
-      {/* Only a query that actually produced a report can be watched: offering
-          the raw form input let a watch be saved for a channel that never resolved. */}
-      <WatchPanel currentQuery={result?.query ?? null} onOpenRun={goToRun} mode={mode} />
-    </div>
+  // Recent reports live on the Dashboard. Watches are managed at the foot of a
+  // report: only a query that actually produced a report can be watched (the raw
+  // form input let a watch be saved for a channel that never resolved).
+  const panels = canRun && result && (
+    <WatchPanel currentQuery={result.query ?? null} onOpenRun={goToRun} mode={mode} />
   );
 
   const retry = error?.kind === 'load'
@@ -265,22 +285,29 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
     <div className="fade-in">
       {readOnly && <PublicBanner />}
 
-      {showForm && (
-        <section aria-label={result ? 'Edit your search' : undefined}>
-          {!result && (
-            <>
-              <h1 className="text-[34px] font-semibold leading-[1.1] tracking-[-0.03em]">{page.navLabel}</h1>
-              <p className="mt-2 max-w-2xl text-[17px] leading-relaxed text-fg-2">{page.subtitle}</p>
-            </>
-          )}
-          <div className={result ? undefined : 'mt-6'}>
+      {/* While an analysis runs the orb takes the content area (the shell stays); the form and report return when it closes. */}
+      {orbJob && <ThinkingOrb key={orbJob.id} job={orbJob} progress={phase} onDismiss={onOrbDismiss} />}
+
+      {showForm && !orbJob && (
+        <section aria-label={result ? 'Edit your search' : undefined} className={result ? 'mx-auto mb-8 max-w-[760px]' : undefined}>
+          {!result ? (
+            <div className="relative mx-auto max-w-[760px] pb-10 pt-8 text-center sm:pt-16">
+              <span aria-hidden className="pointer-events-none absolute left-1/2 top-0 h-72 w-[min(820px,120%)] -translate-x-1/2 rounded-full bg-focus/10 blur-3xl" />
+              <p className="relative text-[13px] font-semibold uppercase tracking-[0.16em] text-fg-3">{page.eyebrow}</p>
+              <h1 className="relative mt-4 text-[44px] font-semibold leading-[1.04] tracking-[-0.035em] sm:text-[64px]">{page.navLabel}</h1>
+              <p className="relative mx-auto mt-4 max-w-[46ch] text-[18px] leading-relaxed text-fg-2">{page.tagline}</p>
+              <div className="relative mt-10 text-left">
+                <SearchForm key={`${mode}:${formKey}`} onSubmit={run} busy={busy} initial={formQuery} mode={mode} />
+              </div>
+            </div>
+          ) : (
             <SearchForm key={`${mode}:${formKey}`} onSubmit={run} busy={busy} initial={formQuery} mode={mode} />
-          </div>
-          {!result && panels && <div className="mt-4">{panels}</div>}
+          )}
         </section>
       )}
 
-      <div className={showForm ? 'mt-8' : undefined}>
+      {!orbJob && (
+      <div className={showForm ? 'report-in mt-8' : 'report-in'}>
         {busy && <ProgressRail {...phase} />}
 
         {error && (
@@ -310,10 +337,8 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
           />
         )}
 
-        {canRun && !busy && !result && !error && !loadingRun && (
-          <EmptyState title={page.emptyTitle}>{page.emptyBody}</EmptyState>
-        )}
       </div>
+      )}
     </div>
   );
 }

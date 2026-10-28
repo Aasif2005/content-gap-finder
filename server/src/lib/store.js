@@ -1,32 +1,30 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
-import { withLock } from './fileLock.js';
+import { col } from './mongo.js';
 
 /**
- * Durable storage for finished reports, and for the per-niche gap history that
- * recurrence detection reads.
+ * Durable storage for finished reports, "Make it" drafts and the per-niche gap
+ * history that recurrence detection reads (MongoDB collections runs, expired_runs,
+ * briefs, niche_history).
  *
- * Deliberately flat files, for the same reason lib/cache.js is: a few KB per
- * run, and no extra service to run. The difference from lib/cache.js is what
- * the key MEANS. The cache is keyed by a hash of the query, so it answers
- * "have we run exactly this recently?" and expires in hours. This is keyed by
- * runId and lives for the 30 days YouTube's policies allow (see sweepExpired),
- * so it answers "show me that report again" -- which is what makes a report
- * linkable at all. Before this, a
- * finished report lived only in React state and a 3-hour query-hash cache:
- * reloading the page lost it, and there was no way to send one to anyone.
+ * The difference from lib/cache.js is what the key MEANS. The cache is keyed by a
+ * hash of the query, so it answers "have we run exactly this recently?" and
+ * expires in hours. This is keyed by runId and lives for the 30 days YouTube's
+ * policies allow (see sweepExpired), so it answers "show me that report again":
+ * what makes a report linkable at all.
  *
- * Swap both for Postgres at these same call sites if this ever outgrows a
- * single box.
+ * Reports and drafts carry an `expireAt` a day past the retention limit, which a
+ * TTL index uses as a backstop; the sweep normally removes them first and leaves
+ * a marker so the API can say "removed" instead of "not found".
  */
-const STATE_DIR = path.resolve(fileURLToPath(new URL('../../.state', import.meta.url)));
-const RUNS_DIR = path.join(STATE_DIR, 'runs');
-const NICHES_DIR = path.join(STATE_DIR, 'niches');
-const BRIEFS_DIR = path.join(STATE_DIR, 'briefs');
-const RUN_INDEX = path.join(STATE_DIR, 'runs-index.jsonl');
+const DAY_MS = 24 * 3600 * 1000;
+// Gap history holds our own model-written questions and scores, never raw
+// YouTube text; the derived-metrics amendment allows 36 months for those.
+export const HISTORY_MAX_DAYS = 36 * 30;
+
+const validId = (id) => /^[a-zA-Z0-9_-]+$/.test(id ?? '');
+const plain = (x) => JSON.parse(JSON.stringify(x)); // what the old JSON files stored: no undefined, no class instances
+const dropMeta = ({ _id, expireAt, ...rest }) => rest;
 
 /**
  * Niches are user-typed, so "Sourdough Baking" and " sourdough  baking " have
@@ -37,13 +35,6 @@ const RUN_INDEX = path.join(STATE_DIR, 'runs-index.jsonl');
 export function nicheKey(niche) {
   const normalized = (niche ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
   return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
-}
-
-function writeAtomic(file, text) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, text);
-  fs.renameSync(tmp, file);
 }
 
 // ---------------------------------------------------------------- reports ---
@@ -81,56 +72,39 @@ const summarize = (result) => ({
   relevance: result.stats.relevance ?? null,
 });
 
-export function saveRun(result) {
+export async function saveRun(result) {
   if (!result?.runId) return null;
-  writeAtomic(path.join(RUNS_DIR, `${result.runId}.json`), JSON.stringify(result));
-
   const summary = summarize(result);
-  // Append under a lock: two runs finishing at once could otherwise interleave
-  // partial lines and corrupt the index for every later read.
-  withLock(RUN_INDEX, () => {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
-    fs.appendFileSync(RUN_INDEX, `${JSON.stringify(summary)}\n`);
-  });
-
-  pruneRuns();
+  const keepUntil = new Date(new Date(result.generatedAt).getTime() + (config.store.maxDataDays + 1) * DAY_MS);
+  await col('runs').replaceOne(
+    { _id: result.runId },
+    { ...summary, expireAt: Number.isFinite(keepUntil.getTime()) ? keepUntil : new Date(Date.now() + (config.store.maxDataDays + 1) * DAY_MS), result: plain(result) },
+    { upsert: true }
+  );
+  await pruneRuns();
   return summary;
 }
 
-export function readRun(runId) {
-  if (!/^[a-zA-Z0-9_-]+$/.test(runId ?? '')) return null; // path traversal guard, same rule as the audit log
-  try {
-    return JSON.parse(fs.readFileSync(path.join(RUNS_DIR, `${runId}.json`), 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-function readIndex() {
-  try {
-    return fs
-      .readFileSync(RUN_INDEX, 'utf8')
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => { try { return JSON.parse(line); } catch { return null; } })
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
+export async function readRun(runId) {
+  if (!validId(runId)) return null;
+  const doc = await col('runs').findOne({ _id: runId }, { projection: { result: 1 } });
+  return doc?.result ?? null;
 }
 
 /**
  * Newest first. `nicheKey` narrows to one niche's history, which is what the
  * recurrence pass and the "previous runs of this niche" UI both want.
  */
-export function listRuns({ limit = 30, nicheKey: key, channelId, channelMode } = {}) {
-  let rows = readIndex();
-  if (key) rows = rows.filter((r) => r.nicheKey === key);
-  if (channelId) rows = rows.filter((r) => r.channelId === channelId);
+export async function listRuns({ limit = 30, nicheKey: key, channelId, channelMode } = {}) {
+  const filter = {};
+  if (key) filter.nicheKey = key;
+  if (channelId) filter.channelId = channelId;
   // Lets the two separate pages (niche explorer / channel analyzer) each show
   // only their own history, instead of one mixed list.
-  if (channelMode !== undefined) rows = rows.filter((r) => r.channelMode === channelMode);
-  return rows.sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt)).slice(0, limit);
+  if (channelMode !== undefined) filter.channelMode = channelMode;
+  let cursor = col('runs').find(filter, { projection: { result: 0 } }).sort({ generatedAt: -1 });
+  if (Number.isFinite(limit)) cursor = cursor.limit(limit);
+  return (await cursor.toArray()).map(dropMeta);
 }
 
 /**
@@ -215,64 +189,41 @@ export function trimFeatured(run) {
 
 /**
  * The report shown on the homepage, trimmed: FEATURED_RUN_ID when it is still
- * on disk and inside the retention window, else the best candidate that can
- * still be read. null when there is nothing to show.
+ * stored and inside the retention window, else the best candidate that can still
+ * be read. null when there is nothing to show.
  */
-export function featuredReport({ now = Date.now() } = {}) {
+export async function featuredReport({ now = Date.now() } = {}) {
   const cutoff = now - config.store.maxDataDays * DAY_MS;
   const fresh = (run) => run && new Date(run.generatedAt).getTime() >= cutoff;
   if (config.featured.runId) {
-    const run = readRun(config.featured.runId);
+    const run = await readRun(config.featured.runId);
     if (fresh(run)) return trimFeatured(run);
   }
-  for (const row of featuredCandidates(readIndex(), { now, niche: config.featured.niche })) {
-    const run = readRun(row.runId);
+  for (const row of featuredCandidates(await listRuns({ limit: 500 }), { now, niche: config.featured.niche })) {
+    const run = await readRun(row.runId);
     if (fresh(run)) return trimFeatured(run);
   }
   return null;
 }
 
 /**
- * Keeps the newest `config.store.maxRuns` reports on disk and drops the rest.
- * Reports are a few KB each, but an unbounded directory is still a slow leak on
- * a long-lived box, and the per-niche gap history (below) is the part that
- * actually needs to survive long-term -- it is far smaller.
+ * Keeps the newest `config.store.maxRuns` reports and drops the rest. An
+ * unbounded collection is still a slow leak on a long-lived database, and the
+ * per-niche gap history (below) is the part that needs to survive long-term:
+ * it is far smaller.
  */
-function pruneRuns() {
-  // Read, filter and rewrite under ONE lock: reading outside it lost any index
-  // line another writer appended in between.
-  let drop = [];
-  withLock(RUN_INDEX, () => {
-    const rows = readIndex();
-    const max = config.store.maxRuns;
-    if (rows.length <= max) return;
-    // A report a watch points to is its latest digest; deleting it left the
-    // watch saying "no completed run".
-    const pinned = pinnedRunIds();
-    const sorted = rows.sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt));
-    const keep = [];
-    for (const [i, r] of sorted.entries()) (i < max || pinned.has(r.runId) ? keep : drop).push(r);
-    writeAtomic(RUN_INDEX, keep.map((r) => `${JSON.stringify(r)}\n`).join(''));
-  });
-  for (const r of drop) {
-    try { fs.unlinkSync(path.join(RUNS_DIR, `${r.runId}.json`)); } catch { /* already gone */ }
-    // A brief is meaningless without the report it was drafted from.
-    try {
-      for (const f of fs.readdirSync(BRIEFS_DIR)) if (f.startsWith(`${r.runId}-`)) fs.unlinkSync(path.join(BRIEFS_DIR, f));
-    } catch { /* no briefs directory yet */ }
-  }
-}
-
-// Read straight from watches.json rather than importing lib/watches.js, which
-// keeps the store free of a dependency on the scheduler's data model.
-function pinnedRunIds() {
-  try {
-    const data = JSON.parse(fs.readFileSync(path.join(STATE_DIR, 'watches.json'), 'utf8'));
-    const list = Array.isArray(data) ? data : data.watches ?? [];
-    return new Set(list.map((w) => w.lastRunId).filter(Boolean));
-  } catch {
-    return new Set();
-  }
+async function pruneRuns() {
+  const max = config.store.maxRuns;
+  if ((await col('runs').estimatedDocumentCount()) <= max) return;
+  // A report a watch points to is its latest digest; deleting it left the
+  // watch saying "no completed run".
+  const pinned = new Set((await col('watches').find({ lastRunId: { $ne: null } }, { projection: { lastRunId: 1 } }).toArray()).map((w) => w.lastRunId));
+  const rows = await col('runs').find({}, { projection: { _id: 1 } }).sort({ generatedAt: -1 }).skip(max).toArray();
+  const drop = rows.map((r) => r._id).filter((id) => !pinned.has(id));
+  if (!drop.length) return;
+  await col('runs').deleteMany({ _id: { $in: drop } });
+  // A brief is meaningless without the report it was drafted from.
+  await col('briefs').deleteMany({ runId: { $in: drop } });
 }
 
 // ------------------------------------------------------------- retention ---
@@ -281,11 +232,6 @@ function pinnedRunIds() {
 // names, comment text, and statistics -- to be stored for at most 30 days.
 // A report and its briefs are made of exactly that, so they expire whole,
 // watches or not: a watch's next run refreshes the data anyway.
-const EXPIRED_INDEX = path.join(STATE_DIR, 'expired-runs.jsonl');
-const DAY_MS = 24 * 3600 * 1000;
-// Gap history holds our own model-written questions and scores, never raw
-// YouTube text; the derived-metrics amendment allows 36 months for those.
-export const HISTORY_MAX_DAYS = 36 * 30;
 
 /** Splits rows into [keep, drop] by a date field against a cutoff (ms). */
 export function partitionByAge(rows, cutoffMs, field = 'generatedAt') {
@@ -298,79 +244,32 @@ export function partitionByAge(rows, cutoffMs, field = 'generatedAt') {
   return [keep, drop];
 }
 
-const removeOlderFiles = (dir, cutoffMs, match = () => true) => {
-  let n = 0;
-  try {
-    for (const f of fs.readdirSync(dir)) {
-      const p = path.join(dir, f);
-      if (!match(f)) continue;
-      try {
-        if (fs.statSync(p).mtimeMs < cutoffMs) { fs.unlinkSync(p); n += 1; }
-      } catch { /* raced with another delete */ }
-    }
-  } catch { /* directory not created yet */ }
-  return n;
-};
-
 /**
  * Deletes every report, brief and gap-history row past its retention limit.
  * Returns counts for the log line.
  */
-export function sweepExpired({ now = Date.now(), maxDays = config.store.maxDataDays } = {}) {
+export async function sweepExpired({ now = Date.now(), maxDays = config.store.maxDataDays } = {}) {
   const cutoff = now - maxDays * DAY_MS;
-  let dropped = [];
-  withLock(RUN_INDEX, () => {
-    const [keep, drop] = partitionByAge(readIndex(), cutoff);
-    dropped = drop;
-    if (drop.length) writeAtomic(RUN_INDEX, keep.map((r) => `${JSON.stringify(r)}\n`).join(''));
-  });
-  for (const r of dropped) {
-    try { fs.unlinkSync(path.join(RUNS_DIR, `${r.runId}.json`)); } catch { /* already gone */ }
-  }
-  if (dropped.length) {
+  const cutoffIso = new Date(cutoff).toISOString();
+  const old = await col('runs').find({ generatedAt: { $lt: cutoffIso } }, { projection: { _id: 1 } }).toArray();
+  const ids = old.map((r) => r._id);
+  if (ids.length) {
     // Only ids and dates: enough to tell "expired" from "never existed".
-    const at = new Date(now).toISOString();
-    withLock(EXPIRED_INDEX, () => {
-      fs.appendFileSync(EXPIRED_INDEX, dropped.map((r) => `${JSON.stringify({ runId: r.runId, expiredAt: at })}\n`).join(''));
-    });
+    const at = new Date(now);
+    await col('expired_runs').bulkWrite(ids.map((id) => ({ updateOne: { filter: { _id: id }, update: { $setOnInsert: { expiredAt: at } }, upsert: true } })));
+    await col('runs').deleteMany({ _id: { $in: ids } });
   }
-  // Run files the index lost track of, and briefs, by file age: a brief quotes
-  // titles and comments, and is never younger than the report it came from.
-  const runFiles = removeOlderFiles(RUNS_DIR, cutoff, (f) => f.endsWith('.json'));
-  const briefs = removeOlderFiles(BRIEFS_DIR, cutoff, (f) => f.endsWith('.json'));
-  const ids = new Set(dropped.map((r) => r.runId));
-  try {
-    for (const f of fs.readdirSync(BRIEFS_DIR)) {
-      if ([...ids].some((id) => f.startsWith(`${id}-`))) fs.unlinkSync(path.join(BRIEFS_DIR, f));
-    }
-  } catch { /* no briefs directory yet */ }
-
-  let historyRows = 0;
-  const historyCutoff = now - HISTORY_MAX_DAYS * DAY_MS;
-  try {
-    for (const f of fs.readdirSync(NICHES_DIR)) {
-      const file = path.join(NICHES_DIR, f);
-      withLock(file, () => {
-        const rows = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
-          .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-        const [keep, drop] = partitionByAge(rows, historyCutoff);
-        if (!drop.length) return;
-        historyRows += drop.length;
-        writeAtomic(file, keep.map((r) => `${JSON.stringify(r)}\n`).join(''));
-      });
-    }
-  } catch { /* no history yet */ }
-
-  return { runs: dropped.length + runFiles, briefs, historyRows };
+  // Briefs quote titles and comments and are never younger than their report.
+  const briefs = (await col('briefs').deleteMany({ $or: [{ runId: { $in: ids } }, { createdAt: { $lt: new Date(cutoff) } }] })).deletedCount;
+  const historyCutoff = new Date(now - HISTORY_MAX_DAYS * DAY_MS).toISOString();
+  const historyRows = (await col('niche_history').deleteMany({ generatedAt: { $lt: historyCutoff } })).deletedCount;
+  return { runs: ids.length, briefs, historyRows };
 }
 
 /** Whether a run id was deleted by the retention sweep (vs. never existing). */
-export function wasExpired(runId) {
-  try {
-    return fs.readFileSync(EXPIRED_INDEX, 'utf8').includes(`"runId":${JSON.stringify(runId)}`);
-  } catch {
-    return false;
-  }
+export async function wasExpired(runId) {
+  if (!validId(runId)) return false;
+  return (await col('expired_runs').countDocuments({ _id: runId }, { limit: 1 })) > 0;
 }
 
 // ---------------------------------------------------------------- briefs ---
@@ -389,43 +288,43 @@ const languageSuffix = (language) => {
   return l ? `-l${crypto.createHash('sha1').update(l).digest('hex').slice(0, 8)}` : '';
 };
 
-const briefPath = (runId, index, language) =>
-  /^[a-zA-Z0-9_-]+$/.test(runId ?? '') && Number.isInteger(index) && index >= 0
-    ? path.join(BRIEFS_DIR, `${runId}-${index}${languageSuffix(language)}.json`)
-    : null;
 
-export function saveBrief(runId, index, brief, language = '') {
-  const file = briefPath(runId, index, language);
-  if (file) writeAtomic(file, JSON.stringify(brief));
+const briefId = (runId, index, language) =>
+  validId(runId) && Number.isInteger(index) && index >= 0 ? `${runId}-${index}${languageSuffix(language)}` : null;
+
+export async function saveBrief(runId, index, brief, language = '') {
+  const id = briefId(runId, index, language);
+  if (!id) return;
+  const createdAt = new Date();
+  await col('briefs').replaceOne(
+    { _id: id },
+    { runId, index, brief: plain(brief), createdAt, expireAt: new Date(createdAt.getTime() + (config.store.maxDataDays + 1) * DAY_MS) },
+    { upsert: true }
+  );
 }
 
-export function readBrief(runId, index, language = '') {
-  const file = briefPath(runId, index, language);
-  if (!file) return null;
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return null;
-  }
+export async function readBrief(runId, index, language = '') {
+  const id = briefId(runId, index, language);
+  if (!id) return null;
+  return (await col('briefs').findOne({ _id: id }))?.brief ?? null;
 }
 
 // --------------------------------------------------- per-niche gap history ---
 
 /**
  * Appends this run's gaps to the niche's history. Only the fields recurrence
- * needs are stored, not whole gap objects -- this file is meant to stay small
+ * needs are stored, not whole gap objects -- this history is meant to stay small
  * enough to keep for months, because the entire value of recurrence detection
  * comes from having a long baseline to compare against.
  */
-export function appendGapHistory(niche, runId, generatedAt, gaps, { filters = {}, comments = null } = {}) {
+export async function appendGapHistory(niche, runId, generatedAt, gaps, { filters = {}, comments = null } = {}) {
   const key = nicheKey(niche);
-  const file = path.join(NICHES_DIR, `${key}.jsonl`);
   // Every run leaves a row, even one with no gaps: a marker records that the
   // run happened and how many comments it mined, so a later run can tell
   // "nobody asked" from "nothing was read".
   const base = { runId, generatedAt, ...filters, comments };
-  const lines = gaps.length
-    ? gaps.map((g) => JSON.stringify({
+  const rows = gaps.length
+    ? gaps.map((g) => ({
       ...base,
       question: g.question,
       coverage: g.coverage,
@@ -434,35 +333,21 @@ export function appendGapHistory(niche, runId, generatedAt, gaps, { filters = {}
       evidenceCount: g.evidenceCount,
       distinctVideos: g.distinctVideos,
     }))
-    : [JSON.stringify({ ...base, marker: true })];
-
-  withLock(file, () => {
-    fs.mkdirSync(NICHES_DIR, { recursive: true });
-    fs.appendFileSync(file, `${lines.join('\n')}\n`);
-  });
+    : [{ ...base, marker: true }];
+  const when = new Date(generatedAt).getTime();
+  const expireAt = new Date((Number.isFinite(when) ? when : Date.now()) + HISTORY_MAX_DAYS * DAY_MS);
+  await col('niche_history').insertMany(rows.map((r) => ({ ...plain(r), nicheKey: key, expireAt })));
 }
 
 /** Every previously recorded gap for a niche, excluding the run being analysed. */
-export function readGapHistory(niche, { excludeRunId } = {}) {
-  const file = path.join(NICHES_DIR, `${nicheKey(niche)}.jsonl`);
-  let rows;
-  try {
-    rows = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
-  } catch {
-    return [];
-  }
-  return rows
-    .map((line) => { try { return JSON.parse(line); } catch { return null; } })
-    .filter((r) => r && r.runId !== excludeRunId);
+export async function readGapHistory(niche, { excludeRunId } = {}) {
+  const filter = { nicheKey: nicheKey(niche) };
+  if (excludeRunId) filter.runId = { $ne: excludeRunId };
+  const rows = await col('niche_history').find(filter).sort({ _id: 1 }).toArray(); // insertion order, as the old file had
+  return rows.map(({ _id, nicheKey: _k, expireAt, ...row }) => row);
 }
 
-export function stats() {
-  try {
-    return {
-      runs: fs.readdirSync(RUNS_DIR).filter((f) => f.endsWith('.json')).length,
-      niches: fs.existsSync(NICHES_DIR) ? fs.readdirSync(NICHES_DIR).filter((f) => f.endsWith('.jsonl')).length : 0,
-    };
-  } catch {
-    return { runs: 0, niches: 0 };
-  }
+export async function stats() {
+  const [runs, niches] = await Promise.all([col('runs').estimatedDocumentCount(), col('niche_history').distinct('nicheKey')]);
+  return { runs, niches: niches.length };
 }

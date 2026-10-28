@@ -31,7 +31,7 @@ export const Button = forwardRef(function Button(
 ) {
   const off = disabled || loading;
   const classes = cx(
-    'relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-control font-semibold',
+    'relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-full font-semibold',
     'transition-[background-color,color,opacity] duration-150 ease-[var(--ease-out)]',
     VARIANTS[variant],
     SIZES[size],
