@@ -1,3 +1,4 @@
+import { isPublicSafe } from './publicFilter.js';
 import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { col } from './mongo.js';
@@ -143,7 +144,11 @@ const top = (list, n) => (Array.isArray(list) ? list.slice(0, n) : []);
 
 /** The few fields of a report the marketing page shows, so a public endpoint hands out a sample, not the whole report. */
 export function trimFeatured(run) {
-  const gaps = top(run.gaps, 3).map((g) => ({
+  // The homepage is public, so nothing past this point skips the word filter.
+  const safe = (...texts) => texts.every(isPublicSafe);
+  const quotes = (g) => (g.evidence ?? []).filter((e) => safe(e.text));
+  const showable = (run.gaps ?? []).filter((g) => safe(g.question, g.suggestedTitle) && (quotes(g).length > 0 || !g.evidence?.length));
+  const gaps = top(showable, 3).map((g) => ({
     question: g.question,
     demandStrength: g.demandStrength,
     coverage: g.coverage,
@@ -151,23 +156,27 @@ export function trimFeatured(run) {
     distinctVideos: g.distinctVideos,
     demandScore: g.demandScore,
     suggestedTitle: g.suggestedTitle,
-    evidence: top(g.evidence, 3).map((e) => ({ text: e.text, likes: e.likes, videoId: e.videoId })),
+    evidence: top(quotes(g), 3).map((e) => ({ text: e.text, likes: e.likes, videoId: e.videoId })),
   }));
-  const topics = top(run.topics, 3).map((t) => ({
+  const topics = top((run.topics ?? []).filter((t) => safe(t.label, t.summary)), 3).map((t) => ({
     label: t.label,
     heatScore: t.heatScore,
     summary: t.summary,
-    videos: top(t.videos, 3).map((v) => ({
+    videos: top((t.videos ?? []).filter((v) => safe(v.title, v.channelTitle)), 3).map((v) => ({
       videoId: v.videoId, title: v.title, channelTitle: v.channelTitle, views: v.views, url: v.url, thumbnail: v.thumbnail,
     })),
   }));
+  const objections = top((run.objections ?? []).filter((o) => safe(o.label, o.detail, o.fix)), 3).map((o) => ({
+    label: o.label, severity: o.severity, evidenceCount: o.evidenceCount, detail: o.detail, fix: o.fix,
+  }));
+  const avoid = top((run.avoid ?? []).filter((a) => safe(a.label, a.reason, a.counterEvidence)), 3).map((a) => ({ label: a.label, reason: a.reason, counterEvidence: a.counterEvidence }));
   // Every video the run knows about, so a comment's source can be named.
   const titles = new Map();
   for (const v of [...(run.topVideos ?? []), ...(run.topics ?? []).flatMap((t) => t.videos ?? []), ...(run.gaps ?? []).flatMap((g) => g.coveringVideos ?? [])]) {
     if (v?.videoId && v.title && !titles.has(v.videoId)) titles.set(v.videoId, v.title);
   }
   const videoTitles = {};
-  for (const g of gaps) for (const e of g.evidence) if (titles.has(e.videoId)) videoTitles[e.videoId] = titles.get(e.videoId);
+  for (const g of gaps) for (const e of g.evidence) if (titles.has(e.videoId) && safe(titles.get(e.videoId))) videoTitles[e.videoId] = titles.get(e.videoId);
 
   const st = run.stats ?? {};
   return {
@@ -182,6 +191,8 @@ export function trimFeatured(run) {
     },
     gaps,
     topics,
+    objections,
+    avoid,
     videoTitles,
   };
 }
@@ -203,6 +214,17 @@ export async function featuredReport({ now = Date.now() } = {}) {
     if (fresh(run)) return trimFeatured(run);
   }
   return null;
+}
+
+/**
+ * The homepage app's reports: the runs listed in FEATURED_RUN_IDS, in that order,
+ * trimmed. Listing is the publishing step, so a report that nobody has read never
+ * appears here. A run that is gone or past the retention limit is skipped.
+ */
+export async function featuredReports({ ids = config.featured.runIds, read = readRun, now = Date.now() } = {}) {
+  const cutoff = now - config.store.maxDataDays * DAY_MS;
+  const runs = await Promise.all(ids.slice(0, 4).map((id) => read(id).catch(() => null)));
+  return runs.filter((run) => run && new Date(run.generatedAt).getTime() >= cutoff).map(trimFeatured);
 }
 
 /**

@@ -56,7 +56,7 @@ export function EarthBlaze({
 
   return (
     <div data-earth-blaze="" className={className} style={{ position: 'relative', isolation: 'isolate', overflow: 'hidden', width: '100%', aspectRatio: '16 / 10', background: '#000', ...style }}>
-      <style>{'[data-earth-blaze] > canvas:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; } [data-earth-blaze] > canvas[data-pointer]:focus-visible { outline: none; }'}</style>
+      <style>{'[data-earth-blaze] > canvas:focus-visible { outline: none; }'}</style>
       <div ref={fallback} aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: `radial-gradient(ellipse at 32% 38%, ${backgroundColor ?? '#000'} 0%, #000 60%)` }}>
         <div style={{ position: 'absolute', width: '180%', height: '220%', left: '19%', top: '18%', borderRadius: '50%', background: '#000', boxShadow: `-2px -2px 3px ${backgroundColor ?? '#000'}`, transform: 'rotate(-28deg)' }} />
       </div>
@@ -196,10 +196,6 @@ const fragment = `
       color += vec3(.010, .018, .032) * pool * (reveal + bloom) * inside * surfaceBrightness * illumination;
     }
 
-    // The site's palette only: every lit pixel lands between black, the theme colour and white.
-    float tone = max(color.r, max(color.g, color.b));
-    color = mix(color, mix(backgroundColor.rgb * min(tone / .6, 1.), vec3(1.), smoothstep(.6, 1., tone)), backgroundColor.a);
-
     // One static sub-byte dither prevents bands without making black space noisy.
     float light = max(color.r, max(color.g, color.b));
     color += (grain(gl_FragCoord.xy) - .5) / 255. * smoothstep(.001, .015, light);
@@ -281,7 +277,8 @@ const starVertex = `
     alpha = (.24 + star.w * .58 + sharp * .55) * twinkle;
     alpha *= tail < .5 ? 1. : charge * (1. - tail / 7.) * .19 * (1. - still);
     alpha *= 1. + impulse * .8;
-    tint = vec3(1.);
+    tint = mix(vec3(.49, .70, 1.), vec3(1., .69, .49), smoothstep(.32, .90, fract(star.w * 13.7)));
+    tint = mix(tint, vec3(.93, .77, 1.), step(.87, fract(star.w * 7.)));
   }
 `;
 const starFragment = `

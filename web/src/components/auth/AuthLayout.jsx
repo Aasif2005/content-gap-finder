@@ -14,12 +14,12 @@ const SPILL = { eyebrow: 0.8, phrase: 0.85, line: 0.85 }; // base-layer brightne
 const BRANDS = {
   quote: {
     eyebrow: 'Welcome back',
-    phrase: 'Switch the lights on what viewers are asking for.',
+    phrase: 'Stop guessing.\nYour viewers\nalready told you.',
     line: 'Pick up your reports where you left them.',
   },
   benefits: {
     eyebrow: 'Free during beta',
-    phrase: 'Your next video is in the comments.',
+    phrase: 'Viewers are asking.\nNobody’s answering.\nBe first.',
     line: 'Three fresh analyses a day. Free.',
   },
 };
@@ -36,7 +36,7 @@ function StudioBrand({ brand, lamps, bright = false }) {
       <div className="max-w-[440px]">
         <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-fg-2" style={level(SPILL.eyebrow)}>{eyebrow}</p>
         <p
-          className="mt-4 text-balance text-[44px] font-semibold leading-[1.08] tracking-[-0.03em]"
+          className="mt-4 whitespace-pre-line text-balance text-[44px] font-semibold leading-[1.08] tracking-[-0.03em]"
           style={{ ...level(SPILL.phrase), ...(bright ? { textShadow: halo } : {}) }}
         >
           {phrase}
@@ -55,7 +55,7 @@ function StudioBrand({ brand, lamps, bright = false }) {
     <div className="max-w-[440px]">
       <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-fg-2" style={dim}>{eyebrow}</p>
       <p
-        className={`mt-4 text-balance text-[44px] font-semibold leading-[1.08] tracking-[-0.03em] ${live ? 'sl-sheen sl-bloom' : ''}`}
+        className={`mt-4 whitespace-pre-line text-balance text-[44px] font-semibold leading-[1.08] tracking-[-0.03em] ${live ? 'sl-sheen sl-bloom' : ''}`}
         style={{ ...dim, '--sh': 'var(--fg)', ...(bright ? { textShadow: halo } : {}) }}
       >
         {phrase}

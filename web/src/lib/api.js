@@ -94,8 +94,8 @@ export const uploadAvatar = (image) => request('/api/me/avatar', { method: 'PUT'
 /** Removes the uploaded picture; a Google photo, if there is one, shows again. */
 export const removeAvatar = () => request('/api/me/avatar', { method: 'DELETE' });
 
-/** The sample report shown on the homepage, or null when there is none yet. Public. */
-export const getFeatured = () => request('/api/featured').then((b) => b.featured ?? null);
+/** The real reports shown in the homepage app; empty when there are none yet. Public. */
+export const getFeatured = () => request('/api/featured').then((b) => b.reports ?? (b.featured ? [b.featured] : []));
 
 // --- analysis ----------------------------------------------------------------
 

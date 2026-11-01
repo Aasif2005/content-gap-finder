@@ -524,7 +524,9 @@ router.delete('/me', requireUser, wrap(async (req, res) => {
 /** A trimmed sample report for the marketing homepage. Public; nothing in it is per-user. */
 router.get('/featured', wrap(async (_req, res) => {
   res.set('Cache-Control', 'public, max-age=300');
-  res.json({ featured: await store.featuredReport() });
+  const reports = await store.featuredReports();
+  const featured = reports[0] ?? await store.featuredReport();
+  res.json({ featured, reports: reports.length ? reports : [featured].filter(Boolean) });
 }));
 
 // ------------------------------------------------------------ audit log ----

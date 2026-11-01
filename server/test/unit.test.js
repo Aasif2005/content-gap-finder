@@ -56,7 +56,8 @@ import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet } from 'jose';
 import { verifyIdToken, normalizeUser } from '../src/lib/firebaseToken.js';
 import { bearerToken, shouldTouch, requireUser, requireVerified, requireAdmin, isAdmin, needsVerification } from '../src/lib/auth.js';
 import { upsertUser, getUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../src/lib/db.js';
-import { ownRuns, featuredCandidates, trimFeatured } from '../src/lib/store.js';
+import { ownRuns, featuredCandidates, featuredReports, trimFeatured } from '../src/lib/store.js';
+import { isPublicSafe } from '../src/lib/publicFilter.js';
 import { ownedBy, ownedWatch, atOwnerCap, hasDuplicate } from '../src/lib/watches.js';
 import { dailyLimitBody } from '../src/routes/api.js';
 import { normalizeEmail, joinWaitlist } from '../src/lib/waitlist.js';
@@ -2465,6 +2466,51 @@ describe('per-account runs, featured sample and watches', () => {
     assert.deepEqual(pick([]), []);
   });
 
+  test('the homepage filter catches abuse, not opinions', () => {
+    for (const text of ['Maybe I\'m not autistic enough, but why so loud', 'this is sh!t', 'what the f*ck', 'chutiya video', 'vote for modi', 'kill yourself', 'dumb @ss']) {
+      assert.equal(isPublicSafe(text), false, text);
+    }
+    for (const text of ['Don\'t ever buy moto, Bad service.', 'itssbsolutely rubish phone', 'This device is highly overpriced', 'first class, assess it', 'Essex classic massive', 'sextant and Dickens', 'my coworkers would kill me', '', null]) {
+      assert.equal(isPublicSafe(text), true, text);
+    }
+  });
+
+  test('trimFeatured keeps unsafe text off the homepage and moves the next item up', () => {
+    const gap = (question, texts, extra = {}) => ({ question, suggestedTitle: 'T', evidence: texts.map((text) => ({ text, likes: 1, videoId: 'v1' })), ...extra });
+    const out = trimFeatured({
+      runId: 'r', generatedAt: '2026-10-25T00:00:00Z', stats: { gapsFound: 5 },
+      topVideos: [{ videoId: 'v1', title: 'what the fuck video' }],
+      gaps: [
+        gap('all quotes bad', ['you idiot', 'fucking awful']),
+        gap('bad title', ['fine'], { suggestedTitle: 'a shit title' }),
+        gap('one good quote', ['you idiot', 'honest but harsh: terrible phone']),
+        gap('second', ['ok']), gap('third', ['ok']), gap('fourth', ['ok']),
+      ],
+      topics: [{ label: 'porn', summary: 's' }, { label: 'fine', summary: 's' }],
+      objections: [{ label: 'fine', detail: 'bastard', fix: 'f' }, { label: 'kept', detail: 'd', fix: 'f' }],
+      avoid: [{ label: 'gandu', reason: 'r' }, { label: 'kept', reason: 'r' }],
+    });
+    assert.deepEqual(out.gaps.map((g) => g.question), ['one good quote', 'second', 'third']);
+    assert.deepEqual(out.gaps[0].evidence.map((e) => e.text), ['honest but harsh: terrible phone']);
+    assert.deepEqual(out.topics.map((t) => t.label), ['fine']);
+    assert.deepEqual(out.objections.map((o) => o.label), ['kept']);
+    assert.deepEqual(out.avoid.map((a) => a.label), ['kept']);
+    assert.equal(/idiot|fuck|shit|porn|bastard|gandu/.test(JSON.stringify(out)), false); // nothing leaves the server, titles included
+    assert.equal(out.stats.gapsFound, 5);
+  });
+
+  test('featuredReports keeps the listed order, skips gone and expired runs, and stops at four', async () => {
+    const now = Date.parse('2026-11-01T00:00:00Z');
+    const run = (runId, generatedAt) => ({ runId, generatedAt, query: { niche: runId } });
+    const stored = { a: run('a', '2026-10-30T00:00:00Z'), b: run('b', '2026-10-31T00:00:00Z'), old: run('old', '2026-09-01T00:00:00Z'), c: run('c', '2026-10-29T00:00:00Z'), d: run('d', '2026-10-28T00:00:00Z'), e: run('e', '2026-10-27T00:00:00Z') };
+    const read = async (id) => { if (id === 'broken') throw new Error('nope'); return stored[id] ?? null; };
+    const ids = (list) => featuredReports({ ids: list, read, now }).then((r) => r.map((x) => x.runId));
+    assert.deepEqual(await ids(['b', 'a']), ['b', 'a']);
+    assert.deepEqual(await ids(['old', 'missing', 'broken', 'a']), ['a']);
+    assert.deepEqual(await ids(['a', 'b', 'c', 'd', 'e']), ['a', 'b', 'c', 'd']);
+    assert.deepEqual(await ids([]), []);
+  });
+
   test('trimFeatured keeps only the top three of each, with titles for the evidence videos', () => {
     const video = (id) => ({ videoId: id, title: `Title ${id}`, channelTitle: 'Ch', views: 10, url: `u/${id}`, thumbnail: `t/${id}`, secret: 'x' });
     const run = {
@@ -2476,8 +2522,13 @@ describe('per-account runs, featured sample and watches', () => {
         question: `q${i}`, demandStrength: 'high', coverage: 'weak', evidenceCount: 9, distinctVideos: 2, demandScore: 50, suggestedTitle: 'T', explanation: 'private',
         evidence: [{ text: 'a', likes: 1, videoId: 'v1', replyCount: 3 }, { text: 'b', likes: 2, videoId: 'v2' }, { text: 'c', likes: 3, videoId: 'gone' }, { text: 'd', likes: 4, videoId: 'v1' }],
       })),
+      objections: [1, 2, 3, 4].map((i) => ({ label: `o${i}`, severity: 'high', evidenceCount: 3, detail: 'd', fix: 'f', evidence: [{ text: 'private' }] })),
+      avoid: [1, 2, 3, 4].map((i) => ({ label: `a${i}`, reason: 'r', counterEvidence: 'c', videos: [video('private')] })),
     };
     const out = trimFeatured(run);
+    assert.equal(out.objections.length, 3);
+    assert.deepEqual(Object.keys(out.objections[0]).sort(), ['detail', 'evidenceCount', 'fix', 'label', 'severity']);
+    assert.deepEqual(out.avoid[0], { label: 'a1', reason: 'r', counterEvidence: 'c' });
     assert.equal(out.gaps.length, 3);
     assert.equal(out.topics.length, 3);
     assert.equal(out.topics[0].videos.length, 3);

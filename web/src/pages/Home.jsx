@@ -7,7 +7,7 @@ import { EarthBlaze } from '../components/ui/EarthBlaze.jsx';
 import SearchConsole from '../components/home/SearchConsole.jsx';
 import Pricing from '../components/home/Pricing.jsx';
 import SampleReport from '../components/home/SampleReport.jsx';
-import { EXAMPLE_VIEW, toView } from '../components/home/exampleReport.js';
+import { toView } from '../components/home/exampleReport.js';
 import { CtaCard, EvidenceSplit, FloatingCards, GapSplit, HowItWorks, Lenses, NicheStrip, Statement, ViewerQuote } from '../components/home/Sections.jsx';
 
 /**
@@ -25,7 +25,7 @@ export default function Home() {
     if (legacyNiche) navigate(`/explore${search}`, { replace: true });
   }, [legacyNiche, search]);
 
-  // undefined = loading, null = nothing usable (show the labelled example).
+  // undefined = loading, null = nothing usable (show the labelled examples).
   const [featured, setFeatured] = useState(undefined);
   useEffect(() => {
     let off = false;
@@ -35,9 +35,9 @@ export default function Home() {
     return () => { off = true; };
   }, []);
 
-  const view = useMemo(() => {
+  const views = useMemo(() => {
     if (featured === undefined) return undefined;
-    return toView(featured) ?? EXAMPLE_VIEW;
+    return (featured ?? []).map(toView).filter(Boolean);
   }, [featured]);
 
   return (
@@ -70,7 +70,7 @@ export default function Home() {
       </div>
 
       <div className="mx-auto mt-11 max-w-[1200px] px-5 sm:px-10 md:mt-[72px]">
-        <SampleReport view={view} />
+        <SampleReport views={views} />
       </div>
 
       <NicheStrip />

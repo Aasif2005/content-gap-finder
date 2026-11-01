@@ -8,7 +8,8 @@
     "dev": "node --env-file=../.env --watch src/index.js",
     "start": "node --env-file-if-exists=../.env src/index.js",
     "test": "node --env-file-if-exists=../.env --test test/",
-    "waitlist": "node --env-file=../.env scripts/waitlist.js"
+    "waitlist": "node --env-file=../.env scripts/waitlist.js",
+    "featured": "node --env-file=../.env scripts/featured.js"
   },
   "dependencies": {
     "compression": "^1.8.2",

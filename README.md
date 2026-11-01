@@ -971,6 +971,7 @@ web/
   re-worded with entirely different vocabulary will read as new.
 - **The scheduler is single-instance**, like `lib/jobs.js`. Two servers sharing a state
   directory would fire every watch twice. Set `SCHEDULER_ENABLED=false` on replicas.
+- **The homepage app's real reports need refreshing about every 25 days.** YouTube data may only be kept 30 days, so a report drops off the homepage by itself and a labelled example takes its place. Run `npm run featured` in `server/`, read every quote it prints, then set the `FEATURED_RUN_IDS` line it gives you and restart. Nothing appears on the homepage until its run id is listed. `lib/publicFilter.js` keeps abuse, slurs and controversial subjects out of `/api/featured` on the server; honest criticism stays, and reports inside the app are not filtered. Each round costs 4 search calls and four DeepSeek runs.
 - **Deep scan and watches are switched off until the quota audit** (`ALLOW_DEEP_SCAN`, `ALLOW_WATCHES` on the server, `DEEP_SCAN` / `WATCHES` in `web/src/lib/features.js`). Deep scan doubles a run's `search.list` calls and watches re-run searches unattended every day, both against the 100-a-day search bucket. Existing watches stay stored but do not run.
 - **Custom ranges are switched off for now** (`ALLOW_CUSTOM_WINDOW=false`, `CUSTOM_RANGE` in `SearchForm.jsx`) until the quota extension is approved. When on, they reach back 365 days. `search.list` will go further, but older windows
   make view-velocity scoring meaningless — everything looks slow.

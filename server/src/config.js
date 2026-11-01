@@ -108,6 +108,10 @@ export const config = {
   featured: {
     runId: (process.env.FEATURED_RUN_ID ?? '').trim(),
     niche: (process.env.FEATURED_NICHE ?? '').trim() || 'sourdough starter',
+    // The homepage app's reports, each published by hand after its quotes are
+    // read (npm run featured). Stored runs expire, so an old id simply drops out.
+    runIds: (process.env.FEATURED_RUN_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    niches: (process.env.FEATURED_NICHES ?? 'AI side hustles,smartphone reviews,beginner investing,mechanical keyboards').split(',').map((s) => s.trim()).filter(Boolean),
   },
 
   store: {
