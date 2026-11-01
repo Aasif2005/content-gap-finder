@@ -7,13 +7,17 @@ import { Button } from './ui/Button.jsx';
 import { Checkbox } from './ui/Checkbox.jsx';
 import { Field, Input } from './ui/Field.jsx';
 import { Panel } from './ui/Panel.jsx';
+import { DEEP_SCAN } from '../lib/features.js';
+
+// The Custom date range is switched off until the YouTube quota extension is approved (and ALLOW_CUSTOM_WINDOW on the server).
+const CUSTOM_RANGE = false;
 
 const WINDOWS = [
   { value: '24h', label: '24 hours' },
   { value: '7d', label: '7 days' },
   { value: '30d', label: '30 days' },
   { value: '90d', label: '90 days' },
-  { value: 'custom', label: 'Custom' },
+  ...(CUSTOM_RANGE ? [{ value: 'custom', label: 'Custom' }] : []),
 ];
 
 const TWO_LETTERS = /^[a-z]{2}$/i;
@@ -63,17 +67,17 @@ function Pills({ options, value, onChange, name, disabled }) {
  * page itself is the mode switch now, so the form no longer has its own toggle. */
 export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
   const [niche, setNiche] = useState(initial.niche ?? '');
-  const [window, setWindow] = useState(initial.window ?? '7d');
+  const [window, setWindow] = useState(initial.window === 'custom' && !CUSTOM_RANGE ? '7d' : initial.window ?? '7d');
   const [contentType, setContentType] = useState(initial.contentType ?? 'both');
   // Opened with filters in the URL? Show them, or they look like they were ignored.
   const [advanced, setAdvanced] = useState(
-    Boolean(initial.regionCode || initial.relevanceLanguage || initial.minViews || initial.deepScan || (initial.gapMode && initial.gapMode !== 'inclusive'))
+    Boolean(initial.regionCode || initial.relevanceLanguage || initial.minViews || (DEEP_SCAN && initial.deepScan) || (initial.gapMode && initial.gapMode !== 'inclusive'))
   );
   const [regionCode, setRegionCode] = useState(initial.regionCode ?? '');
   const [relevanceLanguage, setRelevanceLanguage] = useState(initial.relevanceLanguage ?? '');
   const [minViews, setMinViews] = useState(initial.minViews ? String(initial.minViews) : '');
   const [gapMode, setGapMode] = useState(initial.gapMode ?? 'inclusive');
-  const [deepScan, setDeepScan] = useState(Boolean(initial.deepScan));
+  const [deepScan, setDeepScan] = useState(DEEP_SCAN && Boolean(initial.deepScan));
   const [channelId, setChannelId] = useState(initial.channelId ?? '');
   const [customAfter, setCustomAfter] = useState(
     initial.customAfter ? initial.customAfter.slice(0, 10) : daysAgoISO(14)
@@ -122,7 +126,7 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
       // narrowing has nothing to disambiguate and is left off entirely.
       regionCode: channelMode ? undefined : regionCode.trim() || undefined,
       relevanceLanguage: channelMode ? undefined : relevanceLanguage.trim() || undefined,
-      deepScan: channelMode ? false : deepScan,
+      deepScan: channelMode || !DEEP_SCAN ? false : deepScan,
     }, { origin });
   };
 
@@ -190,7 +194,7 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
               </div>
             </div>
 
-            {window === 'custom' && (
+            {CUSTOM_RANGE && window === 'custom' && (
               <label className="flex items-center gap-3 text-sm text-fg-2">
                 <span className="font-medium">Since</span>
                 <input
@@ -248,7 +252,7 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
 
           {/* Deep scan widens a SEARCH pool. Channel mode has no search to widen
               -- it already reads every upload in the window. */}
-          {!channelMode && (
+          {DEEP_SCAN && !channelMode && (
             <Checkbox
               checked={deepScan}
               onChange={(e) => setDeepScan(e.target.checked)}

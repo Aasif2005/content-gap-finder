@@ -1,4 +1,5 @@
 import { Alert } from './ui/Alert.jsx';
+import { DEEP_SCAN } from '../lib/features.js';
 import { Button } from './ui/Button.jsx';
 
 /**
@@ -45,7 +46,7 @@ export function ThinPoolNotice({ thinPool, query, busy, onRerun }) {
       label: 'Widen to 90 days',
       patch: { window: '90d', customAfter: undefined },
     },
-    !channelMode && !query.deepScan && {
+    DEEP_SCAN && !channelMode && !query.deepScan && {
       label: 'Deep scan',
       patch: { deepScan: true },
       title: 'Doubles the candidate pool with a second date-ordered search pass. Costs one extra search call (of 100 a day).',

@@ -61,7 +61,7 @@ async function call(endpoint, params, quotaKind, quotaTimes = 1) {
     throw err;
   }
   const data = await res.json();
-  if (key) await cache.set(key, data).catch(() => {});
+  if (key) await cache.set(key, data, { ttlSeconds: config.cache.sourceTtlSeconds }).catch(() => {});
   return data;
 }
 

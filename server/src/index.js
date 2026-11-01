@@ -70,7 +70,8 @@ try {
 
 // Saved watches re-run themselves; see services/scheduler.js for why it is
 // deliberately conservative about quota and concurrency.
-scheduler.start();
+// Held back (with the watch controls) until the quota audit: a run spends search calls unattended.
+if (config.features.watches) scheduler.start();
 retention.start();
 
 const server = app.listen(config.port, () => {

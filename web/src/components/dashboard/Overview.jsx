@@ -4,6 +4,8 @@ import { Link } from '../../lib/router.jsx';
 import { Button, EvidenceMark, Panel, Skeleton } from '../ui/index.js';
 import { getRun } from '../../lib/api.js';
 import { compact } from '../../lib/format.js';
+import { WATCHES } from '../../lib/features.js';
+import { cx } from '../../lib/cx.js';
 
 /** Four numbers about the reports still kept, summed from the run list. Zeros on a new account. */
 export function StatStrip({ runs }) {
@@ -140,11 +142,12 @@ const TIPS = [
 ];
 
 export function Tips() {
+  const tips = TIPS.filter((t) => WATCHES || t.title !== 'Watch what recurs');
   return (
     <section aria-label="How to get sharper gaps" className="mt-14">
       <h2 className="text-[13px] font-semibold uppercase tracking-[0.14em] text-fg-3">How to get sharper gaps</h2>
-      <ul className="mt-5 grid gap-x-10 gap-y-8 md:grid-cols-3">
-        {TIPS.map(({ icon: Icon, title, body }) => (
+      <ul className={cx('mt-5 grid gap-x-10 gap-y-8', tips.length > 2 ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
+        {tips.map(({ icon: Icon, title, body }) => (
           <li key={title} className="border-t border-line pt-5">
             <Icon aria-hidden className="h-5 w-5 text-focus" />
             <h3 className="mt-3 text-[17px] font-semibold">{title}</h3>

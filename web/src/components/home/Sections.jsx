@@ -42,8 +42,9 @@ export function HowItWorks() {
 }
 
 const NICHES = [
-  'Cast iron restoration', 'Sourdough baking', 'Home lab servers', 'Watercolour portraits',
-  'Budget travel', 'Retro gaming', 'Specialty coffee', 'Modular synthesizers',
+  'AI side hustles', 'Ghost story nights', 'Budget van life', 'Cozy gaming',
+  'Mechanical keyboards', 'Street food tours', 'Minecraft redstone', 'Desk setup glow-ups',
+  'Beginner investing', 'Retro handhelds', 'Skincare on a budget', 'Tamil comedy skits',
 ];
 
 /** A band of example niches. It drifts slowly; under reduced motion it just wraps and sits still. */

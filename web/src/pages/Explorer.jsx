@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { SearchForm } from '../components/SearchForm.jsx';
 import { ProgressRail } from '../components/ProgressRail.jsx';
 import { WatchPanel } from '../components/WatchPanel.jsx';
+import { WATCHES } from '../lib/features.js';
 import { ReportView } from '../components/explorer/ReportView.jsx';
 import { ReportSkeleton } from '../components/explorer/ReportSkeleton.jsx';
 import { RunError } from '../components/explorer/RunError.jsx';
@@ -306,7 +307,7 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
   // Recent reports live on the Dashboard. Watches are managed at the foot of a
   // report: only a query that actually produced a report can be watched (the raw
   // form input let a watch be saved for a channel that never resolved).
-  const panels = canRun && result && (
+  const panels = WATCHES && canRun && result && (
     <WatchPanel currentQuery={result.query ?? null} onOpenRun={goToRun} mode={mode} />
   );
 

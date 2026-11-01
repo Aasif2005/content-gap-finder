@@ -2951,6 +2951,36 @@ describe('bug bash regressions', () => {
     assert.deepEqual(jobs.get(id).error, { message: RUN_FAILED, code: 'DEEPSEEK_ERROR' });
   });
 
+  test('cache entries are deleted when their own TTL ends, never past the retention limit', async () => {
+    const { expiryFor } = await import('../src/lib/cache.js');
+    assert.equal(expiryFor(1_000_000, 21600).getTime(), 1_000_000 + 21600 * 1000);
+    assert.equal(expiryFor(0, 10 * 365 * 86400).getTime(), config.store.maxDataDays * 86400 * 1000);
+  });
+
+  test('deep scan is ignored until it is switched on', () => {
+    assert.equal(config.features.deepScan, false);
+    assert.equal(validate({ niche: 'chess', deepScan: true }).deepScan, false);
+    config.features.deepScan = true;
+    try {
+      assert.equal(validate({ niche: 'chess', deepScan: true }).deepScan, true);
+    } finally {
+      config.features.deepScan = false;
+    }
+  });
+
+  test('the custom date range is refused until it is switched on', () => {
+    const body = { niche: 'chess', window: 'custom', customAfter: new Date(Date.now() - 20 * 86_400_000).toISOString() };
+    assert.equal(config.allowCustomWindow, false);
+    assert.throws(() => validate(body), { code: 'VALIDATION', message: /not available yet/ });
+    config.allowCustomWindow = true;
+    try {
+      assert.equal(validate(body).window, 'custom');
+    } finally {
+      config.allowCustomWindow = false;
+    }
+    assert.equal(validate({ niche: 'chess', window: '90d' }).window, '90d'); // presets are untouched
+  });
+
   test('region and language must be real two-letter codes before a run is spent', () => {
     assert.equal(validate({ niche: 'chess', regionCode: ' in ' }).regionCode, 'IN');
     assert.equal(validate({ niche: 'chess', relevanceLanguage: 'TA' }).relevanceLanguage, 'ta');

@@ -80,6 +80,7 @@ export function validate(body) {
   // A custom range carries its own start date; everything else is a preset.
   let customAfter;
   if (window === 'custom') {
+    if (!config.allowCustomWindow) throw bad('Custom date ranges are not available yet.');
     const at = new Date(body.customAfter ?? '');
     if (Number.isNaN(at.getTime())) throw bad('A custom range needs a valid start date (ISO 8601).');
     if (at.getTime() >= Date.now()) throw bad('The custom start date must be in the past.');
@@ -102,7 +103,7 @@ export function validate(body) {
 
   // Opt-in: doubles the search.list slices to widen the candidate pool. Costs
   // real quota, so it is never on by default -- see lib/searchPlan.js.
-  const deepScan = body.deepScan === true;
+  const deepScan = body.deepScan === true && config.features.deepScan; // off until the quota audit: ignored, not an error
 
   // ISO 3166-1 alpha-2 / ISO 639-1 respectively; YouTube rejects anything else,
   // and that refusal would otherwise spend a run to say so.
@@ -386,6 +387,7 @@ router.get('/watches', requireUser, wrap(async (req, res) => {
 }));
 
 router.post('/watches', requireUser, requireVerified, wrap(async (req, res) => {
+  if (!config.features.watches) throw bad('Watches are not available yet.');
   const uid = req.user.uid;
   const input = validate(req.body ?? {});
 

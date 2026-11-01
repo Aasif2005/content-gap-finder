@@ -591,7 +591,7 @@ Two wrinkles worth knowing:
 ```bash
 curl -X POST localhost:8787/api/analyze -H 'Content-Type: application/json' -d '{
   "niche": "cast iron restoration",
-  "window": "7d",           # 24h | 7d | 30d | 90d | custom
+  "window": "7d",           # 24h | 7d | 30d | 90d (custom is off until the quota extension; see ALLOW_CUSTOM_WINDOW)
   "customAfter": null,      # required when window is "custom": ISO 8601, max 365d back
   "contentType": "both",    # shorts | long | both
   "gapMode": "inclusive",   # inclusive | strict
@@ -971,7 +971,8 @@ web/
   re-worded with entirely different vocabulary will read as new.
 - **The scheduler is single-instance**, like `lib/jobs.js`. Two servers sharing a state
   directory would fire every watch twice. Set `SCHEDULER_ENABLED=false` on replicas.
-- **Custom ranges reach back 365 days.** `search.list` will go further, but older windows
+- **Deep scan and watches are switched off until the quota audit** (`ALLOW_DEEP_SCAN`, `ALLOW_WATCHES` on the server, `DEEP_SCAN` / `WATCHES` in `web/src/lib/features.js`). Deep scan doubles a run's `search.list` calls and watches re-run searches unattended every day, both against the 100-a-day search bucket. Existing watches stay stored but do not run.
+- **Custom ranges are switched off for now** (`ALLOW_CUSTOM_WINDOW=false`, `CUSTOM_RANGE` in `SearchForm.jsx`) until the quota extension is approved. When on, they reach back 365 days. `search.list` will go further, but older windows
   make view-velocity scoring meaningless — everything looks slow.
 - **In-process jobs and disk cache** assume a single server instance. `lib/jobs.js` and
   `lib/cache.js` are the seams to swap for Redis/BullMQ before running more than one.

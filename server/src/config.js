@@ -134,6 +134,17 @@ export const config = {
   // every request a fresh IP and walked straight past the rate limiter.
   // Set to the number of proxies in front of the server (e.g. 1 behind nginx).
   trustProxy: num(process.env.TRUST_PROXY, 0),
+  // The "Custom" published-date range is switched off until the YouTube quota
+  // extension is approved. The code stays; set true (and CUSTOM_RANGE in
+  // web/src/components/SearchForm.jsx) to bring it back.
+  // Held back until the YouTube quota audit: each spends extra search.list calls
+  // (Deep scan doubles a run's; a watch re-runs searches unattended every day).
+  // Set true to bring them back (and flip DEEP_SCAN / WATCHES in web/src/lib/features.js).
+  features: {
+    deepScan: process.env.ALLOW_DEEP_SCAN === 'true',
+    watches: process.env.ALLOW_WATCHES === 'true',
+  },
+  allowCustomWindow: process.env.ALLOW_CUSTOM_WINDOW === 'true',
   // Origins allowed to call the API from a browser. Empty = same origin only;
   // the built app and the Vite dev proxy are both same-origin.
   corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean),

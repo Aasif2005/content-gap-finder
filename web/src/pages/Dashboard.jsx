@@ -4,6 +4,7 @@ import { QuickSearch } from '../components/dashboard/QuickSearch.jsx';
 import { RecentReports, RecentReportsSkeleton } from '../components/dashboard/RecentReports.jsx';
 import { FirstRun } from '../components/dashboard/FirstRun.jsx';
 import { AllowancePanel } from '../components/dashboard/AllowancePanel.jsx';
+import { WATCHES } from '../lib/features.js';
 import { WatchesSummary } from '../components/dashboard/WatchesSummary.jsx';
 import { EntryCards, LatestReport, StatStrip, Tips } from '../components/dashboard/Overview.jsx';
 import { getRuns, getWatches } from '../lib/api.js';
@@ -35,6 +36,9 @@ function useLoad(load) {
   return [state, reload];
 }
 
+// Watches are held back until the quota audit (lib/features.js): nothing to load.
+const noWatches = () => Promise.resolve({ watches: [] });
+
 /**
  * /dashboard: the one place for the workspace overview: search, numbers about
  * the reports kept, the latest report, the recent ones, watches and today's
@@ -43,7 +47,7 @@ function useLoad(load) {
 export default function Dashboard() {
   const { me, error: meError, loading: meLoading, refresh: refreshMe } = useMe();
   const [runs, reloadRuns] = useLoad(loadRecentRuns);
-  const [watches, reloadWatches] = useLoad(getWatches);
+  const [watches, reloadWatches] = useLoad(WATCHES ? getWatches : noWatches);
 
   const [niche, setNiche] = useState('');
   const [searchError, setSearchError] = useState(null);
@@ -110,14 +114,16 @@ export default function Dashboard() {
         {runs.status === 'ready' && (runRows.length ? <RecentReports rows={runRows.slice(0, 6)} /> : <FirstRun onPick={pick} />)}
       </div>
 
-      <div className="mt-12 grid items-start gap-5 lg:grid-cols-[3fr_2fr]">
-        <WatchesSummary
-          status={watches.status}
-          rows={watchRows}
-          max={watches.data?.maxWatches ?? me?.limits?.watches ?? null}
-          error={watches.error}
-          onRetry={reloadWatches}
-        />
+      <div className={WATCHES ? 'mt-12 grid items-start gap-5 lg:grid-cols-[3fr_2fr]' : 'mt-12'}>
+        {WATCHES && (
+          <WatchesSummary
+            status={watches.status}
+            rows={watchRows}
+            max={watches.data?.maxWatches ?? me?.limits?.watches ?? null}
+            error={watches.error}
+            onRetry={reloadWatches}
+          />
+        )}
         <AllowancePanel me={me} error={meError} loading={meLoading} onRetry={refreshMe} />
       </div>
 

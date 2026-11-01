@@ -5,7 +5,16 @@ import { col } from './mongo.js';
 // MongoDB-backed JSON cache, keyed by a hash of the query. Deliberately not Redis:
 // the only thing cached is a few KB per niche + window. The call sites would stay
 // the same if this were swapped for Redis.
-const HOLD_MS = 24 * 3600 * 1000; // a TTL index deletes entries after this, whatever ttlSeconds a caller asks for
+
+/**
+ * When an entry is physically deleted: its own TTL after storage, never more than
+ * the retention limit (a misconfigured TTL must not hold YouTube data past it).
+ * The TTL index on `expireAt` does the deleting.
+ */
+export function expiryFor(storedAt, ttlSeconds) {
+  const cap = config.store.maxDataDays * 24 * 3600;
+  return new Date(storedAt + Math.min(ttlSeconds, cap) * 1000);
+}
 
 export function cacheKey(parts) {
   return crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 32);
@@ -19,12 +28,12 @@ export async function get(key, { ttlSeconds = config.cache.ttlSeconds } = {}) {
   return { value: entry.value, ageSeconds: Math.round(ageSeconds), storedAt: entry.storedAt };
 }
 
-export async function set(key, value) {
+export async function set(key, value, { ttlSeconds = config.cache.ttlSeconds } = {}) {
   const storedAt = Date.now();
   // Round-trip through JSON: stores exactly what the old file cache did (no undefined, no class instances).
   await col('cache').replaceOne(
     { _id: key },
-    { storedAt, expireAt: new Date(storedAt + HOLD_MS), value: JSON.parse(JSON.stringify(value)) },
+    { storedAt, expireAt: expiryFor(storedAt, ttlSeconds), value: JSON.parse(JSON.stringify(value)) },
     { upsert: true }
   );
 }
