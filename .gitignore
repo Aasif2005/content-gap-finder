@@ -23,6 +23,9 @@ server/.state/
 npm-debug.log*
 logs/
 
+# local tooling
+.claude/
+
 # os / editor
 .DS_Store
 .idea/

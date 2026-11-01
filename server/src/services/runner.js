@@ -2,6 +2,7 @@ import * as jobs from '../lib/jobs.js';
 import * as cache from '../lib/cache.js';
 import * as store from '../lib/store.js';
 import { runPipeline } from './pipeline.js';
+import { withRun } from '../lib/runContext.js';
 
 /**
  * Starts an analysis and wires up everything that has to happen when it lands:
@@ -30,26 +31,32 @@ function notify(onFinish, err, result) {
   try { onFinish(err, result); } catch (e) { console.error('[runner] onFinish failed:', e.message); }
 }
 
-export async function startAnalysis(input, { force = false, onFinish } = {}) {
+/** The cached result for this key, unless its report was pruned: that would hand out a dead link. */
+export async function usableHit(key) {
+  const hit = await cache.get(key);
+  return hit && (!hit.value?.runId || await store.readRun(hit.value.runId)) ? hit : null;
+}
+
+export async function startAnalysis(input, { force = false, onFinish, owner } = {}) {
   const key = cache.cacheKey(input);
 
   if (!force) {
-    const hit = await cache.get(key);
-    // A cached result whose report was pruned would hand out a dead link.
-    if (hit && (!hit.value?.runId || await store.readRun(hit.value.runId))) {
-      return { status: 'done', cached: true, cacheAgeSeconds: hit.ageSeconds, result: hit.value };
-    }
+    const hit = await usableHit(key);
+    if (hit) return { status: 'done', cached: true, cacheAgeSeconds: hit.ageSeconds, result: hit.value };
   }
 
   // An interactive request joins an identical run already in progress. A
   // scheduled run (onFinish) needs its own completion, so it never joins.
   const running = !onFinish && runningJobFor(key);
-  if (running) return { status: 'running', jobId: running, cached: false, joined: true };
+  if (running) {
+    jobs.addOwner(running, owner);
+    return { status: 'running', jobId: running, cached: false, joined: true };
+  }
 
-  const id = jobs.create(input);
+  const id = jobs.create(input, { owner });
   inFlight.set(key, id);
 
-  runPipeline(input, jobs.reporter(id), id)
+  withRun({ signal: jobs.get(id).controller.signal, fresh: force }, () => runPipeline(input, jobs.reporter(id), id))
     .then(
       async (result) => {
         // Both writes are guarded so a storage failure can never lose someone a
@@ -61,6 +68,12 @@ export async function startAnalysis(input, { force = false, onFinish } = {}) {
         notify(onFinish, null, result);
       },
       (err) => {
+        if (err?.code === 'CANCELLED') {
+          console.log(`[job ${id}] cancelled by the person who started it`);
+          jobs.markCancelled(id);
+          notify(onFinish, jobs.get(id)?.error ?? err, null);
+          return;
+        }
         console.error(`[job ${id}] failed:`, err.message);
         jobs.fail(id, err);
         notify(onFinish, err, null);

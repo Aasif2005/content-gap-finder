@@ -12,7 +12,9 @@
  */
 
 const csvCell = (v) => {
-  const s = v === null || v === undefined ? '' : String(v);
+  const text = v === null || v === undefined ? '' : String(v);
+  // Commenters write these cells, and a spreadsheet runs one starting with these as a formula.
+  const s = typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${text}` : text;
   // Quote anything that could break a row, and double up embedded quotes.
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
@@ -22,7 +24,7 @@ const csv = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
 // YouTube's API policies follow the data out of the app: an export still says
 // where the numbers came from, when, and which ones are ours, not YouTube's.
 export const SOURCE_NOTE = 'Data from YouTube API Services. Gapstronaut is not affiliated with or endorsed by YouTube.';
-export const DERIVED_EXPORT_NOTE = 'Heat, demand score, engagement rate, title score and channel-median multiples are calculated by Gapstronaut from YouTube data; they are not YouTube metrics.';
+export const DERIVED_EXPORT_NOTE = 'Buzz, demand score, engagement rate, title score and channel-median multiples are calculated by Gapstronaut from YouTube data; they are not YouTube metrics.';
 const dataDate = (result) => {
   const d = new Date(result?.generatedAt);
   return Number.isNaN(d.getTime()) ? '' : `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
@@ -65,7 +67,7 @@ export function gapsToCsv(result) {
 }
 
 export function topicsToCsv(result) {
-  const rows = [['topic', 'heat_score', 'videos', 'channels', 'total_views', 'median_engagement_rate', 'summary', 'why_hot', 'suggested_angles', 'niche_relevant']];
+  const rows = [['topic', 'buzz_score', 'videos', 'channels', 'total_views', 'median_engagement_rate', 'summary', 'why_hot', 'suggested_angles', 'niche_relevant']];
   for (const t of result.topics ?? []) {
     rows.push([
       t.label, t.heatScore, t.videos.length, t.breadth, t.totalViews,
@@ -166,7 +168,7 @@ export function reportToMarkdown(result) {
   if (result.topics?.length) {
     out.push('', '## Trending now', '');
     result.topics.forEach((t, i) => {
-      out.push(`### ${i + 1}. ${t.label} — heat ${t.heatScore}/100`, '');
+      out.push(`### ${i + 1}. ${t.label} — buzz ${t.heatScore}/100`, '');
       if (t.summary) out.push(t.summary, '');
       if (t.whyHot) out.push(`*Why it's hot:* ${t.whyHot}`, '');
       if (t.suggestedAngles?.length) {

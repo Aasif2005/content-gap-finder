@@ -1,5 +1,8 @@
 import express from 'express';
-import { securityHeaders, corsOriginAllowed } from './lib/security.js';
+import { securityHeaders, corsOriginAllowed, httpsRedirectFor } from './lib/security.js';
+import { isAppPath, renderIndex, robotsTxt, siteOrigin, sitemapXml } from './lib/site.js';
+import { errorResponse } from './lib/publicError.js';
+import compression from 'compression';
 import cors from 'cors';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -17,26 +20,44 @@ const app = express();
 app.set('trust proxy', config.trustProxy);
 app.disable('x-powered-by');
 app.use(securityHeaders);
+app.use((req, res, next) => {
+  const secure = httpsRedirectFor(req);
+  return secure ? res.redirect(301, secure) : next();
+});
+app.use(compression());
 // No CORS by default: the built app and the Vite dev proxy are same-origin, and
 // an open cors() let any website make your browser start analyses or delete
 // watches. CORS_ORIGINS opts specific origins in.
 if (config.corsOrigins.length) app.use(cors({ origin: (origin, cb) => cb(null, corsOriginAllowed(origin)) }));
+// The largest accepted picture (100 KB) is about 135 KB as base64, over the default limit below, so this route reads its own body first.
+app.use('/api/me/avatar', express.json({ limit: '200kb' }));
 app.use(express.json({ limit: '128kb' }));
 
 app.use('/api', router);
+app.use('/api', (_req, res) => res.status(404).json({ error: 'No such API route.', code: 'NOT_FOUND' }));
+
+app.get('/robots.txt', (req, res) => res.type('text/plain').send(robotsTxt(siteOrigin(req))));
+app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(sitemapXml(siteOrigin(req))));
 
 // In production the built SPA is served from the same origin as the API.
 const webDist = path.resolve(fileURLToPath(new URL('../../web/dist', import.meta.url)));
 if (fs.existsSync(webDist)) {
-  app.use(express.static(webDist));
-  app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(path.join(webDist, 'index.html')));
+  // Vite puts a content hash in every file name under /assets, so they never change.
+  app.use('/assets', express.static(path.join(webDist, 'assets'), { immutable: true, maxAge: '1y', fallthrough: false }));
+  app.use(express.static(webDist, { index: false }));
+  const indexHtml = fs.readFileSync(path.join(webDist, 'index.html'), 'utf8');
+  // The app draws its own 404 page, but search engines read the status: an unknown address must say 404.
+  app.get(/^(?!\/api).*/, (req, res) => {
+    res.status(isAppPath(req.path) ? 200 : 404).set('Cache-Control', 'no-cache').type('html').send(renderIndex(indexHtml, siteOrigin(req), req.path));
+  });
 }
 
-// Central error handler: every thrown error carries status/code from its source.
+// Central error handler: thrown errors carry status/code from their source, and
+// only what lib/publicError.js allows reaches the caller.
 app.use((err, _req, res, _next) => {
-  const status = err.status ?? 500;
+  const { status, body } = errorResponse(err);
   if (status >= 500) console.error('[error]', err);
-  res.status(status).json({ error: err.message || 'Internal error', code: err.code ?? 'INTERNAL' });
+  res.status(status).json(body);
 });
 
 // The database must be reachable before anything is served: every route reads it.

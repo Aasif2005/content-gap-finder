@@ -10,6 +10,8 @@
 
 // The auth module registers how to fetch a token. Importing it here instead
 // would make api.js and auth.jsx import each other.
+import { isOffline, offlineError } from './authErrors.js';
+
 let tokenGetter = async () => null;
 export const setTokenGetter = (fn) => { tokenGetter = fn; };
 
@@ -31,7 +33,9 @@ const within = (promise, ms, what) => {
   return Promise.race([promise, clock]).finally(() => clearTimeout(timer));
 };
 
-async function request(path, { method = 'GET', body, headers } = {}) {
+async function request(path, { method = 'GET', body, headers, timeoutMs } = {}) {
+  // No connection: say so now, instead of waiting for a request that cannot arrive.
+  if (isOffline()) throw offlineError();
   const h = { ...headers };
   if (body !== undefined) h['Content-Type'] = 'application/json';
   try {
@@ -44,13 +48,14 @@ async function request(path, { method = 'GET', body, headers } = {}) {
   }
 
   const controller = new AbortController();
-  const abort = method === 'GET' ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS) : null;
+  const limit = timeoutMs ?? (method === 'GET' ? REQUEST_TIMEOUT_MS : null);
+  const abort = limit ? setTimeout(() => controller.abort(), limit) : null;
   let res;
   try {
     res = await fetch(path, { method, headers: h, signal: controller.signal, body: body === undefined ? undefined : JSON.stringify(body) });
   } catch (err) {
     if (err?.name === 'AbortError') throw timeoutError(`${method} ${path}`);
-    throw Object.assign(new Error('Could not reach Gapstronaut. Check your connection and try again.'), { code: 'NETWORK' });
+    throw Object.assign(new Error('Check your internet connection and try again.'), { code: 'NETWORK' });
   } finally {
     if (abort) clearTimeout(abort);
   }
@@ -83,6 +88,12 @@ export const acceptConsent = () => request('/api/me/consent', { method: 'POST' }
 /** Deletes everything held about the account on our server. The Firebase user is deleted by the browser. */
 export const deleteMe = () => request('/api/me', { method: 'DELETE' });
 
+/** Saves the profile picture (a data URL from toAvatarDataUrl). Returns `{ ok, photoUrl }`. */
+export const uploadAvatar = (image) => request('/api/me/avatar', { method: 'PUT', body: { image } });
+
+/** Removes the uploaded picture; a Google photo, if there is one, shows again. */
+export const removeAvatar = () => request('/api/me/avatar', { method: 'DELETE' });
+
 /** The sample report shown on the homepage, or null when there is none yet. Public. */
 export const getFeatured = () => request('/api/featured').then((b) => b.featured ?? null);
 
@@ -91,7 +102,22 @@ export const getFeatured = () => request('/api/featured').then((b) => b.featured
 export const getQuota = () => request('/api/quota');
 export const getSite = () => request('/api/site');
 
-export const startAnalysis = (input) => request('/api/analyze', { method: 'POST', body: input });
+/**
+ * False only when the server is sure this address's domain cannot receive mail.
+ * A failed check counts as fine: signing up must not depend on it.
+ */
+export const checkEmail = (email) =>
+  within(request('/api/email-check', { method: 'POST', body: { email } }), 5_000, 'checking an email')
+    .then((r) => r.ok !== false, () => true);
+
+/** Saves an email for a paid plan that is not on sale yet (public, no sign-in needed). */
+export const joinWaitlist = (input) => request('/api/waitlist', { method: 'POST', body: input });
+
+// Starting a run answers at once (a job id or a cached report), so a start that hangs means the connection is dead.
+export const startAnalysis = (input) => request('/api/analyze', { method: 'POST', body: input, timeoutMs: 30_000 });
+
+/** Asks the server to stop a run. The analysis it used stays counted. */
+export const cancelJob = (jobId) => request(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
 
 export const getJob = (id) => request(`/api/jobs/${id}`);
 
@@ -102,26 +128,45 @@ export class Cancelled extends Error {
   constructor() { super('cancelled'); this.cancelled = true; }
 }
 
+// A phone changing networks mid-run drops a poll or two while the server carries
+// on; only this many in a row means the run is really out of reach.
+const MISSED_POLLS_ALLOWED = 8;
+const TRANSIENT = new Set(['TIMEOUT', 'NETWORK', 'SERVER_DOWN']);
+
 export function pollJob(jobId, onTick, { intervalMs = 1500, timeoutMs = 300_000, isCancelled = () => false } = {}) {
-  const startedAt = Date.now();
+  let startedAt = Date.now();
+  let missed = 0;
 
   return new Promise((resolve, reject) => {
+    // The run carries on at the server while this browser is offline: wait, and neither
+    // count it as a missed poll nor let it eat into the time allowed for the run.
+    const waitForConnection = () => { startedAt += intervalMs; setTimeout(tick, intervalMs); };
     const tick = async () => {
       if (isCancelled()) return reject(new Cancelled());
+      if (isOffline()) return waitForConnection();
       try {
         const job = await getJob(jobId);
+        missed = 0;
         if (isCancelled()) return reject(new Cancelled());
         onTick?.(job);
 
         if (job.status === 'done') return resolve(job.result);
+        if (job.status === 'cancelled') return reject(new Cancelled());
         if (job.status === 'error') {
           return reject(Object.assign(new Error(job.error?.message ?? 'Analysis failed'), { code: job.error?.code }));
         }
         if (Date.now() - startedAt > timeoutMs) {
-          return reject(new Error('Analysis timed out. The niche may be too broad — try narrowing it.'));
+          // The server is still working and will save the result, so this is not a failure.
+          return reject(Object.assign(new Error('This is taking longer than usual. It may still finish, so check back in a few minutes.'), { code: 'STILL_RUNNING' }));
         }
         setTimeout(tick, intervalMs);
       } catch (err) {
+        if (isOffline()) return waitForConnection();
+        if (TRANSIENT.has(err.code)) {
+          if (++missed <= MISSED_POLLS_ALLOWED) return void setTimeout(tick, intervalMs);
+          // Many polls in a row went unanswered, yet the browser says it is online: the run itself is fine.
+          return reject(Object.assign(new Error('Lost touch with your analysis. It is still running, and the report will be on your dashboard when it finishes.'), { code: 'RUN_UNREACHABLE' }));
+        }
         reject(err);
       }
     };

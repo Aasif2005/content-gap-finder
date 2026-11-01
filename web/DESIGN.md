@@ -125,6 +125,26 @@ components:
     padding: "2px 6px"
 ---
 
+## Palette (authoritative)
+
+These two palettes override any colour named elsewhere in this file. Use nothing else, in either theme.
+`server/test/unit.test.js` ("theme palettes") fails on any colour outside them.
+
+**Light**
+- Primary `#0F1E2E`: `000000 0C1C2C 233142 3A485B 516073 6A788C 8393A6 9EACC1 B9C9DD D5E5FA EAF1FF FFFFFF`
+- Secondary `#2F5BEA`: `000000 001352 002583 0038B7 1F4FDF 436BFA 6B89FF 92A8FF B8C4FF DDE1FF EFEFFF FFFFFF`
+- Tertiary `#F3DFAE`: `000000 251A00 3A300D 524720 6B5E36 86764D A08F64 BCAA7D D8C597 F5E1B0 FFEFCD FFFFFF`
+- Neutral `#FBF8F3`: `000000 1C1C19 31302D 474744 5F5E5C 787774 92918D ADABA8 C8C6C3 E6E2DE F4F0EC FFFFFF`
+
+**Dark**
+- Primary `#E8E8E4`: `000000 1A1C1A 30312E 464744 5E5F5C 767774 90918E ABABA8 C6C7C4 E3E3E0 F1F1EE FFFFFF`
+- Secondary `#F4F6FA`: `000000 1A1C1F 2D3134 45474A 5B5F62 75777B 8F9195 AAABAF C5C7CA E1E3E6 F0F1F5 FFFFFF`
+- Tertiary `#9A978F`: `000000 1D1C16 32302A 484740 605E57 79776F 949089 AFABA3 CBC6BD E7E2D9 F5F0E7 FFFFFF`
+- Neutral `#050505`: `000000 1C1B1B 313030 474646 5F5E5E 787776 929090 ADABAA CAC6C5 E6E2E1 F4F0EF FFFFFF`
+
+Status has no red, green or orange: errors, warnings and success are told apart by icon, wording and tone.
+The only exceptions are the official Google "G" (Google's branding rules), the logo video's artwork and the ground behind it, and third-party images such as YouTube thumbnails.
+
 # Design System: Gapstronaut
 
 ## Overview
@@ -276,3 +296,28 @@ Page `#0C0818`, surface `#161029`, surface-2 `#1B1433`, text `#F2EEF8` (17:1), s
 The tokens in `src/index.css` are now global: light is Lunar Cream, dark is Saturn Dusk, from the OS or the header switch (`<html data-mode>`, stored by `lib/colorMode.js`, shared with Profile → Appearance). `.theme-night` pins a dark ground (footer, sign-in brand panel, 404 panel): navy in light mode, lifted violet in dark. The old `.theme-lunar` class is gone.
 
 Shapes: pill buttons and segmented controls, 14px fields (52px tall), 24px panels, 3rem for hero and brand panels. Every page uses the floating pill header (`MarketingShell`, `AppShell`) and the curved footer (`home/SiteFooter.jsx`; `newTab` in the signed-in app so policies never tear down a running analysis). Tabs, filter pills and usage meters use the accent (`--focus`); the quote highlight is still viewer words only.
+
+## Report pages (niche and channel)
+
+Redesigned from the Stitch screens "Niche Report (Lunar Cream Editorial)" and "Channel Report (Sample Channel)". One wide column (max 1120px) with a slim sticky section index on the left at `lg`, replacing the old 760px column and the four tabs.
+
+- Order: header (mono eyebrow, display title, quiet text actions; channel runs add an initial disc and an "Open channel" link) → hairline stat strip → notices → hero (the biggest gap as a `GapCard`) → Content gaps as hairline rows that open to the full card → Complaints and Trending as tiles → Avoid as a quiet list → collapsed Evidence panel → footer.
+- Channel reports reuse the same layout with their own section names (Overview, What your audience asks, Objections, Trending in your audience, Skip) and eyebrows.
+- Only tokens are used, so Saturn Dusk and the night theme follow automatically. Highlighter stays for real viewer quotes only.
+- Code: `components/explorer/ReportView.jsx`, `ReportSections.jsx`, `ReportIndex.jsx`, `ReportHeader.jsx`; `StatRow` in `components/Bits.jsx`.
+
+## Graphite Mono (landing page, dark)
+
+Chosen in Stitch ("Landing · Dark · Graphite Mono"). This is the dark theme of every page: the `prefers-color-scheme` block and `:root[data-mode="dark"]` in `src/index.css`, and the pinned `.theme-night` ground (footer, sign-in brand panel, thinking orb, 404 card). Light mode is Lunar Cream as before. Saturn Dusk (purple) is retired.
+
+| Token | Value |
+|---|---|
+| `--bg` / `--surface` / `--surface-2` / `--hover` | `#050505` / `#0D0D0D` / `#131313` / `#1B1B1B` |
+| `--line` / `--line-soft` / `--line-strong` | `#1F1F1F` / `#171717` / `#3A3A3A` |
+| `--fg` / `--fg-2` / `--fg-3` | `#F4F6FA` / `#A9B0C0` / `#8C92A0` |
+| `--ink` / `--on-ink` | `#F4F6FA` / `#050505` (white pill buttons) |
+| `--accent` / `--focus` | `#E8E8E4` (no hue) |
+| `--mark` (viewer-quote highlight) | `#C9C4B5` dusty stone, dark text `#14120E` |
+| info | bg `#1B1B1B`, fg `#E8E8E4` |
+
+The homepage planet band uses `#050505` / `#9A978F` in dark. Stitch's invented copy (upvote counts, "scanned N comments") is not part of the site.

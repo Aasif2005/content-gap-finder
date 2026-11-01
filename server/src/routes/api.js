@@ -1,7 +1,7 @@
 import express from 'express';
 import * as jobs from '../lib/jobs.js';
 import * as cache from '../lib/cache.js';
-import { rateLimit, briefRateLimit } from '../lib/rateLimit.js';
+import { rateLimit, briefRateLimit, createRateLimit } from '../lib/rateLimit.js';
 import * as brief from '../services/brief.js';
 import { quotaStatus, quotaDay, nextQuotaReset } from '../lib/quota.js';
 import * as runner from '../services/runner.js';
@@ -10,9 +10,13 @@ import { MAX_CUSTOM_WINDOW_DAYS, parseChannelInput } from '../services/youtube.j
 import { listRuns as listAuditRuns, readRunLog } from '../lib/auditLog.js';
 import * as store from '../lib/store.js';
 import * as watches from '../lib/watches.js';
+import { PLANS as WAITLIST_PLANS, normalizeEmail, joinWaitlist } from '../lib/waitlist.js';
 import * as scheduler from '../services/scheduler.js';
-import { loadUser, requireUser, requireVerified, forgetUser } from '../lib/auth.js';
-import { getUser, upsertUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../lib/db.js';
+import { loadUser, requireUser, requireVerified, requireAdmin, forgetUser } from '../lib/auth.js';
+import { parseAvatarDataUrl } from '../lib/avatar.js';
+import { getUser, setAvatar, clearAvatar, getAvatar, upsertUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../lib/db.js';
+import { limitsFor } from '../lib/limits.js';
+import { domainAcceptsMail } from '../lib/emailDomain.js';
 
 export const router = express.Router();
 
@@ -48,7 +52,7 @@ const WINDOWS = new Set(['24h', '7d', '30d', '90d', 'custom']);
 const CONTENT_TYPES = new Set(['shorts', 'long', 'both']);
 const GAP_MODES = new Set(['inclusive', 'strict']);
 
-function validate(body) {
+export function validate(body) {
   // Channel mode analyses one channel's own uploads, so it takes a channel
   // reference instead of a niche. Accepts a URL, an @handle or a UC... id --
   // resolved to an id server-side by channels.list (1 unit).
@@ -94,21 +98,24 @@ function validate(body) {
 
   const minViews = Number(body.minViews ?? 0);
   if (!Number.isFinite(minViews) || minViews < 0) throw bad('minViews must be a non-negative number.');
+  if (minViews > 1_000_000_000) throw bad('minViews must be at most 1,000,000,000.');
 
   // Opt-in: doubles the search.list slices to widen the candidate pool. Costs
   // real quota, so it is never on by default -- see lib/searchPlan.js.
   const deepScan = body.deepScan === true;
 
-  // ISO 3166-1 alpha-2 / ISO 639-1 respectively; YouTube rejects anything else.
-  const regionCode = body.regionCode ? String(body.regionCode).toUpperCase().slice(0, 2) : undefined;
-  const relevanceLanguage = body.relevanceLanguage ? String(body.relevanceLanguage).toLowerCase().slice(0, 2) : undefined;
+  // ISO 3166-1 alpha-2 / ISO 639-1 respectively; YouTube rejects anything else,
+  // and that refusal would otherwise spend a run to say so.
+  const regionCode = body.regionCode ? String(body.regionCode).trim().toUpperCase() : undefined;
+  if (regionCode && !/^[A-Z]{2}$/.test(regionCode)) throw bad('Region must be a two-letter country code, like US or IN.');
+  const relevanceLanguage = body.relevanceLanguage ? String(body.relevanceLanguage).trim().toLowerCase() : undefined;
+  if (relevanceLanguage && !/^[a-z]{2}$/.test(relevanceLanguage)) throw bad('Language must be a two-letter code, like en or ta.');
 
   return { niche, window, customAfter, contentType, gapMode, minViews, regionCode, relevanceLanguage, deepScan, channelId };
 }
 
-router.get('/health', wrap(async (_req, res) => {
-  res.json({ ok: true, quota: await quotaStatus(), cache: await cache.stats(), store: await store.stats(), phases: jobs.PHASES });
-}));
+// For a host's uptime check. The usage numbers live behind /quota.
+router.get('/health', (_req, res) => res.json({ ok: true }));
 
 /**
  * Starts an analysis. Returns immediately with either a cached result or a job
@@ -130,7 +137,7 @@ router.post('/analyze', requireUser, requireVerified, wrap(async (req, res) => {
   // A cache hit costs nothing, so it bypasses the rate limit entirely --
   // browsing already-computed reports should never be throttled.
   if (!force) {
-    const hit = await cache.get(key);
+    const hit = await runner.usableHit(key);
     if (hit) {
       await linkRun(uid, hit.value?.runId);
       return res.json({ status: 'done', cached: true, cacheAgeSeconds: hit.ageSeconds, result: hit.value });
@@ -142,6 +149,7 @@ router.post('/analyze', requireUser, requireVerified, wrap(async (req, res) => {
   // server, so it still happens if the browser stops polling.
   const running = runner.runningJobFor(key);
   if (running) {
+    jobs.addOwner(running, uid);
     jobs.whenSettled(running, (err, result) => { if (!err) quietly(linkRun(uid, result?.runId)); });
     return res.status(202).json({ status: 'running', jobId: running, cached: false, joined: true });
   }
@@ -163,7 +171,7 @@ router.post('/analyze', requireUser, requireVerified, wrap(async (req, res) => {
 
   let started;
   try {
-    started = await runner.startAnalysis(input, { force });
+    started = await runner.startAnalysis(input, { force, owner: uid });
   } catch (err) {
     await refund(uid, day, 'analyses');
     throw err;
@@ -179,16 +187,24 @@ router.post('/analyze', requireUser, requireVerified, wrap(async (req, res) => {
     // person who sees a failed run is owed the analysis either way; the quota
     // ledger is what protects the project, not this counter.
     jobs.whenSettled(started.jobId, (err, result) => {
-      if (err) quietly(refund(uid, day, 'analyses'));
+      // A run the person stopped was started on purpose and its quota was spent, so it stays charged.
+      if (err) { if (err.code !== 'CANCELLED') quietly(refund(uid, day, 'analyses')); }
       else quietly(linkRun(uid, result?.runId));
     });
   }
   res.status(started.status === 'done' ? 200 : 202).json(started);
 }));
 
+/** Stops a run the caller started or joined. The analysis it already used stays counted. */
+router.post('/jobs/:id/cancel', requireUser, (req, res) => {
+  const outcome = jobs.cancel(req.params.id, req.user.uid);
+  if (!outcome) return res.status(404).json({ error: 'This run is no longer in progress.', code: 'JOB_NOT_FOUND' });
+  res.json({ status: outcome });
+});
+
 router.get('/jobs/:id', (req, res) => {
   const job = jobs.get(req.params.id);
-  if (!job) return res.status(404).json({ error: 'Job not found or expired.', code: 'JOB_NOT_FOUND' });
+  if (!job) return res.status(404).json({ error: 'This run is no longer in progress. It may have finished, so check your dashboard, or try again.', code: 'JOB_NOT_FOUND' });
 
   res.json({
     id: job.id,
@@ -207,7 +223,30 @@ router.get('/site', (_req, res) => {
   res.json({ contactEmail: config.site.contactEmail || null, dataMaxDays: config.store.maxDataDays });
 });
 
-router.get('/quota', wrap(async (req, res) => {
+// Visitors are logged out, so these are limited per address, not per account.
+const ipKey = (req) => req.ip || req.socket?.remoteAddress || 'unknown';
+const waitlistLimit = createRateLimit({ perHour: 8, noun: 'waitlist sign-ups', keyFn: ipKey });
+const emailCheckLimit = createRateLimit({ perHour: 60, noun: 'email checks', keyFn: ipKey });
+
+/** Public: can this address's domain receive mail? Asked before an account is created. */
+router.post('/email-check', emailCheckLimit, wrap(async (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  res.json({ ok: Boolean(email) && (await domainAcceptsMail(email.split('@').pop())) });
+}));
+
+/** Public: saves an email for a paid plan that is not on sale yet. `company` is a honeypot for bots. */
+router.post('/waitlist', waitlistLimit, wrap(async (req, res) => {
+  const body = req.body ?? {};
+  if (typeof body.company === 'string' && body.company.trim()) return res.json({ ok: true }); // a bot: pretend it worked
+  const email = normalizeEmail(body.email);
+  if (!email) throw bad('Enter a valid email address.');
+  const plan = String(body.plan ?? '').toLowerCase();
+  if (!WAITLIST_PLANS.includes(plan)) throw bad('Choose Creator or Studio.');
+  await joinWaitlist({ email, plan, uid: req.user?.uid ?? null });
+  res.json({ ok: true });
+}));
+
+router.get('/quota', requireUser, requireAdmin, wrap(async (req, res) => {
   res.json({
     ...(await quotaStatus({
       contentType: req.query.contentType,
@@ -413,17 +452,6 @@ router.get('/watches/:id/digest', requireUser, wrap(async (req, res) => {
 
 // -------------------------------------------------------------- account ----
 
-/** Daily allowances for this account: the standard ones, or the larger ones for a listed tester email. */
-function limitsFor(user) {
-  const u = config.users;
-  const tester = Boolean(user?.email) && u.testerEmails.includes(String(user.email).toLowerCase());
-  return {
-    analyses: tester ? u.testerDailyAnalyses : u.dailyAnalyses,
-    briefs: tester ? u.testerDailyBriefs : u.dailyBriefs,
-    watches: u.maxWatches,
-  };
-}
-
 /** The signed-in person, today's usage and what the limits are. */
 router.get('/me', requireUser, wrap(async (req, res) => {
   const { uid } = req.user;
@@ -435,6 +463,7 @@ router.get('/me', requireUser, wrap(async (req, res) => {
     user: {
       uid: user.uid, email: user.email, name: user.name, photoUrl: user.photoUrl, provider: user.provider,
       emailVerified: user.emailVerified, createdAt: user.createdAt, termsAcceptedAt: user.termsAcceptedAt,
+      hasCustomAvatar: user.hasCustomAvatar,
     },
     usage: { day, analyses: usage.analyses, briefs: usage.briefs },
     limits: limitsFor(req.user),
@@ -449,17 +478,41 @@ router.post('/me/consent', requireUser, wrap(async (req, res) => {
   res.json({ ok: true, termsAcceptedAt: await acceptTerms(req.user.uid) });
 }));
 
+// Each picture is about 30 KB; a person has no reason to change it often.
+const avatarLimit = createRateLimit({ perHour: 20, noun: 'picture changes' });
+
+/** Saves the picture the browser resized (a JPEG data URL). */
+router.put('/me/avatar', requireUser, requireVerified, avatarLimit, wrap(async (req, res) => {
+  const bytes = parseAvatarDataUrl(req.body?.image);
+  await upsertUser(req.user); // make sure the row exists before attaching to it
+  await setAvatar(req.user.uid, bytes);
+  res.json({ ok: true, photoUrl: (await getUser(req.user.uid)).photoUrl });
+}));
+
+router.delete('/me/avatar', requireUser, wrap(async (req, res) => {
+  await clearAvatar(req.user.uid);
+  res.json({ ok: true, photoUrl: (await getUser(req.user.uid))?.photoUrl ?? null });
+}));
+
+/** A person's uploaded picture. Public, like any avatar; the URL carries a version, so it can be cached for good. */
+router.get('/avatar/:uid', wrap(async (req, res) => {
+  const bytes = await getAvatar(String(req.params.uid).slice(0, 128));
+  if (!bytes) return res.status(404).json({ error: 'No picture.', code: 'NOT_FOUND' });
+  res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable' });
+  res.send(bytes);
+}));
+
 /**
- * Deletes everything held about the account: profile, report links, usage and
- * watches. Reports and drafts stay: other people may have the same report
+ * Deletes everything held about the account: profile (and picture), report links, usage,
+ * watches and waitlist rows. Reports and drafts stay: other people may have the same report
  * linked, it holds no personal data about the deleted person, and the retention
  * sweep removes it within YOUTUBE_DATA_MAX_DAYS regardless. The browser deletes
  * the Firebase account itself (the server holds no admin credentials).
  */
 router.delete('/me', requireUser, wrap(async (req, res) => {
-  const { uid } = req.user;
+  const { uid, email } = req.user;
   await watches.removeOwned(uid);
-  await deleteUserData(uid);
+  await deleteUserData(uid, email);
   forgetUser(uid);
   res.json({ ok: true });
 }));
@@ -477,15 +530,16 @@ router.get('/featured', wrap(async (_req, res) => {
 /**
  * Audit trail: what each run actually extracted, and whether it stayed on the
  * requested niche. One row per run, newest first, with the relevance summary
- * so drift is visible without opening every log.
+ * so drift is visible without opening every log. Operator-only (ADMIN_EMAILS):
+ * the logs cover every account's searches and quote comments and error stacks.
  */
-router.get('/logs', wrap(async (req, res) => {
+router.get('/logs', requireUser, requireAdmin, wrap(async (req, res) => {
   const limit = clampLimit(req.query.limit, 30, 100);
   res.json({ runs: await listAuditRuns(limit) });
 }));
 
 /** The full human-readable log for one run -- the thing to actually read. */
-router.get('/logs/:runId', wrap(async (req, res) => {
+router.get('/logs/:runId', requireUser, requireAdmin, wrap(async (req, res) => {
   const text = await readRunLog(req.params.runId);
   if (text === null) return res.status(404).json({ error: 'Log not found or expired.', code: 'LOG_NOT_FOUND' });
   res.type('text/plain').send(text);

@@ -3,7 +3,8 @@ import { ArrowLeft, MailCheck } from 'lucide-react';
 import { Alert, Button, Field, Input } from '../components/ui/index.js';
 import AuthLayout, { AuthHeading } from '../components/auth/AuthLayout.jsx';
 import { NotConfiguredAlert } from '../components/auth/NotConfiguredAlert.jsx';
-import { looksLikeEmail } from '../components/auth/helpers.js';
+import { EmailTypoHint } from '../components/auth/EmailTypoHint.jsx';
+import { emailTypoFix, looksLikeEmail } from '../components/auth/helpers.js';
 import { Link } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -34,7 +35,12 @@ export default function ResetPassword() {
     setError(null);
     setNotice(null);
     if (!email.trim()) { setError('Enter the email address you signed up with.'); emailRef.current?.focus(); return; }
-    if (!looksLikeEmail(email)) { setError('That does not look like an email address. Check it for typos.'); emailRef.current?.focus(); return; }
+    if (!looksLikeEmail(email)) { setError('Invalid email address.'); emailRef.current?.focus(); return; }
+    if (emailTypoFix(email)) {
+      setError(<EmailTypoHint fix={emailTypoFix(email)} onUse={(v) => { setEmail(v); setError(null); }} />);
+      emailRef.current?.focus();
+      return;
+    }
     setBusy(true);
     try {
       await sendReset(email.trim());

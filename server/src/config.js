@@ -67,7 +67,11 @@ export const config = {
     dbName: (process.env.MONGODB_DB ?? '').trim() || 'gapstronaut',
   },
 
-  cache: { ttlSeconds: num(process.env.CACHE_TTL_SECONDS, 3 * 60 * 60) },
+  cache: {
+    ttlSeconds: num(process.env.CACHE_TTL_SECONDS, 6 * 60 * 60),
+    // Each YouTube response a run fetched, kept so a cancelled or repeated run does not pay for it twice.
+    sourceTtlSeconds: num(process.env.YOUTUBE_SOURCE_CACHE_SECONDS, 6 * 60 * 60),
+  },
 
   // Durable report + gap-history storage (lib/store.js). Reports are what make
   // a run linkable after the 3h cache expires; the per-niche gap history is what
@@ -76,7 +80,8 @@ export const config = {
   // Shown on the Privacy Policy and Terms. YouTube's policies want a contact
   // method there; without one, YouTube may give users the developer email from
   // the Cloud console instead.
-  site: { contactEmail: (process.env.CONTACT_EMAIL ?? '').trim() },
+  // `url` is the public address (SITE_URL). Empty = use the host of each request.
+  site: { contactEmail: (process.env.CONTACT_EMAIL ?? '').trim(), url: (process.env.SITE_URL ?? '').trim() },
 
   // Firebase Authentication (lib/firebaseToken.js). The server only verifies ID
   // tokens, which needs the project id and nothing secret. Unset = accounts are
@@ -95,6 +100,8 @@ export const config = {
     testerEmails: (process.env.TESTER_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean),
     testerDailyAnalyses: num(process.env.TESTER_DAILY_ANALYSES, 100),
     testerDailyBriefs: num(process.env.TESTER_DAILY_BRIEFS, 100),
+    // Accounts that may read the operator-only API (run logs, quota). Empty = nobody.
+    adminEmails: (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean),
   },
 
   // The sample report on the marketing homepage (store.pickFeatured).

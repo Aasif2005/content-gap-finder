@@ -1,11 +1,15 @@
 import { useRef, useState } from 'react';
 import { KeyRound } from 'lucide-react';
-import { Alert, Avatar, Button, Input, Panel, Skeleton, UsageMeter, useToast } from '../components/ui/index.js';
+import { Alert, Avatar, Button, Input, Panel, SlideGroup, SLIDE_ITEM, Skeleton, UsageMeter, useToast } from '../components/ui/index.js';
 import { GoogleMark } from '../components/auth/GoogleButton.jsx';
 import { DeleteAccountDialog } from '../components/profile/DeleteAccountDialog.jsx';
 import { SettingRow } from '../components/profile/SettingRow.jsx';
 import { memberSince, normalizeName, resetsText } from '../components/profile/helpers.js';
 import { useAuth } from '../lib/auth.jsx';
+import { removeAvatar, uploadAvatar } from '../lib/api.js';
+import { checkFile } from '../lib/avatarImage.js';
+import { AvatarButton } from '../components/profile/AvatarButton.jsx';
+import { AvatarEditor } from '../components/profile/AvatarEditor.jsx';
 import { useMe } from '../lib/me.jsx';
 import { updateDisplayName } from '../lib/profile.js';
 import { navigate } from '../lib/router.jsx';
@@ -64,6 +68,53 @@ function NameForm({ user }) {
       </div>
       <p id="profile-name-error" role="alert" className="mt-2 text-[13px] text-bad-fg empty:hidden">{error}</p>
     </form>
+  );
+}
+
+/** The picture row: the avatar is the button; choosing a photo opens the editor. */
+function PictureForm({ shownUser }) {
+  const { me, refresh } = useMe();
+  const toast = useToast();
+  const [file, setFile] = useState(null);
+  const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const pick = (f) => {
+    setError(null);
+    try { setFile(checkFile(f)); } catch (err) { setError(err.message); }
+  };
+
+  const save = async (dataUrl) => {
+    await uploadAvatar(dataUrl);
+    await refresh();
+    setFile(null);
+    toast.success('Profile picture saved.');
+  };
+
+  const remove = async () => {
+    setError(null);
+    setRemoving(true);
+    try {
+      await removeAvatar();
+      await refresh();
+      toast.success('Profile picture removed.');
+    } catch (err) {
+      setError(err.message);
+    }
+    setRemoving(false);
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+      <AvatarButton user={shownUser} size={96} onFile={pick} disabled={removing} />
+      <div className="min-w-0">
+        {me?.user?.hasCustomAvatar && (
+          <Button onClick={remove} loading={removing}>Remove photo</Button>
+        )}
+        <p role="alert" className="text-[13px] text-bad-fg empty:hidden">{error}</p>
+      </div>
+      <AvatarEditor file={file} onClose={() => setFile(null)} onSave={save} />
+    </div>
   );
 }
 
@@ -127,7 +178,13 @@ const CHOICES = [
 function Appearance() {
   const { choice, choose } = useColorMode();
   return (
-    <div role="radiogroup" aria-label="Appearance" className="inline-flex rounded-full bg-surface-2 p-1">
+    <SlideGroup
+      role="radiogroup"
+      aria-label="Appearance"
+      className="inline-flex rounded-full bg-surface-2 p-1"
+      pillClassName="bg-surface shadow-[0_6px_18px_-10px_rgba(15,30,46,0.35)]"
+      hoverClassName="bg-hover"
+    >
       {CHOICES.map((c) => {
         const on = choice === c.value;
         return (
@@ -135,18 +192,17 @@ function Appearance() {
             key={c.value}
             type="button"
             role="radio"
+            data-slide-item
+            data-active={on}
             aria-checked={on}
             onClick={() => choose(c.value)}
-            className={cx(
-              'min-h-10 rounded-full px-5 text-[15px] transition-colors',
-              on ? 'bg-surface font-semibold text-fg shadow-[0_6px_18px_-10px_rgba(15,30,46,0.35)]' : 'text-fg-2 hover:text-fg'
-            )}
+            className={cx(SLIDE_ITEM, 'min-h-10 rounded-full px-5 text-[15px] transition-colors duration-300', on ? 'font-semibold text-fg' : 'text-fg-2 hover:text-fg')}
           >
             {c.label}
           </button>
         );
       })}
-    </div>
+    </SlideGroup>
   );
 }
 
@@ -162,6 +218,8 @@ export default function Profile() {
 
   const since = memberSince(user.createdAt ?? me?.user?.createdAt);
   const display = user.name || user.email?.split('@')[0] || 'Your account';
+  // The server knows about an uploaded picture; Firebase only knows the Google one.
+  const shownUser = { ...user, photoUrl: me?.user?.photoUrl ?? user.photoUrl };
 
   const logOut = async () => {
     setLoggingOut(true);
@@ -175,9 +233,9 @@ export default function Profile() {
   };
 
   return (
-    <div className="fade-in mx-auto max-w-[880px]">
+    <div className="mx-auto max-w-[880px]">
       <header className="flex flex-wrap items-center gap-5">
-        <Avatar user={user} size={72} />
+        <Avatar user={shownUser} size={72} key={shownUser.photoUrl ?? 'none'} />
         <div className="min-w-0">
           <h1 className="break-words text-[32px] font-semibold leading-[1.1] tracking-[-0.03em]">{display}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-base text-fg-2">
@@ -188,6 +246,10 @@ export default function Profile() {
       </header>
 
       <Panel padding="none" className="mt-7 divide-y divide-line">
+        <SettingRow title="Profile picture" description="Shown next to your name.">
+          <PictureForm shownUser={shownUser} />
+        </SettingRow>
+
         <SettingRow title="Name" description="Shown on your dashboard.">
           <NameForm user={user} />
         </SettingRow>
@@ -200,7 +262,7 @@ export default function Profile() {
           <Allowance me={me} error={error} loading={loading} refresh={refresh} />
         </SettingRow>
 
-        <SettingRow title="Appearance" description="Light is Lunar Cream, dark is Saturn Dusk. System follows your device.">
+        <SettingRow title="Appearance" description="Light is Lunar Cream, dark is Graphite Mono. System follows your device.">
           <Appearance />
         </SettingRow>
 

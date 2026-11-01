@@ -2,7 +2,9 @@ import { config } from '../config.js';
 import * as watches from '../lib/watches.js';
 import * as store from '../lib/store.js';
 import { quotaStatus, canAfford, quotaDay, nextQuotaReset } from '../lib/quota.js';
-import { tryConsume, refund, linkRun } from '../lib/db.js';
+import { getUser, tryConsume, refund, linkRun } from '../lib/db.js';
+import { limitsFor } from '../lib/limits.js';
+import { publicMessage, RUN_FAILED } from '../lib/publicError.js';
 import { startAnalysis } from './runner.js';
 
 /**
@@ -57,7 +59,7 @@ async function tick() {
       let consumed = null;
       if (w.ownerUid) {
         const day = quotaDay();
-        const got = await tryConsume(w.ownerUid, day, 'analyses', config.users.dailyAnalyses);
+        const got = await tryConsume(w.ownerUid, day, 'analyses', limitsFor(await getUser(w.ownerUid)).analyses);
         if (!got.ok) {
           // Allowances reset with the quota, so there is no point asking again before then.
           const minutes = Math.ceil((Date.parse(nextQuotaReset()) - Date.now()) / 60_000) + 1;
@@ -82,7 +84,7 @@ async function tick() {
               if (err) {
                 // Same policy as an interactive run: a failure gives the analysis back.
                 if (consumed) await refund(w.ownerUid, consumed, 'analyses');
-                await watches.recordRun(w.id, { error: err.message });
+                await watches.recordRun(w.id, { error: publicMessage(err, RUN_FAILED) }); // shown to the owner
                 console.error(`[scheduler] watch "${w.label}" failed:`, err.message);
               } else {
                 await watches.recordRun(w.id, { runId: result.runId });
@@ -104,11 +106,15 @@ async function tick() {
           // The run never started (a storage error, say): give the analysis back and move on.
           console.error(`[scheduler] watch "${w.label}" could not start:`, e.message);
           if (consumed) await refund(w.ownerUid, consumed, 'analyses').catch(() => {});
+          // Its next run time has not moved, so without this it fires again on the next tick.
+          await watches.defer(w.id, 60, RUN_FAILED).catch(() => {});
           resolve();
         });
       }), new Promise((resolve) => {
-        timeout = setTimeout(() => {
+        timeout = setTimeout(async () => {
           console.error(`[scheduler] watch "${w.label}" did not finish within ${config.scheduler.runTimeoutMinutes} min; moving on.`);
+          // Same reason: an unmoved watch would start, and charge, a second run on the next tick.
+          await watches.recordRun(w.id, { error: 'This run took too long. It tries again at its next scheduled time.' }).catch(() => {});
           resolve();
         }, config.scheduler.runTimeoutMinutes * 60 * 1000);
         timeout.unref?.();

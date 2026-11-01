@@ -1,6 +1,6 @@
 import { updateProfile } from 'firebase/auth';
 import { auth } from './firebase.js';
-import { authError, notConfiguredError } from './authErrors.js';
+import { authError, isOffline, notConfiguredError, offlineError } from './authErrors.js';
 
 /**
  * Changes the signed-in person's display name in Firebase. The caller then
@@ -9,6 +9,7 @@ import { authError, notConfiguredError } from './authErrors.js';
  */
 export async function updateDisplayName(name) {
   if (!auth) throw notConfiguredError();
+  if (isOffline()) throw offlineError();
   const fb = auth.currentUser;
   if (!fb) throw Object.assign(new Error('Log in first.'), { code: 'AUTH_REQUIRED' });
   try {

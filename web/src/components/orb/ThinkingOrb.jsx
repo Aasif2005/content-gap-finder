@@ -3,10 +3,11 @@ import { Check, Sparkles } from 'lucide-react';
 import { Button } from '../ui/Button.jsx';
 import { COPY, createRuntime } from './orbEngine.js';
 import { PHASES } from '../ProgressRail.jsx';
+import { useSmoothProgress } from '../../lib/useSmoothProgress.js';
 
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
-/** "#8FA9FF" or "rgb(…)" → [r, g, b]; falls back to Ion Blue's light tint. */
+/** "#92A8FF" or "rgb(…)" → [r, g, b]; falls back to the palette's light secondary. */
 function toRgb(value) {
   const v = String(value ?? '').trim();
   const hex = v.match(/^#([\da-f]{3}|[\da-f]{6})$/i);
@@ -16,7 +17,7 @@ function toRgb(value) {
   }
   const rgb = v.match(/\d+(\.\d+)?/g);
   if (rgb && rgb.length >= 3) return rgb.slice(0, 3).map((n) => Math.round(Number(n)));
-  return [143, 169, 255];
+  return [146, 168, 255];
 }
 
 /**
@@ -31,7 +32,7 @@ function toRgb(value) {
  * `onDismiss({ cancelled })` fires when the stage closes: after "Open report"
  * (cancelled false) or when the visitor stops it with Esc / Cancel (true).
  */
-export function ThinkingOrb({ job, progress, onDismiss }) {
+export function ThinkingOrb({ job, progress, offline = false, onDismiss }) {
   const [phase, setPhase] = useState('idle');
   const [lbl, setLbl] = useState({ cur: COPY.labels[0], prev: null, n: 0 });
   const [answer, setAnswer] = useState('');
@@ -128,6 +129,9 @@ export function ThinkingOrb({ job, progress, onDismiss }) {
     return () => window.clearTimeout(id);
   }, [finished]);
   const active = phase !== 'idle' && phase !== 'reset' && !finished;
+  const pct = useSmoothProgress({ phase: progress?.phase, progress: progress?.progress, done: finished });
+  // Coarse steps for assistive tech: the live region announces steps, not every percent.
+  const pctSr = Math.min(100, Math.round(pct / 5) * 5);
   const words = answer.split(/\s+/).filter(Boolean);
 
   const labelInner = (name) => (name === COPY.done ? (
@@ -200,13 +204,17 @@ export function ThinkingOrb({ job, progress, onDismiss }) {
       </div>
 
       <div className="mo-status" ref={statusRef} aria-hidden="true">
-        <span key={label} className="mo-lab mo-in">{labelInner(label)}</span>
+        {offline && !finished
+          ? <span key="offline" className="mo-lab mo-in">Waiting for connection…</span>
+          : <span key={label} className="mo-lab mo-in">{labelInner(label)}</span>}
+        {label !== COPY.done && <span className="mo-pct nums" data-live="">{pct}%</span>}
       </div>
 
       <ol className="mo-chips" aria-hidden="true">
         {PHASES.map((p, i) => (
           <li key={p.key} className="mo-chip" data-state={finished || i < curIdx ? 'done' : i === curIdx ? 'now' : 'next'}>
             <i />{p.label}
+            {i === curIdx && !finished && <span className="mo-pct nums">{pct}%</span>}
           </li>
         ))}
       </ol>
@@ -221,6 +229,7 @@ export function ThinkingOrb({ job, progress, onDismiss }) {
         {finished && <p className="mo-fade mo-opening">Opening your report<span className="mo-dots" aria-hidden="true"><i /><i /><i /></span></p>}
       </div>
 
+      <div className="sr-only" role="progressbar" aria-label="Analysis progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pctSr} />
       <div className="mo-live" ref={liveRef} role="status" aria-live="polite" />
     </div>
     </section>

@@ -45,7 +45,7 @@ export function Dialog({ open, onClose, title, description, actions, children, d
       onMouseDown={(e) => { if (dismissible && e.target === ref.current) ref.current.close(); }}
       className={cx(
         'm-auto w-[min(30rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-panel border border-line bg-surface p-0 text-fg',
-        'shadow-[0_24px_60px_-20px_rgb(0_0_0/0.5)] backdrop:bg-[#0A1220]/60',
+        'shadow-[0_24px_60px_-20px_rgb(0_0_0/0.5)] backdrop:bg-[#0F1E2E]/60',
         className
       )}
     >

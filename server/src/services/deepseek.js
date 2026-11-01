@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { currentRun, throwIfCancelled, signalWithTimeout, CancelledError } from '../lib/runContext.js';
 
 const { base, apiKey, timeoutMs } = config.deepseek;
 
@@ -37,13 +38,14 @@ export async function chatJSON({ system, user, model = config.deepseek.analysisM
   let budget = maxTokens;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    throwIfCancelled();
     const startedAt = Date.now();
     try {
       const res = await fetch(`${base}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(requestBody({ model: activeModel, system, user, maxTokens: budget, temperature, thinking })),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: signalWithTimeout(timeoutMs),
       });
 
       if (!res.ok) {
@@ -75,6 +77,7 @@ export async function chatJSON({ system, user, model = config.deepseek.analysisM
       }
       return { data: parseJSON(content), usage: data.usage ?? null, model: data.model, fellBack: activeModel !== model };
     } catch (err) {
+      if (currentRun()?.signal?.aborted) throw new CancelledError(); // stopped by the person: no retry
       lastError = err;
       if (err.fatal || attempt === attempts) break;
 

@@ -74,7 +74,7 @@ export default function Dashboard() {
   const greeting = hour < 12 ? 'Good morning.' : hour < 18 ? 'Good afternoon.' : 'Good evening.';
 
   return (
-    <div className="fade-in pb-8">
+    <div className="pb-8">
       <div className="relative pt-4 sm:pt-8">
         <span aria-hidden className="pointer-events-none absolute -top-24 left-1/2 h-72 w-[min(900px,100%)] -translate-x-1/2 rounded-full bg-focus/10 blur-3xl" />
         <h1 className="relative text-[44px] font-semibold leading-[1.05] tracking-[-0.035em] sm:text-[60px]">{greeting}</h1>

@@ -6,10 +6,12 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node --env-file=../.env --watch src/index.js",
-    "start": "node --env-file=../.env src/index.js",
-    "test": "node --env-file-if-exists=../.env --test test/"
+    "start": "node --env-file-if-exists=../.env src/index.js",
+    "test": "node --env-file-if-exists=../.env --test test/",
+    "waitlist": "node --env-file=../.env scripts/waitlist.js"
   },
   "dependencies": {
+    "compression": "^1.8.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "jose": "^6.2.13",

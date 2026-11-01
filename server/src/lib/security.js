@@ -23,3 +23,14 @@ export function makeSecurityHeaders({ isProd = config.isProd } = {}) {
 }
 
 export const securityHeaders = makeSecurityHeaders();
+
+/**
+ * Where a plain-http request should go instead, or null. It only applies behind
+ * a proxy (TRUST_PROXY), the one place `req.secure` means anything: without one
+ * the server is speaking plain http by design. Uptime checks stay on http.
+ */
+export function httpsRedirectFor(req, { isProd = config.isProd, trustProxy = config.trustProxy, siteUrl = config.site.url } = {}) {
+  if (!isProd || !trustProxy || req.secure || req.path === '/api/health') return null;
+  const origin = siteUrl ? siteUrl.replace(/\/+$/, '') : `https://${req.get('host')}`;
+  return `${origin}${req.originalUrl}`;
+}

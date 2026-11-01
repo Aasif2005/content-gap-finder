@@ -1,6 +1,7 @@
 import { ChevronDown, TriangleAlert } from 'lucide-react';
 import { Card, Rank, Badge, Derived, DERIVED_NOTE } from './Bits.jsx';
 import { VideoStrip } from './VideoStrip.jsx';
+import { Disclosure } from './ui/Disclosure.jsx';
 
 const pct = (x) => `${((x ?? 0) * 100).toFixed(2)}%`;
 
@@ -20,16 +21,18 @@ function StatsBadge({ item }) {
   return <Badge tone={tone} title={`${title} ${DERIVED_NOTE}`}>{text} <Derived /></Badge>;
 }
 
-export function AvoidCard({ item, rank }) {
+export function AvoidCard({ item, rank, inRow = false }) {
   return (
     <Card>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-        <div className="flex min-w-0 items-baseline gap-3">
-          <Rank n={rank} />
-          <h3 className="min-w-0 text-xl font-semibold leading-tight tracking-[-0.02em] text-fg [text-wrap:balance]">
-            {item.label}
-          </h3>
-        </div>
+        {!inRow && (
+          <div className="flex min-w-0 items-baseline gap-3">
+            <Rank n={rank} />
+            <h3 className="min-w-0 text-xl font-semibold leading-tight tracking-[-0.02em] text-fg [text-wrap:balance]">
+              {item.label}
+            </h3>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           {/* Separates "the model thinks so" from "our own numbers agree" -- or disagree. */}
           <StatsBadge item={item} />
@@ -44,12 +47,12 @@ export function AvoidCard({ item, rank }) {
         </div>
       </div>
 
-      <p className="mt-3 max-w-[68ch] text-base leading-relaxed text-fg-2">{item.reason}</p>
+      {!inRow && <p className="mt-3 max-w-[68ch] text-base leading-relaxed text-fg-2">{item.reason}</p>}
 
-      {item.counterEvidence && (
-        <div className="mt-5 rounded-control bg-surface-2 px-4 py-3.5">
+      {(item.counterEvidence || inRow) && (
+        <div className={`${inRow ? 'mt-4' : 'mt-5'} rounded-control bg-surface-2 px-4 py-3.5`}>
           <p className="text-[13px] font-medium text-fg-3">The numbers</p>
-          <p className="mt-1 max-w-[68ch] text-[15px] leading-relaxed text-fg">{item.counterEvidence}</p>
+          {item.counterEvidence && <p className="mt-1 max-w-[68ch] text-[15px] leading-relaxed text-fg">{item.counterEvidence}</p>}
           <p className="nums mt-1.5 font-mono text-xs text-fg-2">
             Median engagement across these videos: {pct(item.medianEngagementRate)}
             {item.runMedianEngagementRate != null && <> (this run&rsquo;s median: {pct(item.runMedianEngagementRate)})</>}
@@ -58,16 +61,20 @@ export function AvoidCard({ item, rank }) {
         </div>
       )}
 
-      <details className="group mt-3">
-        <summary className="group flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-control text-sm font-medium text-fg-2 transition-colors hover:text-fg [&::-webkit-details-marker]:hidden">
-          <span className="group-open:hidden">See the {item.videos.length} video{item.videos.length === 1 ? '' : 's'} behind this</span>
-          <span className="hidden group-open:inline">Hide</span>
-          <ChevronDown aria-hidden className="h-4 w-4 group-open:rotate-180" />
-        </summary>
-        <div className="mb-1 mt-1">
-          <VideoStrip videos={item.videos} limit={6} showEngagement />
-        </div>
-      </details>
+      <Disclosure
+        className="mt-3"
+        summaryClassName="flex min-h-11 cursor-pointer items-center gap-1.5 rounded-control text-sm font-medium text-fg-2 transition-colors hover:text-fg"
+        bodyClassName="mb-1 mt-1"
+        summary={(
+          <>
+            <span className="group-open:hidden">See the {item.videos.length} video{item.videos.length === 1 ? '' : 's'} behind this</span>
+            <span className="hidden group-open:inline">Hide</span>
+            <ChevronDown aria-hidden className="h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] group-open:rotate-180" />
+          </>
+        )}
+      >
+        <VideoStrip videos={item.videos} limit={6} showEngagement />
+      </Disclosure>
     </Card>
   );
 }

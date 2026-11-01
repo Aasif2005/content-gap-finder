@@ -3,6 +3,7 @@ import { compact } from '../lib/format.js';
 import { Badge } from './Bits.jsx';
 import { Button } from './ui/Button.jsx';
 import { Panel } from './ui/Panel.jsx';
+import { Disclosure } from './ui/Disclosure.jsx';
 
 // What re-running without a given filter means, and whether the query uses it.
 const FILTERS = {
@@ -39,17 +40,21 @@ function Reason({ reason, items, query, busy, onRerun }) {
 
   // A hairline row, not a box: the whole panel is the one container.
   return (
-    <details className="group border-t border-line-soft first:border-t-0">
-      <summary className={`flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-control py-2 text-[15px] ${SUMMARY_MARKER}`}>
+    <Disclosure
+      className="border-t border-line-soft first:border-t-0"
+      summaryClassName="flex min-h-11 cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 rounded-control py-2 text-[15px]"
+      summary={(
+        <>
         <Badge mono>{reason.count}</Badge>
         <span className="min-w-0 flex-1 text-fg">{reason.label}</span>
         <span className="inline-flex items-center gap-1 text-[13px] text-fg-3">
           <span className="group-open:hidden">show</span>
           <span className="hidden group-open:inline">hide</span>
-          <ChevronDown aria-hidden className="h-4 w-4 group-open:rotate-180" />
+          <ChevronDown aria-hidden className="h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] group-open:rotate-180" />
         </span>
-      </summary>
-
+        </>
+      )}
+    >
       <ul className="space-y-1.5 pb-3 pl-1">
         {shown.map((i) => (
           <li key={`${i.code}-${i.videoId}`} className="text-sm text-fg-2">
@@ -63,7 +68,7 @@ function Reason({ reason, items, query, busy, onRerun }) {
             </span>
           </li>
         ))}
-        {reason.count > shown.length && <li className="text-[13px] text-fg-3">+{reason.count - shown.length} more (all of them are in the audit log)</li>}
+        {reason.count > shown.length && <li className="text-[13px] text-fg-3">+{reason.count - shown.length} more</li>}
       </ul>
 
       {canRerun && (
@@ -73,7 +78,7 @@ function Reason({ reason, items, query, busy, onRerun }) {
           </Button>
         </div>
       )}
-    </details>
+    </Disclosure>
   );
 }
 
@@ -83,7 +88,7 @@ function Reason({ reason, items, query, busy, onRerun }) {
  * to the step that made it short, and the filter responsible can be undone from
  * the same place.
  */
-const OUTPUT_NAMES = { heat: 'Heat ranking', topics: 'Trending topics', gaps: 'Content gaps', outliers: 'Channel-median outliers', recurrence: 'Recurrence' };
+const OUTPUT_NAMES = { heat: 'Buzz ranking', topics: 'Trending topics', gaps: 'Content gaps', outliers: 'Channel-median outliers', recurrence: 'Recurrence' };
 // Status dots use the semantic status colours; "n/a" is just quiet.
 const DOT = { solid: 'bg-good-fg', small: 'bg-warn-fg', thin: 'bg-bad-fg', 'n/a': 'bg-fg-3' };
 const LEVEL_TEXT = { thin: 'text-bad-fg', small: 'text-warn-fg' };
@@ -116,8 +121,11 @@ export function EvidencePanel({ exclusions, evidence, query, busy, onRerun }) {
   const unread = byReason.filter((r) => r.kind === 'unread');
 
   return (
-    <Panel as="details" padding="none" className="group/evidence">
-      <summary className={`flex min-h-12 cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-1 rounded-panel px-5 py-3 text-[15px] text-fg-2 ${SUMMARY_MARKER}`}>
+    <Panel padding="none">
+      <Disclosure
+        summaryClassName="flex min-h-12 cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-panel px-5 py-3 text-[15px] text-fg-2"
+        summary={(
+          <>
         <span>
           <b className="nums font-mono font-medium text-fg">{found}</b> {funnel[0]?.label.toLowerCase().includes('upload') ? 'uploads in the window' : 'videos found'} → <b className="nums font-mono font-medium text-fg">{scored}</b> scored
           {excluded > 0 && <> · <b className="nums font-mono font-medium text-fg">{excluded}</b> left out, and why</>}
@@ -126,11 +134,12 @@ export function EvidencePanel({ exclusions, evidence, query, busy, onRerun }) {
           <span key={k} className={`text-[13px] font-medium ${LEVEL_TEXT[e.level]}`}>{(OUTPUT_NAMES[k] ?? k).toLowerCase()}: {e.level}</span>
         ))}
         <span className="ml-auto inline-flex items-center gap-1 text-[13px] text-fg-3">
-          details <ChevronDown aria-hidden className="h-4 w-4 group-open/evidence:rotate-180" />
+          details <ChevronDown aria-hidden className="h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] group-open:rotate-180" />
         </span>
-      </summary>
-
-      <div className="space-y-6 border-t border-line px-5 py-5">
+          </>
+        )}
+        bodyClassName="space-y-6 border-t border-line px-5 py-5"
+      >
         <Funnel steps={funnel} />
         {exclusions.shortfall?.detail && <p className="max-w-[68ch] text-sm leading-relaxed text-fg-2">{exclusions.shortfall.detail}</p>}
 
@@ -164,10 +173,10 @@ export function EvidencePanel({ exclusions, evidence, query, busy, onRerun }) {
 
         {!integrity && (
           <p role="alert" className="text-sm font-medium text-bad-fg">
-            These counts do not add up (found ≠ scored + left out). Treat this funnel with suspicion and check the audit log.
+            These counts do not add up (found ≠ scored + left out). Treat this funnel with suspicion.
           </p>
         )}
-      </div>
+      </Disclosure>
     </Panel>
   );
 }

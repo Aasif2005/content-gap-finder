@@ -11,6 +11,15 @@ export const NAVIGATE_EVENT = 'gapstronaut:navigate';
 
 const sameOrigin = (url) => url.origin === window.location.origin;
 
+// The target only exists once the new page has rendered, so look on the next frames.
+function scrollToHash(hash, tries = 30) {
+  requestAnimationFrame(() => {
+    const target = document.getElementById(hash.slice(1));
+    if (target) target.scrollIntoView();
+    else if (tries > 0) scrollToHash(hash, tries - 1);
+  });
+}
+
 /**
  * Goes to `href`. `replace` swaps the current history entry instead of adding
  * one. Scrolls to the top on a push (not on a replace, which is usually a URL
@@ -29,6 +38,7 @@ export function navigate(href, { replace = false, scroll } = {}) {
   window.history[replace ? 'replaceState' : 'pushState'](state, '', next);
   window.dispatchEvent(new Event(NAVIGATE_EVENT));
   if (scroll ?? !replace) window.scrollTo(0, 0);
+  if (url.hash) scrollToHash(url.hash);
 }
 
 /** True when history.back() will stay inside the app. */

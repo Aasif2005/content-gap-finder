@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { Search } from 'lucide-react';
 import { ShinyButton } from '../ui/index.js';
 import { formatLabel, windowLabel } from '../../lib/runRows.js';
 
@@ -13,7 +14,8 @@ export function QuickSearch({ value, onChange, onSubmit, error, inputRef }) {
   const errorId = `${id}-error`;
   return (
     <form onSubmit={onSubmit} noValidate className="mt-7">
-      <div className="flex flex-wrap gap-2.5 rounded-[2rem] border border-line-strong bg-surface p-2 pl-3 shadow-panel focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
+      <div className="flex flex-wrap gap-2.5 search-console items-center rounded-full p-2 pl-5">
+        <Search aria-hidden className="search-icon h-5 w-5 shrink-0" strokeWidth={1.6} />
         <label htmlFor={id} className="sr-only">Niche</label>
         <input
           ref={inputRef}
@@ -25,10 +27,11 @@ export function QuickSearch({ value, onChange, onSubmit, error, inputRef }) {
           placeholder="Try something specific: cast iron restoration beats cooking"
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
-          className="min-h-12 min-w-0 flex-[1_1_300px] bg-transparent px-3.5 text-lg font-medium text-fg outline-none placeholder:font-normal placeholder:text-fg-3"
+          className="min-h-12 min-w-0 flex-[1_1_300px] bg-transparent px-3.5 text-lg font-medium text-fg placeholder:font-normal placeholder:text-fg-3"
         />
-        <p className="hidden items-center gap-3.5 px-1.5 text-sm text-fg-2 md:flex">
+        <p className="hidden items-center gap-3 border-l border-line pl-4 pr-2 text-[14px] text-fg-2 md:flex">
           <span>{windowLabel('7d')}</span>
+          <span aria-hidden className="h-1 w-1 rounded-full bg-line-strong" />
           <span>{formatLabel('both')}</span>
         </p>
         <ShinyButton type="submit" className="max-sm:w-full">Find gaps</ShinyButton>

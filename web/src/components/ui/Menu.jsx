@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from '../../lib/router.jsx';
 import { cx } from '../../lib/cx.js';
 
@@ -10,7 +11,8 @@ import { cx } from '../../lib/cx.js';
  *
  * Items are `{ label, href? , onSelect?, icon?, tone?: 'danger' }` or
  * `{ separator: true }`. The panel is `position: fixed`, placed from the
- * button's rectangle, so no ancestor's `overflow` can clip it. Arrow keys, Home
+ * button's rectangle, and rendered into <body>, so no ancestor's `overflow`, transform or
+ * backdrop-filter (the header glass) can clip or offset it. Arrow keys, Home
  * and End move between items; Escape and Tab close it; Escape returns focus to
  * the button.
  */
@@ -37,7 +39,7 @@ export function Menu({ label, trigger, items, header, align = 'end', triggerClas
   useEffect(() => {
     if (!open) return undefined;
     place();
-    panel.current?.querySelector('[role="menuitem"]')?.focus();
+    panel.current?.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });
     const onDown = (e) => {
       if (!panel.current?.contains(e.target) && !button.current?.contains(e.target)) close();
     };
@@ -85,7 +87,7 @@ export function Menu({ label, trigger, items, header, align = 'end', triggerClas
         {trigger}
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           ref={panel}
           id={id}
@@ -93,7 +95,7 @@ export function Menu({ label, trigger, items, header, align = 'end', triggerClas
           aria-label={label}
           onKeyDown={onKeyDown}
           style={{ position: 'fixed', ...pos }}
-          className="fade-in z-50 w-64 max-w-[calc(100vw-1rem)] rounded-panel border border-line bg-surface p-1.5 shadow-[0_12px_32px_-12px_rgb(14_22_38/0.35)]"
+          className="fade-in z-50 w-64 max-w-[calc(100vw-1rem)] rounded-panel border border-line bg-surface p-1.5 shadow-[0_12px_32px_-12px_rgb(15_30_46/0.35)]"
         >
           {header && <div className="border-b border-line-soft px-3 pb-2.5 pt-2">{header}</div>}
           <div className={header ? 'pt-1.5' : undefined}>
@@ -118,7 +120,8 @@ export function Menu({ label, trigger, items, header, align = 'end', triggerClas
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

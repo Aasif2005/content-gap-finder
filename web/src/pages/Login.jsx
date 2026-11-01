@@ -4,7 +4,8 @@ import AuthLayout, { AuthHeading, OrDivider } from '../components/auth/AuthLayou
 import { GoogleButton } from '../components/auth/GoogleButton.jsx';
 import { LegalLinks } from '../components/auth/LegalLinks.jsx';
 import { NotConfiguredAlert } from '../components/auth/NotConfiguredAlert.jsx';
-import { looksLikeEmail, nextSuffix, welcomeNext } from '../components/auth/helpers.js';
+import { EmailTypoHint } from '../components/auth/EmailTypoHint.jsx';
+import { emailTypoFix, looksLikeEmail, nextSuffix, safeNext } from '../components/auth/helpers.js';
 import { Link, navigate, useRoute } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -28,7 +29,7 @@ export default function Login() {
 
   // Already signed in (or just now): go where they were headed.
   useEffect(() => {
-    if (!loading && user) navigate(welcomeNext(next), { replace: true });
+    if (!loading && user) navigate(safeNext(next), { replace: true });
   }, [loading, user, next]);
 
   // A failed submit moves focus to the message, so a keyboard or screen reader user lands on it.
@@ -42,8 +43,8 @@ export default function Login() {
       setErrors({ email: err.message });
       emailRef.current?.focus();
     } else if (code === 'INVALID_CREDENTIALS') {
-      setErrors({ password: err.message });
-      passwordRef.current?.focus();
+      // Above the form, not under one field: it may be either, and we never say which.
+      setNotice({ tone: 'bad', message: err.message });
     } else {
       setNotice({ tone: code === 'POPUP_CLOSED' ? 'warn' : 'bad', message: err?.message ?? 'Something went wrong. Please try again.' });
     }
@@ -57,7 +58,10 @@ export default function Login() {
     reset();
     const found = {};
     if (!email.trim()) found.email = 'Enter your email address.';
-    else if (!looksLikeEmail(email)) found.email = 'That does not look like an email address. Check it for typos.';
+    else if (!looksLikeEmail(email)) found.email = 'Invalid email address.';
+    else if (emailTypoFix(email)) {
+      found.email = <EmailTypoHint fix={emailTypoFix(email)} onUse={(v) => { setEmail(v); setErrors((x) => ({ ...x, email: undefined })); }} />;
+    }
     if (!password) found.password = 'Enter your password.';
     if (found.email || found.password) {
       setErrors(found);

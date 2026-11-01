@@ -10,6 +10,7 @@ import { ExclusionLedger } from '../lib/exclusions.js';
 import { assessEvidence, assessTopic, explainShortfall, thinPoolFrom } from '../lib/confidence.js';
 import { classifyRecurrence } from '../lib/recurrence.js';
 import { annotateOutliers } from '../lib/outlier.js';
+import { throwIfCancelled } from '../lib/runContext.js';
 import { formulaHint } from '../lib/hookFormulas.js';
 import * as store from '../lib/store.js';
 
@@ -40,7 +41,10 @@ const publicVideo = (v) => ({
   url: `https://www.youtube.com/watch?v=${v.videoId}`,
 });
 
-export async function runPipeline(input, onProgress = () => {}, runId) {
+export async function runPipeline(input, reportProgress = () => {}, runId) {
+  // Every progress report is also a checkpoint: a run the person stopped ends at the next one.
+  // A finished run is never thrown away at the last step.
+  const onProgress = (...args) => { if (args[0] !== 'done') throwIfCancelled(); reportProgress(...args); };
   const {
     niche,
     window = '7d',
@@ -83,7 +87,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     return await runPhases();
   } catch (err) {
     log.logError(err);
-    await log.finish({ status: 'error' }).catch((e) => console.error('[pipeline] could not store the audit log:', e.message));
+    await log.finish({ status: err?.code === 'CANCELLED' ? 'cancelled' : 'error' }).catch((e) => console.error('[pipeline] could not store the audit log:', e.message));
     throw err;
   }
 
@@ -249,7 +253,8 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
       const baselines = await yt.getChannelBaselines(topChannels, { minAgeDays: config.outlier.minBaselineAgeDays });
       outlierSummary = annotateOutliers(ranked, baselines);
     } catch (err) {
-      warnings.push(`Channel-median outliers were not measured: ${err.message}`);
+      console.error('[pipeline] channel baselines failed:', err.message);
+      warnings.push('Channel-median outliers were not measured for this run.');
     }
   }
 
@@ -262,7 +267,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     const tagOnlyCount = ranked.filter((v) => v.tagOnlyMatch).length;
     if (tagOnlyCount) {
       warnings.push(
-        `${tagOnlyCount} of ${ranked.length} videos mention "${niche}" only in tags/hashtags, not in the title. They may be tag-hijacked.`
+        `${tagOnlyCount} of ${ranked.length} videos only mention "${niche}" in their tags, not the title, so they may be off-topic.`
       );
     }
   }
@@ -290,7 +295,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     try {
       list = await yt.getComments(v.videoId, config.youtube.commentsPerVideo);
     } catch (err) {
-      if (err.code === 'QUOTA_EXHAUSTED') throw err;
+      if (err.code === 'QUOTA_EXHAUSTED' || err.code === 'CANCELLED') throw err;
       unreadable.push(v);
       continue;
     }
@@ -415,7 +420,7 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
   const droppedComments = [...untrusted].reduce((n, id) => n + (commentsByVideo[id]?.length ?? 0), 0);
   if (droppedComments) {
     warnings.push(
-      `${droppedComments} comments excluded from gap mining -- they came from tag-hijacked videos clustering did not confirm as relevant.`
+      `${droppedComments} comments left out: they came from videos that may be off-topic.`
     );
   }
 
@@ -472,16 +477,16 @@ export async function runPipeline(input, onProgress = () => {}, runId) {
     if (runsCompared > 0) {
       const recurring = gaps.filter((g) => g.recurrence.status === 'recurring').length;
       warnings.push(
-        `Compared against ${runsCompared} earlier run${runsCompared === 1 ? '' : 's'} of this ${channelMode ? 'channel' : 'niche'}: ${recurring} of ${gaps.length} gaps have been asked for before${resolvedGaps.length ? `, and ${resolvedGaps.length} previously-open gap${resolvedGaps.length === 1 ? ' is' : 's are'} no longer showing up` : ''}.`
+        `Compared with ${runsCompared} earlier run${runsCompared === 1 ? '' : 's'}: ${recurring} of ${gaps.length} gaps were asked for before${resolvedGaps.length ? `, ${resolvedGaps.length} earlier gap${resolvedGaps.length === 1 ? '' : 's'} no longer ${resolvedGaps.length === 1 ? 'shows' : 'show'} up` : ''}.`
       );
     }
     if (classified.recentSkipped) {
-      warnings.push(`${classified.recentSkipped} run${classified.recentSkipped === 1 ? '' : 's'} of this subject from the last ${config.recurrence.minHours} hours ${classified.recentSkipped === 1 ? 'was' : 'were'} not compared: a re-run that soon reads the same comments, so it is not a second sighting of the demand.`);
+      warnings.push(`${classified.recentSkipped} run${classified.recentSkipped === 1 ? '' : 's'} in the last ${config.recurrence.minHours} hours ${classified.recentSkipped === 1 ? 'was' : 'were'} skipped: a quick re-run reads the same comments, so it isn't a second sighting.`);
     }
     await store.appendGapHistory(historyKey, runId, new Date().toISOString(), flaggedGaps, { filters: historyFilters, comments: gapComments.length });
   } catch (err) {
     console.error(`[pipeline] recurrence comparison failed:`, err.message);
-    warnings.push('Could not compare against earlier runs of this subject, so gaps are not marked new or recurring.');
+    warnings.push("Couldn't compare with earlier runs, so gaps aren't marked new or recurring.");
   }
   log.logRecurrence(gaps, resolvedGaps, runsCompared);
 

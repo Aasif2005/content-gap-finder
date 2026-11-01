@@ -93,7 +93,7 @@ niche + window + format                    channel URL / @handle / UC… id
 A full run takes **60-120 seconds** (measured 76s and 92s on a 50-video niche; DeepSeek
 latency is the variable part), so `POST /api/analyze` returns a job id and the client polls
 `GET /api/jobs/:id` for phase-by-phase progress rather than holding the request open.
-Results are cached per query (3h default) and **persisted by run id for 30 days**, so a
+Results are cached per query (6h default), and every YouTube response a run fetches is kept for 6h too, so a repeat search (or one that was stopped halfway) re-reads them for free. **Cancel stops the run at the server** (`POST /api/jobs/:id/cancel`): remaining YouTube and DeepSeek calls are aborted, no report is saved, and the analysis stays counted against the daily allowance because quota was already spent. Reports are **persisted by run id for 30 days**, so a
 report stays openable at `/r/<runId>` long after its cache entry expires. Cache hits and
 stored reports both cost nothing. After 30 days the report is deleted (YouTube's data
 policies allow no longer) and its link answers `410 RUN_EXPIRED`.
@@ -582,11 +582,11 @@ Two wrinkles worth knowing:
 | `PATCH /api/watches/:id` | Pause, resume, relabel, or re-interval a watch. |
 | `DELETE /api/watches/:id` | Remove a watch. |
 | `GET /api/watches/:id/digest` | What the newest run found that the previous one didn't. Free. |
-| `GET /api/quota` | Search calls and units used/remaining today, analyses left, and the per-shape cost table. |
+| `GET /api/quota` | Operator only (`ADMIN_EMAILS`). Search calls and units used/remaining today, analyses left, and the per-shape cost table. |
 | `GET /api/site` | The contact email and retention period the Privacy Policy and Terms pages print. |
-| `GET /api/health` | Liveness, quota, cache and store sizes, phase list. |
-| `GET /api/logs` | Recent runs with their niche-relevance summary. |
-| `GET /api/logs/:runId` | The full audit log for one run, as plain text. |
+| `GET /api/health` | Liveness only, for a host's uptime check. |
+| `GET /api/logs` | Operator only (`ADMIN_EMAILS`). Recent runs with their niche-relevance summary. |
+| `GET /api/logs/:runId` | Operator only (`ADMIN_EMAILS`). The full audit log for one run, as plain text. |
 
 ```bash
 curl -X POST localhost:8787/api/analyze -H 'Content-Type: application/json' -d '{
@@ -624,8 +624,8 @@ All state lives in MongoDB Atlas: set `MONGODB_URI` and `MONGODB_DB` in `.env` (
 
 ## Audit log — verifying the model stayed on the niche
 
-Every run writes a human-readable log to the `audit_runs` collection in MongoDB. Fetch it from the app itself — every report's footer has a **"view full
-audit log"** link, and `GET /api/logs` lists recent runs.
+Every run writes a human-readable log to the `audit_runs` collection in MongoDB. Logs cover every account's searches and quote comments, so they are for the
+operator only: `GET /api/logs` lists recent runs and `GET /api/logs/:runId` returns one, both for a signed-in, verified account listed in `ADMIN_EMAILS`.
 
 The log has four sections, in the order the pipeline actually produced them:
 

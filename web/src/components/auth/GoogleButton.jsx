@@ -26,14 +26,14 @@ export function GoogleButton({ children, loading = false, disabled = false, clas
       disabled={off}
       aria-busy={loading || undefined}
       className={cx(
-        'relative flex min-h-[50px] w-full select-none items-center justify-center gap-3 rounded-full border border-[#C5CEDD] bg-white px-4',
-        'text-base font-medium text-[#0E1626] transition-colors duration-150 hover:bg-[#F3F6FB]',
-        off && 'cursor-not-allowed opacity-55 hover:bg-white',
+        'relative flex min-h-[50px] w-full select-none items-center justify-center gap-3 rounded-full border border-line-strong bg-surface px-4',
+        'text-base font-medium text-fg transition-colors duration-150 hover:bg-hover',
+        off && 'cursor-not-allowed opacity-55 hover:bg-surface',
         className
       )}
       {...rest}
     >
-      {loading && <LoaderCircle aria-hidden className="absolute h-[18px] w-[18px] animate-spin text-[#4A5670]" />}
+      {loading && <LoaderCircle aria-hidden className="absolute h-[18px] w-[18px] animate-spin text-fg-2" />}
       <span className={cx('inline-flex items-center gap-3', loading && 'invisible')}>
         <GoogleMark />
         {children}

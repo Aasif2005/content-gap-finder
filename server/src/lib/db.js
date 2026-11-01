@@ -12,11 +12,16 @@ const isDuplicate = (err) => err?.code === 11000;
 
 // ------------------------------------------------------------------ users ---
 
+// The picture bytes live on the same document but are never read with it.
+const NO_AVATAR = { projection: { avatar: 0 } };
+
 const userFromDoc = (d) => !d ? null : {
   uid: d._id,
   email: d.email ?? null,
   name: d.name ?? null,
-  photoUrl: d.photoUrl ?? null,
+  // An uploaded picture wins over the Google one. The version in the URL changes with each upload, so browsers refetch.
+  photoUrl: d.avatarVersion ? `/api/avatar/${d._id}?v=${d.avatarVersion}` : d.photoUrl ?? null,
+  hasCustomAvatar: Boolean(d.avatarVersion),
   provider: d.provider ?? null,
   emailVerified: Boolean(d.emailVerified),
   createdAt: d.createdAt.toISOString(),
@@ -40,12 +45,26 @@ export async function upsertUser(u) {
       },
       $setOnInsert: { createdAt: at, termsAcceptedAt: null },
     },
-    { upsert: true, returnDocument: 'after' }
+    { upsert: true, returnDocument: 'after', ...NO_AVATAR }
   );
   return userFromDoc(doc);
 }
 
-export const getUser = async (uid) => userFromDoc(await col('users').findOne({ _id: uid }));
+export const getUser = async (uid) => userFromDoc(await col('users').findOne({ _id: uid }, NO_AVATAR));
+
+/** Saves the picture (JPEG bytes). Returns false when the account does not exist. */
+export async function setAvatar(uid, bytes) {
+  const r = await col('users').updateOne({ _id: uid }, { $set: { avatar: bytes, avatarVersion: Date.now() } });
+  return r.matchedCount > 0;
+}
+
+export const clearAvatar = (uid) => col('users').updateOne({ _id: uid }, { $unset: { avatar: '', avatarVersion: '' } });
+
+/** The picture's JPEG bytes, or null. */
+export async function getAvatar(uid) {
+  const d = await col('users').findOne({ _id: uid }, { projection: { avatar: 1 } });
+  return d?.avatar ? Buffer.from(d.avatar.buffer) : null;
+}
 
 /** Records consent. Overwritten each time, so re-accepting changed terms is possible. */
 export async function acceptTerms(uid, at = now().toISOString()) {
@@ -117,11 +136,14 @@ export async function refund(uid, day, kind) {
 }
 
 /** Erases everything held about one account. Reports are not touched; see routes/api.js. */
-export async function deleteUserData(uid) {
-  const [users, runs, usage] = await Promise.all([
+export async function deleteUserData(uid, email = null) {
+  // A waitlist row may hold the address without the uid: joined while logged out.
+  const waitlistRows = email ? { $or: [{ uid }, { email: String(email).toLowerCase() }] } : { uid };
+  const [users, runs, usage, waitlist] = await Promise.all([
     col('users').deleteOne({ _id: uid }),
     col('user_runs').deleteMany({ uid }),
     col('usage').deleteMany({ uid }),
+    col('waitlist').deleteMany(waitlistRows),
   ]);
-  return { users: users.deletedCount, runs: runs.deletedCount, usage: usage.deletedCount };
+  return { users: users.deletedCount, runs: runs.deletedCount, usage: usage.deletedCount, waitlist: waitlist.deletedCount };
 }

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Skeleton } from './ui/index.js';
 import { useAuth } from '../lib/auth.jsx';
 import { currentPathAndSearch, navigate } from '../lib/router.jsx';
+import { needsVerification, nextSuffix } from './auth/helpers.js';
 
 /** A quiet stand-in while we find out whether someone is signed in. */
 function AuthSkeleton() {
@@ -26,15 +27,19 @@ function AuthSkeleton() {
  * Wraps a page that needs an account (`required`; with it off this is a pass-through,
  * so a route's tree keeps one shape whether or not it is guarded). While auth is loading it shows a
  * skeleton; logged out, it sends the visitor to /login and brings them back
- * afterwards (`?next=` holds the path and query they asked for).
+ * afterwards (`?next=` holds the path and query they asked for). An account
+ * with an unverified email goes back to the "check your inbox" step on /signup.
  */
 export default function RequireAuth({ required = true, children }) {
   const { user, loading } = useAuth();
+  const locked = needsVerification(user);
 
   useEffect(() => {
-    if (required && !loading && !user) navigate(`/login?next=${encodeURIComponent(currentPathAndSearch())}`, { replace: true });
-  }, [required, loading, user]);
+    if (!required || loading) return;
+    if (!user) navigate(`/login?next=${encodeURIComponent(currentPathAndSearch())}`, { replace: true });
+    else if (locked) navigate(`/signup${nextSuffix(currentPathAndSearch())}`, { replace: true });
+  }, [required, loading, user, locked]);
 
-  if (required && (loading || !user)) return <AuthSkeleton />;
+  if (required && (loading || !user || locked)) return <AuthSkeleton />;
   return children;
 }

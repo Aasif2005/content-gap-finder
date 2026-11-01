@@ -13,7 +13,9 @@
     "@fontsource-variable/noto-sans-devanagari": "^5.3.0",
     "@fontsource-variable/noto-sans-tamil": "^5.3.0",
     "@fontsource-variable/schibsted-grotesk": "^5.3.0",
+    "@number-flow/react": "^0.6.2",
     "firebase": "^13.1.0",
+    "framer-motion": "^12.43.0",
     "lucide-react": "^1.61.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

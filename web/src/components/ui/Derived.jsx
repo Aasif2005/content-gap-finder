@@ -4,7 +4,7 @@ import { cx } from '../../lib/cx.js';
 /**
  * Marks a figure we calculated ourselves. YouTube's API policies require our
  * own metrics to be clearly told apart from YouTube's: views, likes and
- * subscribers carry no mark; heat, demand, engagement % and the like do.
+ * subscribers carry no mark; buzz, demand, engagement % and the like do.
  */
 export const DERIVED_NOTE = 'Calculated by Gapstronaut from YouTube data. Not a YouTube metric.';
 

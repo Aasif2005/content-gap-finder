@@ -56,9 +56,9 @@ export function EarthBlaze({
 
   return (
     <div data-earth-blaze="" className={className} style={{ position: 'relative', isolation: 'isolate', overflow: 'hidden', width: '100%', aspectRatio: '16 / 10', background: '#000', ...style }}>
-      <style>{'[data-earth-blaze] > canvas:focus-visible { outline: 2px solid var(--focus, #a5c8ff); outline-offset: -4px; }'}</style>
-      <div ref={fallback} aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: 'radial-gradient(ellipse at 32% 38%, #312034 0%, #101421 22%, #020308 52%, #000 78%)' }}>
-        <div style={{ position: 'absolute', width: '180%', height: '220%', left: '19%', top: '18%', borderRadius: '50%', background: '#000', boxShadow: '-2px -2px 3px #aa7c79, -8px -8px 38px #62406166', transform: 'rotate(-28deg)' }} />
+      <style>{'[data-earth-blaze] > canvas:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; } [data-earth-blaze] > canvas[data-pointer]:focus-visible { outline: none; }'}</style>
+      <div ref={fallback} aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: `radial-gradient(ellipse at 32% 38%, ${backgroundColor ?? '#000'} 0%, #000 60%)` }}>
+        <div style={{ position: 'absolute', width: '180%', height: '220%', left: '19%', top: '18%', borderRadius: '50%', background: '#000', boxShadow: `-2px -2px 3px ${backgroundColor ?? '#000'}`, transform: 'rotate(-28deg)' }} />
       </div>
       <canvas ref={canvas} tabIndex={interactive ? 0 : -1} role="img"
         aria-label="Sunlight rising over Europe beneath a field of stars"
@@ -196,6 +196,10 @@ const fragment = `
       color += vec3(.010, .018, .032) * pool * (reveal + bloom) * inside * surfaceBrightness * illumination;
     }
 
+    // The site's palette only: every lit pixel lands between black, the theme colour and white.
+    float tone = max(color.r, max(color.g, color.b));
+    color = mix(color, mix(backgroundColor.rgb * min(tone / .6, 1.), vec3(1.), smoothstep(.6, 1., tone)), backgroundColor.a);
+
     // One static sub-byte dither prevents bands without making black space noisy.
     float light = max(color.r, max(color.g, color.b));
     color += (grain(gl_FragCoord.xy) - .5) / 255. * smoothstep(.001, .015, light);
@@ -277,8 +281,7 @@ const starVertex = `
     alpha = (.24 + star.w * .58 + sharp * .55) * twinkle;
     alpha *= tail < .5 ? 1. : charge * (1. - tail / 7.) * .19 * (1. - still);
     alpha *= 1. + impulse * .8;
-    tint = mix(vec3(.49, .70, 1.), vec3(1., .69, .49), smoothstep(.32, .90, fract(star.w * 13.7)));
-    tint = mix(tint, vec3(.93, .77, 1.), step(.87, fract(star.w * 7.)));
+    tint = vec3(1.);
   }
 `;
 const starFragment = `
@@ -534,7 +537,7 @@ function createRenderer(canvas, fallback, initial) {
   pointer('pointermove', (e) => { if (e.isPrimary) point(e); });
   pointer('pointerdown', (e) => {
     if (!e.isPrimary || e.button !== 0) return;
-    canvas.setPointerCapture(e.pointerId); canvas.focus({ preventScroll: true });
+    canvas.dataset.pointer = 'true'; canvas.setPointerCapture(e.pointerId); canvas.focus({ preventScroll: true });
     state.holding = options.auroraEnabled; point(e); state.pulseAngle = state.target;
   });
   pointer('pointerup', (e) => {
@@ -545,6 +548,7 @@ function createRenderer(canvas, fallback, initial) {
   pointer('pointercancel', rest); pointer('lostpointercapture', () => release(false));
   pointer('pointerleave', (e) => { if (e.pointerType !== 'touch' && !canvas.hasPointerCapture(e.pointerId)) rest(); });
   listen(canvas, 'keydown', (e) => {
+    delete canvas.dataset.pointer;
     if (!options.interactive || !geometry || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Enter', 'Escape', 'Home'].includes(e.key)) return;
     e.preventDefault();
     if (e.key === 'ArrowRight' || e.key === 'ArrowUp') state.target = clamp(state.target + .022, geometry.low, geometry.high);

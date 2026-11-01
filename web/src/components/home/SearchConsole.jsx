@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from 'react';
+import { Search } from 'lucide-react';
 import { ShinyButton } from '../ui/index.js';
 import { navigate } from '../../lib/router.jsx';
 import { useAuth } from '../../lib/auth.jsx';
@@ -34,9 +35,8 @@ export default function SearchConsole() {
       noValidate
       className="mt-7 max-w-[780px] md:mt-11"
     >
-      <div
-        className="flex flex-col gap-2 rounded-[14px] border border-line-strong bg-surface p-2 shadow-[0_24px_48px_-28px_rgba(15,30,46,0.25)] has-[input:focus-visible]:border-focus has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-focus sm:flex-row sm:rounded-2xl"
-      >
+      <div className="search-console flex flex-col items-stretch gap-2 rounded-[2rem] p-2 pl-5 sm:flex-row sm:items-center sm:rounded-full">
+        <Search aria-hidden className="search-icon hidden h-5 w-5 shrink-0 sm:block" strokeWidth={1.6} />
         <label htmlFor={id} className="sr-only">Your niche</label>
         <input
           ref={inputRef}
@@ -51,9 +51,9 @@ export default function SearchConsole() {
           maxLength={120}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
-          className="min-h-[52px] min-w-0 flex-1 rounded-control bg-transparent px-3 text-lg font-medium text-fg outline-none placeholder:text-fg-3 sm:px-4 sm:text-xl"
+          className="min-h-12 min-w-0 flex-1 rounded-control bg-transparent px-3.5 text-lg font-medium text-fg placeholder:font-normal placeholder:text-fg-3"
         />
-        <ShinyButton type="submit" className="w-full sm:w-auto sm:!px-8">
+        <ShinyButton type="submit" className="w-full shrink-0 sm:w-auto">
           Find gaps
         </ShinyButton>
       </div>

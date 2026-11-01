@@ -24,6 +24,8 @@ const queryObject = (search) => {
 
 export const SITE_NAME = 'Gapstronaut';
 const titleFor = (route) => (route?.title ? `${route.title} · ${SITE_NAME}` : SITE_NAME);
+const descriptionTag = () => document.querySelector('meta[name="description"]');
+const DEFAULT_DESCRIPTION = descriptionTag()?.content ?? '';
 
 export function RouterProvider({ routes, children }) {
   const [loc, setLoc] = useState(readLocation);
@@ -48,7 +50,10 @@ export function RouterProvider({ routes, children }) {
 
   // Titles follow the route, not the query string: a page that sets its own
   // (a report named after its niche) is not overwritten by a ?niche= change.
-  useEffect(() => { document.title = titleFor(value.route); }, [value.route]);
+  useEffect(() => {
+    document.title = titleFor(value.route);
+    descriptionTag()?.setAttribute('content', value.route?.description ?? DEFAULT_DESCRIPTION);
+  }, [value.route]);
 
   return <RouteContext.Provider value={value}>{children}</RouteContext.Provider>;
 }

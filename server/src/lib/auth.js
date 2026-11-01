@@ -1,3 +1,4 @@
+import { config } from '../config.js';
 import { verifyIdToken, authConfigured } from './firebaseToken.js';
 import { upsertUser } from './db.js';
 
@@ -96,5 +97,15 @@ export function requireVerified(req, res, next) {
       code: 'EMAIL_NOT_VERIFIED',
     });
   }
+  next();
+}
+
+/** A listed email only counts once it is verified: anyone can type an address into a password sign-up. */
+export const isAdmin = (user, admins = config.users.adminEmails) =>
+  Boolean(user?.email) && user.emailVerified === true && admins.includes(user.email.toLowerCase());
+
+/** For operator routes, after requireUser. Run logs quote every account's searches and comments. */
+export function requireAdmin(req, res, next) {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'That is not available on this account.', code: 'FORBIDDEN' });
   next();
 }

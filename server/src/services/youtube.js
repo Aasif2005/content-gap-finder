@@ -2,12 +2,36 @@ import { config } from '../config.js';
 import { spend } from '../lib/quota.js';
 import { languageQueryHint } from '../lib/language.js';
 import { searchPlan } from '../lib/searchPlan.js';
+import * as cache from '../lib/cache.js';
+import { currentRun, throwIfCancelled, signalWithTimeout, CancelledError } from '../lib/runContext.js';
 
 export { searchPlan };
 
 const { base, apiKey } = config.youtube;
 
+/**
+ * The key for a cached response. The search window's start moves every
+ * millisecond (it is "now minus N days"), so it is rounded to the hour or no
+ * two runs would ever share a key.
+ */
+function sourceKey(endpoint, params) {
+  const rounded = { ...params };
+  for (const k of ['publishedAfter', 'publishedBefore']) if (typeof rounded[k] === 'string') rounded[k] = rounded[k].slice(0, 13);
+  return cache.cacheKey(['yt', endpoint, rounded]);
+}
+
 async function call(endpoint, params, quotaKind, quotaTimes = 1) {
+  throwIfCancelled();
+  // Inside an analysis, every response is kept for a few hours. A run that was
+  // stopped halfway has then already stored what it fetched, and running the
+  // same search again reads it back for free. A hit spends no quota. `force`
+  // (Re-run) asks for fresh data and skips the read. Storage trouble never fails a run.
+  const run = currentRun();
+  const key = run ? sourceKey(endpoint, params) : null;
+  if (key && !run.fresh) {
+    const hit = await cache.get(key, { ttlSeconds: config.cache.sourceTtlSeconds }).catch(() => null);
+    if (hit) return hit.value;
+  }
   await spend(quotaKind, quotaTimes); // reserve first: never fire a call we can't afford
   const url = new URL(`${base}/${endpoint}`);
   for (const [k, v] of Object.entries(params)) {
@@ -17,7 +41,13 @@ async function call(endpoint, params, quotaKind, quotaTimes = 1) {
 
   // A stalled socket with no timeout hung the whole job, and the scheduler
   // awaiting it, until restart.
-  const res = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(config.youtube.timeoutMs) });
+  let res;
+  try {
+    res = await fetch(url, { headers: { accept: 'application/json' }, signal: signalWithTimeout(config.youtube.timeoutMs) });
+  } catch (err) {
+    if (currentRun()?.signal?.aborted) throw new CancelledError();
+    throw err;
+  }
   if (!res.ok) {
     const body = await res.text();
     let reason = '';
@@ -30,7 +60,9 @@ async function call(endpoint, params, quotaKind, quotaTimes = 1) {
     err.code = reason === 'quotaExceeded' ? 'QUOTA_EXHAUSTED' : 'YOUTUBE_ERROR';
     throw err;
   }
-  return res.json();
+  const data = await res.json();
+  if (key) await cache.set(key, data).catch(() => {});
+  return data;
 }
 
 const chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));

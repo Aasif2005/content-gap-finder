@@ -120,10 +120,11 @@ export function ownRuns(rows, ids) {
 // -------------------------------------------------------- featured sample ---
 
 /**
- * Index rows that could be the homepage sample, best first: the newest niche
- * run matching `niche` with at least 2 gaps, then the newest of any niche run
- * with at least 3. Nothing older than `maxDays` is ever offered -- a sample is
- * still YouTube data, on the same 30-day clock as every other report.
+ * Index rows that could be the homepage sample, best first: the newest runs of
+ * `niche` with at least 2 gaps. Only that niche: the run index is everyone's
+ * searches, and a stranger's search must never headline the marketing page.
+ * Nothing older than `maxDays` is ever offered -- a sample is still YouTube
+ * data, on the same 30-day clock as every other report.
  *
  * Channel analyses are left out: they have no niche to headline a homepage with.
  * Returns candidates rather than one row so the caller can step past a report
@@ -135,9 +136,7 @@ export function featuredCandidates(rows, { now = Date.now(), niche, maxDays = co
     .filter((r) => !r.channelMode && Number.isFinite(new Date(r.generatedAt).getTime()) && new Date(r.generatedAt).getTime() >= cutoff)
     .sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt));
   const key = niche ? nicheKey(niche) : null;
-  const matching = key ? fresh.filter((r) => r.nicheKey === key && (r.gapsFound ?? 0) >= 2) : [];
-  const anyRich = fresh.filter((r) => (r.gapsFound ?? 0) >= 3 && !matching.includes(r));
-  return [...matching, ...anyRich];
+  return key ? fresh.filter((r) => r.nicheKey === key && (r.gapsFound ?? 0) >= 2) : [];
 }
 
 const top = (list, n) => (Array.isArray(list) ? list.slice(0, n) : []);

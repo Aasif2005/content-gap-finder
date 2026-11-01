@@ -40,7 +40,7 @@ function ToastItem({ toast, onDismiss }) {
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      className="fade-in pointer-events-auto flex items-start gap-3 rounded-panel border border-line bg-surface py-1 pl-4 pr-1 text-[15px] shadow-[0_12px_32px_-12px_rgb(14_22_38/0.35)]"
+      className="fade-in pointer-events-auto flex items-start gap-3 rounded-panel border border-line bg-surface py-1 pl-4 pr-1 text-[15px] shadow-[0_12px_32px_-12px_rgb(15_30_46/0.35)]"
     >
       <Icon aria-hidden className={cx('mt-3 h-[18px] w-[18px] shrink-0', ICON_TONE[toast.tone])} />
       <p className="min-w-0 flex-1 py-2.5 leading-snug text-fg">{toast.message}</p>

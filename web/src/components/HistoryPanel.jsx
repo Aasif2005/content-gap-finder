@@ -5,6 +5,7 @@ import { cx } from '../lib/cx.js';
 import { Badge } from './Bits.jsx';
 import { Button } from './ui/Button.jsx';
 import { Panel } from './ui/Panel.jsx';
+import { Collapse } from './ui/Disclosure.jsx';
 import { Skeleton } from './ui/Skeleton.jsx';
 
 const when = (iso) => {
@@ -46,14 +47,14 @@ export function HistoryPanel({ onOpen, currentRunId, mode = 'niche' }) {
         variant="ghost"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-controls={open ? panelId : undefined}
+        aria-controls={panelId}
         className="-ml-2"
       >
         {open ? 'Hide past runs' : 'Past runs'}
-        <ChevronDown aria-hidden className={cx('h-4 w-4', open && 'rotate-180')} />
+        <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]', open && 'rotate-180')} />
       </Button>
 
-      {open && (
+      <Collapse open={open}>
         <Panel id={panelId} padding="none" className="mt-2 overflow-hidden">
           {error && <p role="alert" className="px-5 py-4 text-[15px] text-bad-fg">{error}</p>}
           {!error && runs === null && (
@@ -95,7 +96,7 @@ export function HistoryPanel({ onOpen, currentRunId, mode = 'niche' }) {
             </button>
           ))}
         </Panel>
-      )}
+      </Collapse>
     </div>
   );
 }

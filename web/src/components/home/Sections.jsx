@@ -69,7 +69,7 @@ export function FloatingCards() {
   return (
     <section aria-labelledby="float-h" className={`${wrap} ${gapTop} relative`}>
       <h2 id="float-h" className="sr-only">What a report looks like</h2>
-      <p aria-hidden className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 select-none text-center text-[clamp(4rem,2rem+11vw,10rem)] font-semibold leading-[0.9] tracking-[-0.05em] text-fg/[0.05]">
+      <p aria-hidden className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 select-none overflow-x-clip text-center text-[clamp(4rem,2rem+11vw,10rem)] font-semibold leading-[0.9] tracking-[-0.05em] text-fg/[0.05]">
         Content<br />Intelligence
       </p>
       <div className="relative grid items-start gap-5 md:grid-cols-2 md:gap-x-10 md:gap-y-24">
@@ -157,12 +157,12 @@ export function GapSplit() {
                 aria-pressed={i === active}
                 onClick={() => setActive(i)}
                 className={cx(
-                  'min-h-11 w-full border-l-[3px] py-2 pl-5 text-left transition-[opacity,border-color] duration-200',
-                  i === active ? 'border-focus opacity-100' : 'border-transparent opacity-55 hover:opacity-90'
+                  'min-h-11 w-full border-l-[3px] py-2 pl-5 text-left transition-colors duration-200',
+                  i === active ? 'border-focus text-fg' : 'border-transparent text-fg-2 hover:text-fg'
                 )}
               >
                 <span className="block text-[22px] font-medium tracking-[-0.01em]">{f.title}</span>
-                <span className="mt-1 block text-[15px] leading-[1.5] text-fg-2">{f.body}</span>
+                <span className={cx('mt-1 block text-[15px] leading-[1.5]', i === active ? 'text-fg-2' : 'text-fg-3')}>{f.body}</span>
               </button>
             </li>
           ))}
@@ -190,7 +190,7 @@ export function EvidenceSplit() {
           </div>
           <div>
             <dt className="font-semibold">Calculated by Gapstronaut <Derived /></dt>
-            <dd className="text-fg-2">Heat, demand score, engagement rate and channel-median multiples carry this mark, so you can always tell them from YouTube’s own numbers.</dd>
+            <dd className="text-fg-2">Buzz, demand score, engagement rate and channel-median multiples carry this mark, so you can always tell them from YouTube’s own numbers.</dd>
           </div>
         </dl>
       </div>

@@ -10,11 +10,11 @@
  */
 
 const TABLE = {
-  'auth/invalid-credential': ['INVALID_CREDENTIALS', "That email and password don't match. Check them and try again."],
-  'auth/wrong-password': ['INVALID_CREDENTIALS', "That email and password don't match. Check them and try again."],
-  'auth/user-not-found': ['INVALID_CREDENTIALS', "That email and password don't match. Check them and try again."],
-  'auth/invalid-login-credentials': ['INVALID_CREDENTIALS', "That email and password don't match. Check them and try again."],
-  'auth/invalid-email': ['INVALID_EMAIL', 'That does not look like an email address.'],
+  'auth/invalid-credential': ['INVALID_CREDENTIALS', 'Invalid email or password.'],
+  'auth/wrong-password': ['INVALID_CREDENTIALS', 'Invalid email or password.'],
+  'auth/user-not-found': ['INVALID_CREDENTIALS', 'Invalid email or password.'],
+  'auth/invalid-login-credentials': ['INVALID_CREDENTIALS', 'Invalid email or password.'],
+  'auth/invalid-email': ['INVALID_EMAIL', 'Invalid email address.'],
   'auth/missing-email': ['INVALID_EMAIL', 'Enter your email address.'],
   'auth/missing-password': ['INVALID_CREDENTIALS', 'Enter your password.'],
   'auth/email-already-in-use': ['EMAIL_IN_USE', 'There is already an account with that email. Log in instead, or reset your password.'],
@@ -23,7 +23,7 @@ const TABLE = {
   'auth/cancelled-popup-request': ['POPUP_CLOSED', 'The sign-in window was closed before it finished. Try again when you are ready.'],
   'auth/popup-blocked': ['POPUP_BLOCKED', 'Your browser blocked the sign-in window. Allow pop-ups for this site and try again.'],
   'auth/too-many-requests': ['TOO_MANY_REQUESTS', 'Too many attempts. Wait a few minutes, then try again.'],
-  'auth/network-request-failed': ['NETWORK', 'Could not reach the sign-in service. Check your connection and try again.'],
+  'auth/network-request-failed': ['NETWORK', 'Check your internet connection and try again.'],
   'auth/user-disabled': ['ACCOUNT_DISABLED', 'This account has been disabled. Contact us if you think that is a mistake.'],
   'auth/requires-recent-login': ['REQUIRES_RECENT_LOGIN', 'For your security, log in again and then repeat this.'],
   'auth/account-exists-with-different-credential': ['EMAIL_IN_USE', 'That email is already used by another sign-in method. Log in the way you did before.'],
@@ -43,3 +43,10 @@ export function authError(err) {
 
 export const notConfiguredError = () =>
   Object.assign(new Error('Accounts are not set up on this server yet.'), { code: 'NOT_CONFIGURED' });
+
+/** Thrown before any request when the browser already knows it has no connection. */
+export const offlineError = () =>
+  Object.assign(new Error('You are offline. Check your internet connection and try again.'), { code: 'NETWORK' });
+
+/** `navigator.onLine` is only believed when false: true can still mean no real internet, which Firebase reports itself. */
+export const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;

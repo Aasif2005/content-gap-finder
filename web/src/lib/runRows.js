@@ -164,6 +164,18 @@ export function describeRunError(err, { limit, now = new Date(), locale } = {}) 
       message: 'New analyses can’t run until it resets, around midnight Pacific. Opening saved reports still works, and nothing was taken from your own allowance.',
     };
   }
+  if (code === 'NETWORK') {
+    return { kind: 'offline', tone: 'warn', title: 'No connection', message: err.message };
+  }
+  if (code === 'STILL_RUNNING') {
+    return { kind: 'slow', tone: 'info', title: 'This is taking longer than usual', message: 'It may still finish. When it does, the report appears on your dashboard.' };
+  }
+  if (code === 'RUN_UNREACHABLE') {
+    return { kind: 'slow', tone: 'info', title: 'Lost touch with your analysis', message: 'It is still running. When it finishes, the report appears on your dashboard.' };
+  }
+  if (code === 'JOB_NOT_FOUND') {
+    return { kind: 'generic', tone: 'warn', title: 'We lost track of that run', message: err.message };
+  }
   return { kind: 'generic', tone: 'bad', title: 'Analysis failed', message: err?.message || 'Something went wrong. Try again.' };
 }
 

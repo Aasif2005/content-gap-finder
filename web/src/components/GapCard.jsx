@@ -1,39 +1,29 @@
 import { ArrowDown, ArrowUp, ChevronDown, Repeat, Sparkles, TriangleAlert } from 'lucide-react';
-import { CommentQuote } from './CommentQuote.jsx';
+import { AskedUnder, CommentQuote } from './CommentQuote.jsx';
 import { Card, Rank, Badge, Derived, DERIVED_NOTE } from './Bits.jsx';
 import { VideoStrip } from './VideoStrip.jsx';
 import { BriefPanel } from './BriefPanel.jsx';
+import { cx } from '../lib/cx.js';
+import { Disclosure } from './ui/Disclosure.jsx';
 
 const SUMMARY =
-  'group flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-control text-sm font-medium text-fg-2 transition-colors hover:text-fg [&::-webkit-details-marker]:hidden';
+  'flex min-h-11 cursor-pointer items-center gap-1.5 rounded-control text-sm font-medium text-fg-2 transition-colors hover:text-fg';
 
 /**
  * One content gap: the question viewers keep asking, the comments that prove
  * it, what to film, and (when `canMake`) the Make it brief. Logged-out visitors
  * pass `canMake={false}`: they can read everything and a saved brief, but
  * nothing here can start a draft.
+ *
+ * `summary` is the headline gap: the question, the numbers, the explanation
+ * and the Make it row stay on show; the comments and the rest sit in one
+ * "See the evidence" dropdown.
  */
-export function GapCard({ gap, rank, runId, index, canMake = true }) {
-  return (
-    <Card>
-      <div className="flex items-baseline gap-3">
-        <Rank n={rank} />
-        <h3 className="min-w-0 text-xl font-semibold leading-tight tracking-[-0.02em] text-fg [text-wrap:balance] sm:text-2xl">
-          {gap.question}
-        </h3>
-      </div>
-
-      <div className="mt-3.5 flex flex-wrap items-center gap-2">
-        <Badge
-          tone={gap.coverage === 'none' ? 'good' : 'warn'}
-          title={
-            gap.coverage === 'none'
-              ? 'No video in this result set addresses it at all.'
-              : 'Only mid or low performing videos address it, so the demand is not being met well.'
-          }
-        >
-          {gap.coverage === 'none' ? 'nobody covers this' : 'weakly covered'}
-        </Badge>
+export function GapCard({ gap, rank, runId, index, canMake = true, inRow = false, summary = false }) {
+  // Badges the row does not already carry. Rank, question, coverage and the
+  // numbers live on the row itself when this card is opened from one.
+  const signals = (
+    <>
         {gap.nicheRelevant === false && (
           <Badge
             tone="bad"
@@ -82,37 +72,132 @@ export function GapCard({ gap, rank, runId, index, canMake = true }) {
             <ArrowDown aria-hidden className="h-3.5 w-3.5" /> cooling
           </Badge>
         )}
-      </div>
+    </>
+  );
+  const hasSignals =
+    gap.nicheRelevant === false ||
+    gap.relevance?.verdict === 'niche-videos' ||
+    Boolean(gap.recurrence?.status === 'recurring' || gap.recurrence?.status === 'new' || gap.recurrence?.trend);
 
-      <p className="nums mt-2.5 font-mono text-[13px] text-fg-3">
-        <span title="How strongly viewers are asking, from comment count, spread across videos and likes">{gap.demandStrength} demand</span>
-        {' · '}
-        <span title="Distinct comments citing this, across how many different videos">
-          {gap.evidenceCount} comments · {gap.distinctVideos} video{gap.distinctVideos === 1 ? '' : 's'}
-        </span>
-        {' · '}
-        <span title={`Demand score: comment count, spread across videos, and how many likes those comments got. ${DERIVED_NOTE}`}>
-          demand score {gap.demandScore} <Derived />
-        </span>
-      </p>
+  const quotes = (
+    <div className={summary ? undefined : 'mt-6'}>
+      <h4 className="sr-only">What viewers actually said</h4>
+      <ul className={cx('space-y-3', !summary && 'mt-3')}>
+        {gap.evidence.slice(0, 4).map((e, i) => (
+          <CommentQuote key={i} comment={e} lead={i === 0} block={i < 2} marked={i === 0} />
+        ))}
+      </ul>
+      {gap.evidence.length > 4 && (
+        <p className="nums mt-3 text-[13px] text-fg-3">+{gap.evidence.length - 4} more comments</p>
+      )}
+      <AskedUnder evidence={gap.evidence} />
+    </div>
+  );
+
+  const lint = gap.titleLint && (
+    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+      <Badge
+        mono
+        tone={gap.titleLint.score >= 70 ? 'good' : gap.titleLint.score >= 50 ? 'warn' : 'bad'}
+        title={`Deterministic title lint (length, shouting, vague words, figures, thumbnail overlap). A checklist, not a click prediction. ${DERIVED_NOTE}`}
+      >
+        title check {gap.titleLint.score}/100 <Derived />
+      </Badge>
+      {gap.titleLint.issues.map(([kind, msg]) => (
+        <Badge key={kind} tone={kind === 'ungrounded-number' ? 'bad' : kind === 'no-number' ? 'neutral' : 'warn'} title={msg}>
+          {kind}
+        </Badge>
+      ))}
+    </div>
+  );
+
+  const titleOptions = gap.titleOptions?.length > 1 && (
+    <Disclosure
+      className="mt-1"
+      summaryClassName={SUMMARY}
+      summary={(
+        <>
+          {gap.titleOptions.length - 1} other title{gap.titleOptions.length === 2 ? '' : 's'}
+          <ChevronDown aria-hidden className="h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] group-open:rotate-180" />
+        </>
+      )}
+    >
+      <ul className="mb-1 space-y-1.5">
+        {gap.titleOptions.slice(1).map((o) => (
+          <li key={o.title} className="text-sm text-fg-2">
+            {o.title} <span className="nums font-mono text-xs text-fg-3">· {o.score}/100</span>
+          </li>
+        ))}
+      </ul>
+    </Disclosure>
+  );
+
+  const covering = gap.coveringVideos?.length > 0 && (
+    <Disclosure
+      className="mt-3"
+      summaryClassName={SUMMARY}
+      bodyClassName="mb-1 mt-1"
+      summary={(
+        <>
+          <span className="group-open:hidden">
+            Partly covered by {gap.coveringVideos.length} video{gap.coveringVideos.length === 1 ? '' : 's'}
+          </span>
+          <span className="hidden group-open:inline">Hide</span>
+          <ChevronDown aria-hidden className="h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] group-open:rotate-180" />
+        </>
+      )}
+    >
+      <VideoStrip videos={gap.coveringVideos} limit={4} />
+    </Disclosure>
+  );
+
+  return (
+    <Card>
+      {!inRow && (
+        <>
+          <div className="flex items-baseline gap-3">
+            <Rank n={rank} />
+            <h3 className="min-w-0 text-xl font-semibold leading-tight tracking-[-0.02em] text-fg [text-wrap:balance] sm:text-2xl">
+              {gap.question}
+            </h3>
+          </div>
+
+          <div className="mt-3.5 flex flex-wrap items-center gap-2">
+            <Badge
+              tone={gap.coverage === 'none' ? 'good' : 'warn'}
+              title={
+                gap.coverage === 'none'
+                  ? 'No video in this result set addresses it at all.'
+                  : 'Only mid or low performing videos address it, so the demand is not being met well.'
+              }
+            >
+              {gap.coverage === 'none' ? 'nobody covers this' : 'weakly covered'}
+            </Badge>
+            {!summary && signals}
+          </div>
+
+          <p className="nums mt-2.5 font-mono text-[13px] text-fg-3">
+            <span title="How strongly viewers are asking, from comment count, spread across videos and likes">{gap.demandStrength} demand</span>
+            {' · '}
+            <span title="Distinct comments citing this, across how many different videos">
+              {gap.evidenceCount} comments · {gap.distinctVideos} video{gap.distinctVideos === 1 ? '' : 's'}
+            </span>
+            {' · '}
+            <span title={`Demand score: comment count, spread across videos, and how many likes those comments got. ${DERIVED_NOTE}`}>
+              demand score {gap.demandScore} <Derived />
+            </span>
+          </p>
+        </>
+      )}
 
       {gap.explanation && (
-        <p className="mt-4 max-w-[68ch] text-base leading-relaxed text-fg-2">{gap.explanation}</p>
+        <p className={cx('max-w-[68ch] text-base leading-relaxed text-fg-2', !inRow && 'mt-4')}>{gap.explanation}</p>
       )}
+      {inRow && hasSignals && <div className="mt-3 flex flex-wrap items-center gap-2">{signals}</div>}
 
       {/* The evidence is the product. A creator should be able to check every
           claim against the actual comments rather than trusting the model. */}
-      <div className="mt-6">
-        <h4 className="sr-only">What viewers actually said</h4>
-        <ul className="mt-3 space-y-4">
-          {gap.evidence.slice(0, 4).map((e, i) => (
-            <CommentQuote key={i} comment={e} lead={i === 0} sweep={i === 0} marked={i === 0} />
-          ))}
-        </ul>
-        {gap.evidence.length > 4 && (
-          <p className="nums mt-3 text-[13px] text-fg-3">+{gap.evidence.length - 4} more comments</p>
-        )}
-      </div>
+      {!summary && quotes}
 
       {gap.suggestedTitle && (
         <div className="mt-7 flex flex-wrap items-center justify-between gap-x-8 gap-y-5 border-t border-line pt-5">
@@ -127,37 +212,8 @@ export function GapCard({ gap, rank, runId, index, canMake = true }) {
                 {gap.thumbnailText && <>Thumbnail text: <span className="font-semibold text-fg">{gap.thumbnailText}</span></>}
               </p>
             )}
-            {gap.titleLint && (
-              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                <Badge
-                  mono
-                  tone={gap.titleLint.score >= 70 ? 'good' : gap.titleLint.score >= 50 ? 'warn' : 'bad'}
-                  title={`Deterministic title lint (length, shouting, vague words, figures, thumbnail overlap). A checklist, not a click prediction. ${DERIVED_NOTE}`}
-                >
-                  title check {gap.titleLint.score}/100 <Derived />
-                </Badge>
-                {gap.titleLint.issues.map(([kind, msg]) => (
-                  <Badge key={kind} tone={kind === 'ungrounded-number' ? 'bad' : kind === 'no-number' ? 'neutral' : 'warn'} title={msg}>
-                    {kind}
-                  </Badge>
-                ))}
-              </div>
-            )}
-            {gap.titleOptions?.length > 1 && (
-              <details className="group mt-1">
-                <summary className={SUMMARY}>
-                  {gap.titleOptions.length - 1} other title{gap.titleOptions.length === 2 ? '' : 's'}
-                  <ChevronDown aria-hidden className="h-4 w-4 group-open:rotate-180" />
-                </summary>
-                <ul className="mb-1 space-y-1.5">
-                  {gap.titleOptions.slice(1).map((o) => (
-                    <li key={o.title} className="text-sm text-fg-2">
-                      {o.title} <span className="nums font-mono text-xs text-fg-3">· {o.score}/100</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
+            {!summary && lint}
+            {!summary && titleOptions}
           </div>
 
           {/* Idle, the brief's controls sit at the right of this row; once a
@@ -166,19 +222,33 @@ export function GapCard({ gap, rank, runId, index, canMake = true }) {
         </div>
       )}
 
-      {gap.coveringVideos?.length > 0 && (
-        <details className="group mt-3">
-          <summary className={SUMMARY}>
-            <span className="group-open:hidden">
-              Partly covered by {gap.coveringVideos.length} video{gap.coveringVideos.length === 1 ? '' : 's'}
-            </span>
-            <span className="hidden group-open:inline">Hide</span>
-            <ChevronDown aria-hidden className="h-4 w-4 group-open:rotate-180" />
-          </summary>
-          <div className="mb-1 mt-1">
-            <VideoStrip videos={gap.coveringVideos} limit={4} />
-          </div>
-        </details>
+      {summary ? (
+        <Disclosure
+          className="mt-5 border-t border-line pt-1"
+          summaryClassName={cx(SUMMARY, 'justify-between')}
+          bodyClassName="space-y-5 pb-1 pt-3"
+          summary={(
+            <>
+              <span>
+                See the evidence
+                <span className="nums font-mono text-xs font-normal text-fg-3"> · {gap.evidenceCount} comments</span>
+              </span>
+              <ChevronDown aria-hidden className="h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] group-open:rotate-180" />
+            </>
+          )}
+        >
+          {hasSignals && <div className="flex flex-wrap items-center gap-2">{signals}</div>}
+          {quotes}
+          {(lint || titleOptions) && (
+            <div>
+              {lint}
+              {titleOptions}
+            </div>
+          )}
+          {covering}
+        </Disclosure>
+      ) : (
+        covering
       )}
     </Card>
   );

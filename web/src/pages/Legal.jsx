@@ -137,10 +137,10 @@ export function PrivacyPage() {
         <H>Your account</H>
         <p className="mt-2">
           You sign in with Google or with an email address and password, through Google's Firebase Authentication.
-          We keep your sign-in provider, email address, name and profile photo (if Google supplies one), whether your
+          We keep your sign-in provider, email address, name and profile photo (the one Google supplies, or the one you upload; we keep only a small resized copy of an upload), whether your
           email is verified, when you joined, when you accepted these terms, and how many analyses and drafts you have
           used today. Passwords are held by Firebase, never by us. You can delete your account from your profile page,
-          which removes this record, your saved watches and the links that tie reports to you.
+          which removes this record, your uploaded picture, your saved watches and the links that tie reports to you. You can remove an uploaded picture at any time from the same page.
         </p>
       </section>
 
@@ -150,7 +150,11 @@ export function PrivacyPage() {
           <li>
             <b>Reports.</b> When you run an analysis, the report is saved in our database (MongoDB Atlas) so it can be reopened and shared.
             It contains the YouTube data above, plus our own analysis of it. Reports, the drafts made from them
-            (&ldquo;Make it&rdquo;), the short-lived result cache and the run logs are <b>deleted after {dataMaxDays} days</b>.
+            (&ldquo;Make it&rdquo;), the short-lived result cache (kept for a few hours) and the run logs are <b>deleted after {dataMaxDays} days</b>.
+          </li>
+          <li>
+            <b>Waitlist.</b> If you join the waitlist for a plan that is not on sale yet, we keep the email address you enter and the plan you asked about,
+            until that plan opens or you ask us to remove them. We use them only to tell you about that plan.
           </li>
           <li>
             <b>Your searches.</b> The niche or channel you type, and the filters you choose, are saved with the report.
@@ -171,7 +175,8 @@ export function PrivacyPage() {
         <H>Cookies and browser storage</H>
         <p className="mt-2">
           The app sets no cookies of its own and runs no analytics or advertising trackers. Firebase Authentication keeps
-          your sign-in session in your browser's storage so you stay logged in. Video thumbnails are loaded
+          your sign-in session in your browser's storage so you stay logged in, and the app stores your light or dark choice and
+          that you have seen the storage notice. Video thumbnails are loaded
           from YouTube's servers, which receive your IP address and browser details when they do.
         </p>
       </section>
@@ -257,7 +262,7 @@ export function TermsPage() {
         <List>
           <li>
             Views, likes, comments and subscriber counts come from YouTube as of the time shown on each report. Figures
-            marked ⓘ (heat, demand score, engagement rate, channel-median multiples, title checks) are calculated by
+            marked ⓘ (buzz, demand score, engagement rate, channel-median multiples, title checks) are calculated by
             Gapstronaut. They are not YouTube metrics.
           </li>
           <li>

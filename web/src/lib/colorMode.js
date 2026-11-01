@@ -24,6 +24,17 @@ function apply() {
 }
 apply();
 
+/**
+ * Runs a mode change as a soft cross-fade (the View Transitions API; the styles are
+ * in index.css). The theme is all CSS variables, so the change itself is synchronous
+ * and both snapshots are exact. Without the API, or with reduced motion, it just changes.
+ */
+function withFade(change) {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced || typeof document.startViewTransition !== 'function') { change(); return; }
+  document.startViewTransition(change);
+}
+
 function subscribe(listener) {
   listeners.add(listener);
   const mq = query();
@@ -48,12 +59,14 @@ export function useColorMode() {
   const mode = choice === 'system' ? system : choice;
 
   const choose = useCallback((next) => {
-    pick = next === 'light' || next === 'dark' ? next : null;
-    try {
-      if (pick) localStorage.setItem(KEY, pick); else localStorage.removeItem(KEY);
-    } catch { /* private mode: the pick lasts for this visit */ }
-    apply();
-    notify();
+    withFade(() => {
+      pick = next === 'light' || next === 'dark' ? next : null;
+      try {
+        if (pick) localStorage.setItem(KEY, pick); else localStorage.removeItem(KEY);
+      } catch { /* private mode: the pick lasts for this visit */ }
+      apply();
+      notify();
+    });
   }, []);
 
   const toggle = useCallback(() => choose(mode === 'dark' ? 'light' : 'dark'), [choose, mode]);

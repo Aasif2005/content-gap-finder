@@ -2,6 +2,7 @@ import { ChevronDown, TriangleAlert } from 'lucide-react';
 import { compact } from '../lib/format.js';
 import { Card, Rank, HeatBar, Badge, Derived, DERIVED_NOTE } from './Bits.jsx';
 import { VideoStrip } from './VideoStrip.jsx';
+import { Disclosure } from './ui/Disclosure.jsx';
 
 export function TopicCard({ topic, rank }) {
   return (
@@ -73,16 +74,20 @@ export function TopicCard({ topic, rank }) {
         </div>
       )}
 
-      <details className="group mt-3">
-        <summary className="group flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-control text-sm font-medium text-fg-2 transition-colors hover:text-fg [&::-webkit-details-marker]:hidden">
-          <span className="group-open:hidden">Show {topic.videos.length} example videos</span>
-          <span className="hidden group-open:inline">Hide examples</span>
-          <ChevronDown aria-hidden className="h-4 w-4 group-open:rotate-180" />
-        </summary>
-        <div className="mb-1 mt-1">
-          <VideoStrip videos={topic.videos} limit={6} />
-        </div>
-      </details>
+      <Disclosure
+        className="mt-3"
+        summaryClassName="flex min-h-11 cursor-pointer items-center gap-1.5 rounded-control text-sm font-medium text-fg-2 transition-colors hover:text-fg"
+        bodyClassName="mb-1 mt-1"
+        summary={(
+          <>
+            <span className="group-open:hidden">Show {topic.videos.length} example videos</span>
+            <span className="hidden group-open:inline">Hide examples</span>
+            <ChevronDown aria-hidden className="h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] group-open:rotate-180" />
+          </>
+        )}
+      >
+        <VideoStrip videos={topic.videos} limit={6} />
+      </Disclosure>
     </Card>
   );
 }

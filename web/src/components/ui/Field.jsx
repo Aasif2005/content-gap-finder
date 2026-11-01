@@ -53,10 +53,10 @@ export const Input = forwardRef(function Input({ trailing, invalid, className, i
         aria-invalid={bad || undefined}
         aria-describedby={describedBy ?? field?.describedBy}
         className={cx(
-          'box-border min-h-[52px] w-full rounded-control border bg-surface px-4 text-base text-fg',
-          'placeholder:text-fg-3 transition-colors duration-150',
-          'hover:border-fg-3 disabled:cursor-not-allowed disabled:opacity-55',
-          bad ? 'border-bad-fg' : 'border-line-strong',
+          // The same pill as the search bars: hairline ink border, lit edge, soft shadow.
+          'search-console box-border min-h-[52px] w-full rounded-full px-5 text-base text-fg',
+          'placeholder:text-fg-3 disabled:cursor-not-allowed disabled:opacity-55',
+          bad && '!border-bad-fg',
           trailing && 'pr-20',
           className
         )}

@@ -7,19 +7,25 @@ import { LegalLinks } from '../components/auth/LegalLinks.jsx';
 import { NotConfiguredAlert } from '../components/auth/NotConfiguredAlert.jsx';
 import { PasswordStrength } from '../components/auth/PasswordStrength.jsx';
 import { useCooldown } from '../components/auth/useCooldown.js';
-import { MIN_PASSWORD, looksLikeEmail, nextSuffix, passwordStrength, welcomeNext } from '../components/auth/helpers.js';
+import { EmailTypoHint } from '../components/auth/EmailTypoHint.jsx';
+import { MIN_NEW_PASSWORD, emailTypoFix, looksLikeEmail, needsVerification, nextSuffix, passwordStrength, safeNext } from '../components/auth/helpers.js';
 import { Link, navigate, useRoute } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { useMe } from '../lib/me.jsx';
-import { acceptConsent } from '../lib/api.js';
+import { useVerificationWatch } from '../lib/useVerificationWatch.js';
+import { acceptConsent, checkEmail } from '../lib/api.js';
 
 const link = 'font-semibold text-fg underline underline-offset-2 hover:text-focus';
 
 /**
- * After the account exists: "check your inbox", in place of the form. They can
- * resend the link (with a cooldown) and carry on once it is verified. Until
- * then they may still look around; running analyses needs a verified email.
+ * After the account exists: "check your inbox", in place of the form. Nothing
+ * in the app opens until the address is verified. They can resend the link
+ * (with a cooldown), or go back to the form to change the address. The link
+ * opens on Firebase's own page, so this screen watches for the result and moves
+ * on by itself.
  */
+const REDIRECT_MS = 1500;
+
 function CheckInbox({ email, onContinue }) {
   const { resendVerification, reloadUser, user } = useAuth();
   const toast = useToast();
@@ -32,13 +38,14 @@ function CheckInbox({ email, onContinue }) {
   const { start } = cooldown;
   useEffect(() => { start(); }, [start]);
 
-  // They usually verify in another tab; when they come back, look again without being asked.
+  // They verify in another tab or on their phone: this page sees it and moves on.
+  useVerificationWatch(null, { enabled: !verified });
   useEffect(() => {
-    if (verified) return undefined;
-    const onFocus = () => { reloadUser().catch(() => {}); };
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [verified, reloadUser]);
+    if (!verified) return undefined;
+    const t = setTimeout(onContinue, REDIRECT_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verified]);
 
   const resend = async () => {
     setBusy('resend');
@@ -60,7 +67,7 @@ function CheckInbox({ email, onContinue }) {
     try {
       const fresh = await reloadUser();
       if (fresh?.emailVerified) { onContinue(); return; }
-      setStatus({ tone: 'warn', message: 'We can’t see the verification yet. Open the link in the email we sent, then press Continue again.' });
+      setStatus({ tone: 'warn', message: 'We can’t see the verification yet. Open the link in the email we sent, then try again.' });
     } catch (err) {
       setStatus({ tone: 'bad', message: err.message });
     }
@@ -77,9 +84,9 @@ function CheckInbox({ email, onContinue }) {
       </h1>
       <p className="mt-3 text-base leading-normal text-fg-2">
         {verified ? (
-          <>Thanks. <span className="break-all font-medium text-fg">{email}</span> is confirmed and your account is ready.</>
+          <span role="status"><span className="break-all font-medium text-fg">{email}</span> is confirmed. Taking you to your dashboard…</span>
         ) : (
-          <>We sent a link to <span className="break-all font-medium text-fg">{email}</span>. Open it to verify your address. You need to verify before you can run analyses.</>
+          <>We sent a link to <span className="break-all font-medium text-fg">{email}</span>. Open it to verify your address, and this page will move on by itself. If it isn’t in your inbox, look in your spam folder and mark it “Not spam”.</>
         )}
       </p>
 
@@ -87,23 +94,15 @@ function CheckInbox({ email, onContinue }) {
         {status && <Alert tone={status.tone}>{status.message}</Alert>}
       </div>
 
-      <div className="mt-6 flex flex-col gap-3">
-        <Button size="lg" onClick={proceed} loading={busy === 'check'} disabled={busy === 'resend'}>
-          Continue to your dashboard
-        </Button>
-        {!verified && (
-          <Button variant="secondary" size="lg" onClick={resend} loading={busy === 'resend'} disabled={cooldown.active || busy === 'check'}>
+      {!verified && (
+        <div className="mt-6 flex flex-col gap-3">
+          <Button size="lg" onClick={proceed} loading={busy === 'check'} disabled={Boolean(busy) && busy !== 'check'}>
+            I’ve verified my email
+          </Button>
+          <Button variant="secondary" size="lg" onClick={resend} loading={busy === 'resend'} disabled={cooldown.active || (Boolean(busy) && busy !== 'resend')}>
             {cooldown.active ? `Resend email in ${cooldown.left}s` : 'Resend email'}
           </Button>
-        )}
-      </div>
-
-      {!verified && (
-        <p className="mt-6 text-[15px] leading-relaxed text-fg-2">
-          Not there? Check spam, or make sure {email} is the right address.{' '}
-          <button type="button" onClick={onContinue} className={link}>Skip for now</button>
-          {' '}to look around; analyses stay locked until it is verified.
-        </p>
+        </div>
       )}
     </div>
   );
@@ -111,11 +110,15 @@ function CheckInbox({ email, onContinue }) {
 
 /** Create an account with email or Google. Draws its own full-page layout (the bare shell). */
 export default function Signup() {
-  const { user, loading, configured, signInWithGoogle, signUpWithEmail } = useAuth();
+  const { user, loading, configured, signInWithGoogle, signUpWithEmail, discardNewAccount, signOutUser } = useAuth();
   const { refresh } = useMe();
   const { query } = useRoute();
   const next = query.next;
-  const goNext = () => navigate(welcomeNext(next), { replace: true });
+  const goNext = () => navigate(safeNext(next), { replace: true });
+  // The inbox step has its own history entry, so Back lands on this page's form.
+  const atInbox = query.verify === '1';
+  const formUrl = `/signup${nextSuffix(next)}`;
+  const inboxUrl = `${formUrl}${formUrl.includes('?') ? '&' : '?'}verify=1`;
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -123,7 +126,7 @@ export default function Signup() {
   const [agree, setAgree] = useState(false);
   const [errors, setErrors] = useState({});
   const [notice, setNotice] = useState(null);
-  const [busy, setBusy] = useState(null); // 'email' | 'google' | null
+  const [busy, setBusy] = useState(null); // 'email' | 'google' | 'back' | null
   const [sentTo, setSentTo] = useState(null); // the address we emailed, once the account exists
 
   const nameRef = useRef(null);
@@ -135,11 +138,38 @@ export default function Signup() {
   // the page (the "check your inbox" state, the consent record), so the
   // already-signed-in redirect stands down.
   const holding = useRef(false);
+  const discarding = useRef(false);
+
+  // Back from the inbox step. The form still holds what they typed; the account
+  // goes, or that address would come back as "already in use".
+  useEffect(() => {
+    if (!sentTo || atInbox || holding.current) return;
+    discarding.current = true;
+    setSentTo(null);
+    setBusy('back');
+    discardNewAccount()
+      .then((gone) => { if (!gone) goNext(); })
+      .catch(() => signOutUser().catch(() => {}))
+      .finally(() => { discarding.current = false; setBusy(null); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atInbox, sentTo]);
 
   useEffect(() => {
-    if (!loading && user && !holding.current && !sentTo) goNext();
+    if (loading || holding.current || discarding.current) return;
+    if (!user) {
+      if (atInbox) navigate(formUrl, { replace: true }); // nothing to verify when logged out
+    } else if (needsVerification(user)) {
+      // Sent here from the app, or reloaded: the form's state is gone, the account is not.
+      if (sentTo) return;
+      setEmail(user.email ?? '');
+      setName(user.name ?? '');
+      setSentTo(user.email);
+      if (!atInbox) navigate(inboxUrl);
+    } else if (!sentTo) {
+      goNext();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user, sentTo, next]);
+  }, [loading, user, sentTo, next, atInbox]);
 
   useEffect(() => { if (notice) noticeRef.current?.focus(); }, [notice]);
 
@@ -178,9 +208,12 @@ export default function Signup() {
     const found = {};
     if (!name.trim()) found.name = 'Enter your name, so we know what to call you.';
     if (!email.trim()) found.email = 'Enter your email address.';
-    else if (!looksLikeEmail(email)) found.email = 'That does not look like an email address. Check it for typos.';
+    else if (!looksLikeEmail(email)) found.email = 'Invalid email address.';
+    else if (emailTypoFix(email)) {
+      found.email = <EmailTypoHint fix={emailTypoFix(email)} onUse={(v) => { setEmail(v); clear('email'); }} />;
+    }
     if (!password) found.password = 'Choose a password.';
-    else if (password.length < MIN_PASSWORD) found.password = `Choose a longer password: at least ${MIN_PASSWORD} characters.`;
+    else if (password.length < MIN_NEW_PASSWORD) found.password = `Choose a longer password: at least ${MIN_NEW_PASSWORD} characters.`;
     if (!agree) found.agree = 'Tick the box to agree before you create an account.';
     const first = [['name', nameRef], ['email', emailRef], ['password', passwordRef], ['agree', agreeRef]].find(([k]) => found[k]);
     if (first) {
@@ -191,8 +224,14 @@ export default function Signup() {
     setBusy('email');
     holding.current = true;
     try {
-      await signUpWithEmail({ name: name.trim(), email: email.trim(), password });
-      setSentTo(email.trim());
+      if (await checkEmail(email.trim())) {
+        await signUpWithEmail({ name: name.trim(), email: email.trim(), password });
+        setSentTo(email.trim());
+        navigate(inboxUrl);
+      } else {
+        setErrors({ email: 'Invalid email address.' });
+        emailRef.current?.focus();
+      }
     } catch (err) {
       fail(err);
     }
@@ -221,7 +260,7 @@ export default function Signup() {
 
   if (sentTo) {
     return (
-      <AuthLayout brand="benefits">
+      <AuthLayout brand="benefits" onBack={() => navigate(formUrl, { replace: true })}>
         <CheckInbox email={sentTo} onContinue={goNext} />
       </AuthLayout>
     );

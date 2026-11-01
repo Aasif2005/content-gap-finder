@@ -10,6 +10,7 @@ import { useAuth } from '../../lib/auth.jsx';
  *  - daily: the day's allowance is spent. The reset time is in the message.
  *  - verify: the email is not confirmed. Resend, or re-check after clicking the link.
  *  - quota: the site's YouTube budget. Saved reports still open.
+ *  - slow: past the wait limit, but the server is still working on it.
  *  - gone: an expired or missing saved report.
  *  - generic / load: the server's own message and a retry.
  */
@@ -47,7 +48,7 @@ export function RunError({ error, signedIn, onRetry, onDismiss }) {
         </Button>
       </>
     );
-  } else if (error.kind === 'daily' || error.kind === 'quota') {
+  } else if (error.kind === 'daily' || error.kind === 'quota' || error.kind === 'slow') {
     action = <Button variant="secondary" href="/dashboard">Open the dashboard</Button>;
   } else if (error.kind === 'gone') {
     action = signedIn

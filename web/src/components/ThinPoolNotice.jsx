@@ -3,7 +3,7 @@ import { Button } from './ui/Button.jsx';
 
 /**
  * Shown when too few videos survived to scoring for relative scoring to carry
- * meaning. This is deliberately louder than a warning line: heat, topic
+ * meaning. This is deliberately louder than a warning line: buzz, topic
  * breadth, and the whole ranking are computed *relative to the result set*, so
  * below a dozen videos the report still looks authoritative while actually
  * being close to "view order, restated". A real run ("what if hypothesis" with
@@ -59,7 +59,7 @@ export function ThinPoolNotice({ thinPool, query, busy, onRerun }) {
       title={`Only ${videos} video${videos === 1 ? '' : 's'} to score — treat the ranking as weak evidence`}
     >
       <p className="max-w-[68ch] leading-relaxed">
-        Heat is a rank <em>within this set</em>: with <span className="nums">{videos}</span> video{videos === 1 ? '' : 's'}, adding or removing one
+        Buzz is a rank <em>within this set</em>: with <span className="nums">{videos}</span> video{videos === 1 ? '' : 's'}, adding or removing one
         moves a score by about <span className="nums">{swing}</span> points (it takes about <span className="nums">{threshold}</span> for that to drop to ~<span className="nums">{Math.round(100 / (threshold - 1))}</span>).
         {detail && <> {detail}</>}
       </p>

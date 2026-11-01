@@ -17,6 +17,7 @@ import { config } from '../config.js';
  *   quota          the shared YouTube budget ledger
  *   cache          query-hash result cache          TTL
  *   audit_runs     per-run audit logs               TTL
+ *   waitlist       emails wanting a paid plan       unique (email, plan), no TTL
  *
  * YouTube data may be kept 30 days (Developer Policies III.E.4). The retention
  * sweep (services/retention.js) deletes by date and records what it removed;
@@ -95,5 +96,6 @@ export async function ensureIndexes(d = db()) {
     ttl('cache', 'expireAt', 0),
     d.collection('audit_runs').createIndex({ startedAt: -1 }),
     ttl('audit_runs', 'expireAt', 0),
+    d.collection('waitlist').createIndex({ email: 1, plan: 1 }, { unique: true }),
   ]);
 }

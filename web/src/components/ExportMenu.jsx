@@ -59,7 +59,7 @@ export function ExportMenu({ result }) {
     },
     {
       label: 'Topics as CSV',
-      hint: `${result.topics?.length ?? 0} rows, with heat and angles`,
+      hint: `${result.topics?.length ?? 0} rows, with buzz and angles`,
       run: () => { download(`${stem}-topics.csv`, topicsToCsv(result), 'text/csv'); setOpen(false); },
       disabled: !result.topics?.length,
     },
@@ -82,7 +82,7 @@ export function ExportMenu({ result }) {
     <div ref={ref} className="relative">
       <Button
         ref={trigger}
-        variant="secondary"
+        variant="soft"
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => { if (e.key === 'ArrowDown' && !open) { e.preventDefault(); setOpen(true); } }}
         aria-expanded={open}
@@ -100,7 +100,7 @@ export function ExportMenu({ result }) {
           role="menu"
           aria-label="Export"
           onKeyDown={onMenuKey}
-          className="fade-in absolute right-0 z-20 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-panel border border-line bg-surface p-1.5 shadow-[0_12px_32px_-12px_rgb(14_22_38/0.35)]"
+          className="fade-in absolute right-0 z-20 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-panel border border-line bg-surface p-1.5 shadow-[0_12px_32px_-12px_rgb(15_30_46/0.35)]"
         >
           {items.map((it) => (
             <button

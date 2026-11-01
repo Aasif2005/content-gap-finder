@@ -51,9 +51,9 @@ export function detectSensitive(text) {
   if (!flagged) return { level: 'none', reasons: [] };
 
   const reasons = [];
-  if (harm) reasons.push('violence, disappearance or abuse is mentioned');
-  if (legal.length) reasons.push(`legal process mentioned (${legal.slice(0, 4).join(', ')})`);
-  if (minor) reasons.push('a child or minor is involved');
+  if (harm) reasons.push('violence, disappearance or abuse mentioned');
+  if (legal.length) reasons.push(`legal terms: ${legal.slice(0, 4).join(', ')}`);
+  if (minor) reasons.push('a minor is involved');
   return { level: 'high', reasons };
 }
 
@@ -61,7 +61,7 @@ export function detectSensitive(text) {
 export function assessSensitivity(text, modelFlag = false) {
   const found = detectSensitive(text);
   if (modelFlag === true && found.level === 'none') {
-    return { level: 'high', reasons: ['flagged by the analysis as a real, ongoing case involving identifiable people'] };
+    return { level: 'high', reasons: ['flagged by the analysis'] };
   }
   return found;
 }

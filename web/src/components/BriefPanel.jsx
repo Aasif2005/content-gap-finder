@@ -26,7 +26,7 @@ const LENGTH_LABEL = { fits: 'Length fits', padded: 'Longer than it needs to be'
 
 // Selects share the kit's control look (10px radius, 1px strong hairline, 44px).
 const SELECT_CLS =
-  'min-h-11 rounded-control border border-line-strong bg-surface px-3 text-[15px] text-fg transition-colors duration-150 hover:border-fg-3 disabled:cursor-not-allowed disabled:opacity-55';
+  'search-console min-h-11 rounded-full px-4 text-[15px] text-fg disabled:cursor-not-allowed disabled:opacity-55';
 
 // Each of the three sections is a hairline-separated block inside the brief.
 const SECTION = 'space-y-4 border-t border-line pt-6';
@@ -62,9 +62,9 @@ export function SensitiveNotice({ sensitive }) {
   if (sensitive?.level !== 'high') return null;
   return (
     <Alert tone="bad">
-      <b>Real, ongoing case involving identifiable people.</b> Viewer suspicion is not a finding. The brief is written as
-      what is <em>confirmed</em> versus <em>not confirmed</em>, and titles that imply guilt are flagged. Check every fact against an official source before filming.
-      {sensitive.reasons?.length > 0 && <span className="opacity-80"> ({sensitive.reasons.join('; ')})</span>}
+      <b>Real, ongoing case with identifiable people.</b> Viewer suspicion isn&rsquo;t a fact. Check every claim against an
+      official source before filming.
+      {sensitive.reasons?.length > 0 && <span className="opacity-80"> Flagged for: {sensitive.reasons.join('; ')}.</span>}
     </Alert>
   );
 }

@@ -2,6 +2,7 @@ import { Check } from 'lucide-react';
 import { cx } from '../lib/cx.js';
 import { Panel } from './ui/Panel.jsx';
 import { Skeleton } from './Bits.jsx';
+import { useSmoothProgress } from '../lib/useSmoothProgress.js';
 
 export const PHASES = [
   { key: 'searching', label: 'Finding videos' },
@@ -20,14 +21,15 @@ export const PHASES = [
 export function ProgressRail({ phase, detail, progress, elapsedMs }) {
   const activeIndex = Math.max(0, PHASES.findIndex((p) => p.key === phase));
   const seconds = Math.round((elapsedMs ?? 0) / 1000);
-  const pct = Math.round(Math.max(3, Math.min(100, progress ?? 0)));
+  const smooth = useSmoothProgress({ phase, progress });
+  const pct = Math.max(3, smooth);
 
   return (
     <div className="space-y-4">
       <Panel>
         <div className="flex items-baseline justify-between gap-4">
           <p aria-live="polite" className="min-w-0 text-base font-medium text-fg">{detail || 'Starting…'}</p>
-          <p className="nums shrink-0 font-mono text-[13px] text-fg-3">{seconds}s</p>
+          <p className="nums shrink-0 font-mono text-[13px] text-fg-3"><span className="font-medium text-fg">{smooth}%</span> · {seconds}s</p>
         </div>
 
         <div

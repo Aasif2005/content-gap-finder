@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { publicMessage, RUN_FAILED } from './publicError.js';
 
 // In-process job registry. The pipeline takes 20-60s, so the HTTP request that
 // starts it returns a job id immediately and the client polls for progress.
@@ -15,11 +16,15 @@ export const PHASES = [
   { key: 'done',       label: 'Done' },
 ];
 
-export function create(input) {
+export function create(input, { owner = null } = {}) {
   const id = crypto.randomUUID();
   jobs.set(id, {
     id,
     input,
+    // Who is waiting on this run (the person who started it, and anyone who joined it). It is only
+    // stopped once nobody is left; a scheduled run has no owner and cannot be stopped from the app.
+    owners: new Set(owner ? [owner] : []),
+    controller: new AbortController(),
     status: 'running',
     phase: 'searching',
     detail: 'Starting…',
@@ -61,7 +66,7 @@ export function whenSettled(id, cb) {
   const job = jobs.get(id);
   if (!job) return cb(Object.assign(new Error('Job not found.'), { code: 'JOB_NOT_FOUND' }), null);
   if (job.status === 'done') return safely(cb, null, job.result);
-  if (job.status === 'error') return safely(cb, job.error, null);
+  if (job.status === 'error' || job.status === 'cancelled') return safely(cb, job.error, null);
   waiting.set(id, [...(waiting.get(id) ?? []), cb]);
 }
 
@@ -84,9 +89,37 @@ export function fail(id, error) {
   update(id, {
     status: 'error',
     detail: 'Failed',
-    error: { message: error.message, code: error.code ?? null },
+    // Polled by the browser, so it holds only what a visitor may read. The runner has logged the rest.
+    error: { message: publicMessage(error, RUN_FAILED), code: error.code ?? null },
   });
-  settle(id, jobs.get(id)?.error ?? { message: error.message, code: error.code ?? null }, null);
+  settle(id, jobs.get(id)?.error ?? { message: publicMessage(error, RUN_FAILED), code: error.code ?? null }, null);
+}
+
+/** Someone joined a run already in flight: stopping it now needs them to agree too. */
+export function addOwner(id, uid) {
+  const job = jobs.get(id);
+  if (job && uid && job.status === 'running') job.owners.add(uid);
+}
+
+/**
+ * Stops a run on behalf of `uid`. Returns 'cancelled' (it was aborted), 'detached' (others still wait
+ * on it, so it carries on), 'finished' (nothing left to stop), or null (no such run, or not theirs).
+ */
+export function cancel(id, uid) {
+  const job = jobs.get(id);
+  if (!job || !job.owners.has(uid)) return null;
+  if (job.status !== 'running') return 'finished';
+  job.owners.delete(uid);
+  if (job.owners.size) return 'detached';
+  job.controller.abort();
+  return 'cancelled';
+}
+
+/** The run ended because it was stopped: no report, nothing cached, and not an error. */
+export function markCancelled(id) {
+  const error = { message: 'Stopped.', code: 'CANCELLED' };
+  update(id, { status: 'cancelled', detail: 'Cancelled', error });
+  settle(id, error, null);
 }
 
 // Keep the map from growing without bound in a long-lived process.

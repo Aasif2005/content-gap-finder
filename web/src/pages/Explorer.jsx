@@ -7,7 +7,9 @@ import { ReportSkeleton } from '../components/explorer/ReportSkeleton.jsx';
 import { RunError } from '../components/explorer/RunError.jsx';
 import { PublicBanner } from '../components/explorer/PublicBanner.jsx';
 import { ThinkingOrb } from '../components/orb/ThinkingOrb.jsx';
-import { startAnalysis, pollJob, getRun } from '../lib/api.js';
+import { startAnalysis, pollJob, getRun, cancelJob } from '../lib/api.js';
+import { isOffline, offlineError } from '../lib/authErrors.js';
+import { useOnline } from '../lib/useOnline.js';
 import {
   queryFromUrl,
   pushReportUrl,
@@ -99,6 +101,16 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
   // Bumped by every new run / report open / page leave; anything that resolves
   // under an older number is stale and must not touch the page.
   const requestSeq = useRef(0);
+  const currentJob = useRef(null); // the run on screen, so Cancel can stop it at the server
+  const online = useOnline();
+  const pendingCancels = useRef([]); // stops that could not reach the server yet (offline): sent when the connection returns
+  const stopJob = useCallback((jobId) => {
+    cancelJob(jobId).catch((err) => { if (err?.code === 'NETWORK') pendingCancels.current.push(jobId); });
+  }, []);
+  useEffect(() => {
+    if (!online) return;
+    for (const id of pendingCancels.current.splice(0)) stopJob(id);
+  }, [online, stopJob]);
   // The report on screen, so the URL effect can tell "the run I just finished"
   // from "somewhere else".
   const loadedRunId = useRef(null);
@@ -186,17 +198,29 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
     // A run reads YouTube data on the visitor's behalf; the Terms (which bind
     // them to YouTube's) and the Privacy Policy must be accepted first.
     if (!(await ensureConsent())) return;
+    // Offline: say so before anything starts, with no progress card or orb.
+    if (isOffline()) {
+      requestSeq.current++;
+      setPhase(null);
+      setResult(null);
+      setError(describeRunError(offlineError()));
+      return;
+    }
     const seq = ++requestSeq.current;
     const stale = () => seq !== requestSeq.current;
     lastInput.current = input;
     loadedRunId.current = null;
     pushQueryUrl(input, mode); // so a reload or a shared link reopens the same search
     ownSearch.current = window.location.search;
+    // The form unmounts while the orb plays, so it must come back holding this search.
+    setFormQuery(input);
+    setFormKey((k) => k + 1);
     setError(null);
     setResult(null);
     setCacheInfo(null);
     setLoadingRun(false);
     setFormOpen(false);
+    currentJob.current = null;
     setPhase({ phase: 'searching', detail: 'Starting…', progress: 0, elapsedMs: 0 });
 
     // The orb waits on this: it settles with the line for the finished card when the run lands.
@@ -204,12 +228,16 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
     const summary = [subject, windowLabel(input.window), formatLabel(input.contentType)].filter(Boolean).join(' · ');
     let settle = null;
     const finished = new Promise((resolve) => { settle = resolve; });
-    setOrbJob({ id: seq, text: subject, origin, onSubmit: () => finished, summary });
     const closeOrb = () => setOrbJob((j) => (j && j.id === seq ? null : j));
 
     try {
       const started = await startAnalysis({ ...input, force });
-      if (stale()) return;
+      if (stale()) {
+        // Cancelled while the start request was in flight: stop the run it just began.
+        if (started.jobId) stopJob(started.jobId);
+        return;
+      }
+      currentJob.current = started.jobId ?? null;
 
       if (started.status === 'done') {
         // Served straight from cache -- no quota spent, no waiting.
@@ -217,11 +245,12 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
         loadedRunId.current = started.result?.runId ?? null;
         setResult(started.result);
         setPhase(null);
-        settle(summary);
         if (started.result?.runId) pushReportUrl(started.result.runId, mode);
         return;
       }
 
+      // Only a real run earns the orb: its full sequence is ten seconds, far longer than a cached answer takes.
+      setOrbJob({ id: seq, text: subject, origin, onSubmit: () => finished, summary });
       const final = await pollJob(
         started.jobId,
         (job) => setPhase({ phase: job.phase, detail: job.detail, progress: job.progress, elapsedMs: job.elapsedMs }),
@@ -248,13 +277,19 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
       // The allowance chip in the top bar follows what the server just counted.
       refreshMe();
     }
-  }, [mode, ensureConsent, refreshMe, me?.limits?.analyses]);
+  }, [mode, ensureConsent, refreshMe, stopJob, me?.limits?.analyses]);
 
   /** Esc / Cancel on the orb: stop caring about the run in flight, like leaving the page does. */
   const onOrbDismiss = useCallback(({ cancelled }) => {
     setOrbJob(null);
-    if (cancelled) { requestSeq.current++; setPhase(null); }
-  }, []);
+    if (cancelled) {
+      requestSeq.current++;
+      setPhase(null);
+      const jobId = currentJob.current;
+      currentJob.current = null;
+      if (jobId) stopJob(jobId);
+    }
+  }, [stopJob]);
 
   /** The history and watch panels open a saved report by going to its URL. */
   const goToRun = useCallback((runId) => {
@@ -282,17 +317,17 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
       : null;
 
   return (
-    <div className="fade-in">
+    <div>
       {readOnly && <PublicBanner />}
 
       {/* While an analysis runs the orb takes the content area (the shell stays); the form and report return when it closes. */}
-      {orbJob && <ThinkingOrb key={orbJob.id} job={orbJob} progress={phase} onDismiss={onOrbDismiss} />}
+      {orbJob && <ThinkingOrb key={orbJob.id} job={orbJob} progress={phase} offline={!online} onDismiss={onOrbDismiss} />}
 
       {showForm && !orbJob && (
         <section aria-label={result ? 'Edit your search' : undefined} className={result ? 'mx-auto mb-8 max-w-[760px]' : undefined}>
           {!result ? (
             <div className="relative mx-auto max-w-[760px] pb-10 pt-8 text-center sm:pt-16">
-              <span aria-hidden className="pointer-events-none absolute left-1/2 top-0 h-72 w-[min(820px,120%)] -translate-x-1/2 rounded-full bg-focus/10 blur-3xl" />
+              <span aria-hidden className="pointer-events-none absolute left-1/2 top-0 h-72 w-[min(820px,100%)] -translate-x-1/2 rounded-full bg-focus/10 blur-3xl" />
               <p className="relative text-[13px] font-semibold uppercase tracking-[0.16em] text-fg-3">{page.eyebrow}</p>
               <h1 className="relative mt-4 text-[44px] font-semibold leading-[1.04] tracking-[-0.035em] sm:text-[64px]">{page.navLabel}</h1>
               <p className="relative mx-auto mt-4 max-w-[46ch] text-[18px] leading-relaxed text-fg-2">{page.tagline}</p>

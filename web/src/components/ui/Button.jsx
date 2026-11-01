@@ -7,6 +7,8 @@ const VARIANTS = {
   primary: 'bg-ink text-on-ink hover:opacity-90',
   secondary: 'border border-line-strong bg-surface text-fg hover:bg-hover',
   ghost: 'text-fg-2 hover:bg-hover hover:text-fg',
+  // a tonal pill: no outline, a soft fill (report actions)
+  soft: 'bg-surface-2 text-fg hover:bg-hover',
   // surface text on the alert colour keeps its contrast in both themes
   // (white on dark red in light; navy on salmon in dark).
   danger: 'bg-bad-fg text-surface hover:opacity-90',

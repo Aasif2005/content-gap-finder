@@ -5,9 +5,9 @@ import { useEffect, useState } from 'react';
  * light onto the floor. A dependency-free port of 21st.dev's "volumetric studio":
  * the room, track, fixtures, flicker timings and stagger are the original's; the
  * WebGL spotlights are drawn as blurred, screen-blended cones, and every colour
- * comes from the pinned night tokens of the element it sits in (`--bg`, `--accent`),
- * so it is Ion Blue light on navy in light mode and lilac light on Saturn Dusk
- * in dark mode. Only opacity animates.
+ * comes from the pinned night tokens of the element it sits in (`--bg`, `--sl-light`),
+ * so the lights are warm cream in light mode and soft white in dark mode. Only opacity
+ * animates.
  */
 
 const SPOTS = [20, 50, 80]; // % across, spread so the cones barely overlap
@@ -20,7 +20,7 @@ const BACK = { tl: [8, 20], tr: [92, 20], br: [92, FLOOR], bl: [8, FLOOR] };
 
 const poly = (pts) => `polygon(${pts.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
 const wall = (n) => `color-mix(in oklab, var(--bg) ${n}%, black)`;
-const LIGHT = 'color-mix(in oklab, var(--accent) 42%, white)';
+const LIGHT = 'var(--sl-light)';
 const glow = (a) => `color-mix(in oklab, ${LIGHT} ${a}%, transparent)`;
 
 // Each lamp stutters on its own: [ms since mount, state]. Lamp 0 is the original's pattern
@@ -89,25 +89,25 @@ export function StudioLights({ state, className = '' }) {
   return (
     <div aria-hidden className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}>
       {/* Room: back wall, ceiling, side walls, floor. */}
-      <div style={{ ...fullInset, background: wall(82) }} />
-      <div style={{ ...fullInset, clipPath: poly([BACK.tl, BACK.tr, BACK.br, BACK.bl]), background: `linear-gradient(to bottom, ${wall(96)}, ${wall(84)})` }} />
-      <div style={{ ...fullInset, clipPath: poly([[0, 0], [100, 0], BACK.tr, BACK.tl]), background: `linear-gradient(to bottom, ${wall(78)}, ${wall(86)})` }} />
-      <div style={{ ...fullInset, clipPath: poly([[0, 0], BACK.tl, BACK.bl, [0, 100]]), background: `linear-gradient(to right, ${wall(80)}, ${wall(92)})` }} />
-      <div style={{ ...fullInset, clipPath: poly([[100, 0], BACK.tr, BACK.br, [100, 100]]), background: `linear-gradient(to left, ${wall(80)}, ${wall(92)})` }} />
-      <div style={{ ...fullInset, clipPath: poly([[0, 100], [100, 100], BACK.br, BACK.bl]), background: `linear-gradient(to top, ${wall(84)}, ${wall(94)})` }} />
+      <div style={{ ...fullInset, background: wall(100) }} />
+      <div style={{ ...fullInset, clipPath: poly([BACK.tl, BACK.tr, BACK.br, BACK.bl]), background: `linear-gradient(to bottom, ${wall(100)}, ${wall(94)})` }} />
+      <div style={{ ...fullInset, clipPath: poly([[0, 0], [100, 0], BACK.tr, BACK.tl]), background: `linear-gradient(to bottom, ${wall(98)}, ${wall(100)})` }} />
+      <div style={{ ...fullInset, clipPath: poly([[0, 0], BACK.tl, BACK.bl, [0, 100]]), background: `linear-gradient(to right, ${wall(98)}, ${wall(100)})` }} />
+      <div style={{ ...fullInset, clipPath: poly([[100, 0], BACK.tr, BACK.br, [100, 100]]), background: `linear-gradient(to left, ${wall(98)}, ${wall(100)})` }} />
+      <div style={{ ...fullInset, clipPath: poly([[0, 100], [100, 100], BACK.br, BACK.bl]), background: `linear-gradient(to top, ${wall(96)}, ${wall(100)})` }} />
 
       {/* Where wall meets floor, and the corners. */}
       <svg className="absolute inset-0 h-full w-full">
         <defs>
           <linearGradient id="sl-base" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="white" stopOpacity="0" />
-            <stop offset="25%" stopColor="white" stopOpacity="0.4" />
-            <stop offset="75%" stopColor="white" stopOpacity="0.4" />
+            <stop offset="25%" stopColor="white" stopOpacity="0.22" />
+            <stop offset="75%" stopColor="white" stopOpacity="0.22" />
             <stop offset="100%" stopColor="white" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="sl-v" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="white" stopOpacity="0" />
-            <stop offset="55%" stopColor="white" stopOpacity="0.14" />
+            <stop offset="55%" stopColor="white" stopOpacity="0.08" />
             <stop offset="100%" stopColor="white" stopOpacity="0" />
           </linearGradient>
         </defs>
@@ -151,7 +151,7 @@ export function StudioLights({ state, className = '' }) {
               opacity: on[i] ? 1 : 0,
               transition: flickering ? 'none' : `opacity 800ms ease-in-out ${i * 100}ms`,
               clipPath: 'polygon(44% 0, 56% 0, 100% 100%, 0 100%)',
-              background: `linear-gradient(to bottom, ${glow(56)} 0%, ${glow(20)} 55%, transparent 100%)`,
+              background: `linear-gradient(to bottom, ${glow(44)} 0%, ${glow(11)} 55%, transparent 100%)`,
               filter: 'blur(9px)',
             }}
           />
@@ -162,17 +162,17 @@ export function StudioLights({ state, className = '' }) {
       <div
         style={{
           position: 'absolute', left: 0, right: 0, top: `${TRACK_TOP}%`, height: 14,
-          background: 'linear-gradient(to bottom, #15171d 0%, #3a3d46 45%, #1b1d24 100%)',
+          background: 'linear-gradient(to bottom, var(--sl-dark) 0%, var(--sl-mid) 45%, var(--sl-dark) 100%)',
           boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.14), 0 10px 22px -6px rgba(0,0,0,0.7)',
         }}
       />
       {SPOTS.map((x, i) => (
         <div key={x} style={{ position: 'absolute', left: `${x}%`, top: `calc(${TRACK_TOP}% + 10px)`, transform: 'translateX(-50%)' }} className="flex flex-col items-center">
-          <div style={{ width: 7, height: 16, background: 'linear-gradient(to right, #0e0f13, #4a4d57, #0e0f13)' }} />
+          <div style={{ width: 7, height: 16, background: 'linear-gradient(to right, var(--sl-deep), var(--sl-high), var(--sl-deep))' }} />
           <div
             style={{
               position: 'relative', width: 40, height: 48, borderRadius: '4px 4px 16px 16px',
-              background: 'linear-gradient(to right, #0c0d11 0%, #34363f 32%, #50535d 52%, #24262d 80%, #07080b 100%)',
+              background: 'linear-gradient(to right, var(--sl-deep) 0%, var(--sl-mid) 32%, var(--sl-high) 52%, var(--sl-dark) 80%, var(--sl-deep) 100%)',
               boxShadow: '0 16px 24px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.12)',
             }}
           >
@@ -180,7 +180,7 @@ export function StudioLights({ state, className = '' }) {
             <span
               style={{
                 position: 'absolute', left: '50%', bottom: -5, width: 30, height: 11, borderRadius: '50%', transform: 'translateX(-50%)',
-                background: on[i] ? '#fff' : '#101115',
+                background: on[i] ? '#fff' : 'var(--sl-deep)',
                 boxShadow: on[i] ? `0 0 18px 7px ${glow(85)}, inset 0 0 6px #fff` : 'inset 0 2px 4px rgba(0,0,0,0.9)',
                 transition: flickering ? 'none' : 'background 600ms, box-shadow 600ms',
               }}
@@ -190,8 +190,8 @@ export function StudioLights({ state, className = '' }) {
       ))}
 
       {/* A vignette and a floor scrim keep it quiet at the edges and under the text. */}
-      <div style={{ ...fullInset, background: 'radial-gradient(ellipse 95% 85% at 50% 42%, transparent 50%, color-mix(in oklab, var(--bg) 40%, black) 100%)' }} />
-      <div style={{ ...fullInset, height: '46%', top: 'auto', bottom: 0, background: 'linear-gradient(to top, color-mix(in oklab, var(--bg) 86%, black) 8%, transparent)' }} />
+      <div style={{ ...fullInset, background: 'radial-gradient(ellipse 95% 85% at 50% 42%, transparent 50%, color-mix(in oklab, var(--bg) 82%, black) 100%)' }} />
+      <div style={{ ...fullInset, height: '46%', top: 'auto', bottom: 0, background: 'linear-gradient(to top, color-mix(in oklab, var(--bg) 94%, black) 8%, transparent)' }} />
     </div>
   );
 }

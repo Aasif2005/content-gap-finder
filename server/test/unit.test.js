@@ -1,4 +1,4 @@
-import { test, describe, before, after, beforeEach } from 'node:test';
+import { test, describe, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -27,10 +27,20 @@ import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurre
 // DOM dependency at module scope, and CSV quoting is exactly the kind of thing
 // that silently corrupts an export until someone opens it in a spreadsheet.
 import { requestBody } from '../src/services/deepseek.js';
-import { num } from '../src/config.js';
+import { config, num } from '../src/config.js';
 import { createRateLimit } from '../src/lib/rateLimit.js';
-import { corsOriginAllowed, makeSecurityHeaders } from '../src/lib/security.js';
-import { clampLimit, validInterval } from '../src/routes/api.js';
+import { corsOriginAllowed, makeSecurityHeaders, httpsRedirectFor } from '../src/lib/security.js';
+import { clampLimit, validInterval, validate } from '../src/routes/api.js';
+import { publicMessage, errorResponse, GENERIC_ERROR, RUN_FAILED } from '../src/lib/publicError.js';
+import { limitsFor } from '../src/lib/limits.js';
+import { domainAcceptsMail } from '../src/lib/emailDomain.js';
+import { isAppPath, siteOrigin, sitemapXml, robotsTxt, renderIndex } from '../src/lib/site.js';
+import { readFileSync, readdirSync } from 'node:fs';
+import { parseAvatarDataUrl, MAX_AVATAR_BYTES } from '../src/lib/avatar.js';
+import { squareCrop, checkFile, fitImage, clampOffset, initialView, zoomAt, zoomOf, cropRect, MAX_ZOOM } from '../../web/src/lib/avatarImage.js';
+import { setAvatar, getAvatar, clearAvatar } from '../src/lib/db.js';
+import * as jobs from '../src/lib/jobs.js';
+import { pollJob } from '../../web/src/lib/api.js';
 import { gapsToCsv, reportToMarkdown, exportStem } from '../../web/src/lib/export.js';
 import { matchRoute, normalizePath } from '../../web/src/lib/routes.js';
 import { reportPathFor, correctReportPath, runIdFromPath, queryFromUrl, queryToSearch, pagePathFor } from '../../web/src/lib/urlState.js';
@@ -39,16 +49,17 @@ import {
   resetTimeLabel, reportMeta, reportName, describeRunError, describeLoadError,
 } from '../../web/src/lib/runRows.js';
 import { authError } from '../../web/src/lib/authErrors.js';
-import { safeNext, welcomeNext, nextSuffix, passwordStrength, looksLikeEmail } from '../../web/src/components/auth/helpers.js';
+import { safeNext, nextSuffix, passwordStrength, looksLikeEmail, emailTypoFix, MIN_NEW_PASSWORD, needsVerification as clientNeedsVerification } from '../../web/src/components/auth/helpers.js';
 import { memberSince, resetsText, normalizeName, deleteConfirmed } from '../../web/src/components/profile/helpers.js';
 import { charge, analysesAffordable, searchCallsPerAnalysis, unitsPerAnalysis, nextQuotaReset, quotaDay } from '../src/lib/quota.js';
 import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet } from 'jose';
 import { verifyIdToken, normalizeUser } from '../src/lib/firebaseToken.js';
-import { bearerToken, shouldTouch, requireUser, requireVerified, needsVerification } from '../src/lib/auth.js';
+import { bearerToken, shouldTouch, requireUser, requireVerified, requireAdmin, isAdmin, needsVerification } from '../src/lib/auth.js';
 import { upsertUser, getUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../src/lib/db.js';
 import { ownRuns, featuredCandidates, trimFeatured } from '../src/lib/store.js';
 import { ownedBy, ownedWatch, atOwnerCap, hasDuplicate } from '../src/lib/watches.js';
 import { dailyLimitBody } from '../src/routes/api.js';
+import { normalizeEmail, joinWaitlist } from '../src/lib/waitlist.js';
 import * as jobsRegistry from '../src/lib/jobs.js';
 
 describe('parseDuration', () => {
@@ -2321,7 +2332,13 @@ describe('accounts database', { skip: !process.env.MONGODB_URI && 'MONGODB_URI n
       await linkRun(uid, 'shared-run');
       await tryConsume(uid, DAY, 'analyses', 3);
     }
-    assert.deepEqual(await deleteUserData('a'), { users: 1, runs: 1, usage: 1 });
+    await col('waitlist').insertMany([
+      { email: 'joined-signed-in@x.com', plan: 'creator', uid: 'a' },
+      { email: 'a@x.com', plan: 'studio', uid: null },
+      { email: 'b@x.com', plan: 'studio', uid: 'b' },
+    ]);
+    assert.deepEqual(await deleteUserData('a', 'A@x.com'), { users: 1, runs: 1, usage: 1, waitlist: 2 });
+    assert.equal(await col('waitlist').countDocuments({ uid: 'b' }), 1);
     assert.equal(await getUser('a'), null);
     assert.deepEqual(await runIdsFor('a'), []);
     assert.equal((await usageFor('a', DAY)).analyses, 0);
@@ -2386,7 +2403,7 @@ describe('job completion callbacks', () => {
     const id = jobsRegistry.create({});
     const seen = [];
     jobsRegistry.whenSettled(id, (err) => seen.push(err?.message));
-    jobsRegistry.fail(id, new Error('boom'));
+    jobsRegistry.fail(id, Object.assign(new Error('boom'), { code: 'NO_RESULTS' }));
     jobsRegistry.whenSettled(id, (err) => seen.push(`late:${err?.message}`));
     assert.deepEqual(seen, ['boom', 'late:boom']);
   });
@@ -2424,16 +2441,16 @@ describe('per-account runs, featured sample and watches', () => {
       row('new-niche', { generatedAt: daysAgo(1), gapsFound: 2 }),
       row('other-niche', { niche: 'cast iron', nicheKey: nicheKey('cast iron'), generatedAt: daysAgo(0), gapsFound: 7 }),
     ];
-    assert.deepEqual(pick(rows), ['new-niche', 'old-niche', 'other-niche']);
+    assert.deepEqual(pick(rows), ['new-niche', 'old-niche']);
   });
 
-  test('featured: a niche run with one gap is not good enough, and any run with 3+ gaps is the fallback', () => {
+  test('featured: a stranger\'s run is never the fallback, however rich it is', () => {
     const rows = [
       row('thin-niche', { gapsFound: 1, generatedAt: daysAgo(1) }),
       row('rich-other', { niche: 'x', nicheKey: nicheKey('x'), gapsFound: 3, generatedAt: daysAgo(2) }),
       row('thin-other', { niche: 'y', nicheKey: nicheKey('y'), gapsFound: 2, generatedAt: daysAgo(0) }),
     ];
-    assert.deepEqual(pick(rows), ['rich-other']);
+    assert.deepEqual(pick(rows), []);
   });
 
   test('featured: runs past the retention window are never offered', () => {
@@ -2617,16 +2634,6 @@ describe('web auth: plain-words errors', () => {
   test('an error of ours passes through untouched', () => {
     const ours = Object.assign(new Error('Accounts are not set up on this server yet.'), { code: 'NOT_CONFIGURED' });
     assert.equal(authError(ours), ours);
-  });
-});
-
-describe('welcomeNext (landing after sign-in)', () => {
-  test('goes through the welcome page when there is no destination', () => {
-    for (const none of [undefined, null, '', 'dashboard', '//evil.com', '/login']) assert.equal(welcomeNext(none), '/welcome', String(none));
-  });
-  test('goes straight to a safe destination', () => {
-    assert.equal(welcomeNext('/explore'), '/explore');
-    assert.equal(welcomeNext('/r/abc?x=1'), '/r/abc?x=1');
   });
 });
 
@@ -2881,5 +2888,558 @@ describe('report header and run errors', () => {
     const fault = describeLoadError(Object.assign(new Error('boom'), { code: 'NETWORK' }));
     assert.equal(fault.kind, 'load');
     assert.equal(fault.tone, 'bad');
+  });
+});
+
+describe('waitlist', () => {
+  before(() => connectMongo({ uri: process.env.MONGODB_URI, dbName: `gs_test_wl_${process.pid}_${Date.now()}` }));
+  after(async () => { await dropDatabase(); await closeMongo(); });
+
+  test('normalizeEmail trims and lower-cases, and rejects what is not an address', () => {
+    assert.equal(normalizeEmail('  Ada@Example.COM '), 'ada@example.com');
+    for (const bad of ['', 'nope', 'a@b', 'a b@c.com', '@c.com', null, undefined, `${'x'.repeat(250)}@a.co`]) assert.equal(normalizeEmail(bad), null, String(bad));
+  });
+
+  test('joining twice keeps one row; a different plan is a separate row', async () => {
+    assert.deepEqual(await joinWaitlist({ email: 'a@b.co', plan: 'creator' }), { created: true });
+    assert.deepEqual(await joinWaitlist({ email: 'a@b.co', plan: 'creator' }), { created: false });
+    assert.deepEqual(await joinWaitlist({ email: 'a@b.co', plan: 'studio', uid: 'u1' }), { created: true });
+    assert.equal(await col('waitlist').countDocuments({ email: 'a@b.co' }), 2);
+  });
+});
+
+describe('bug bash regressions', () => {
+  test('isAdmin needs a listed AND verified email', () => {
+    const admins = ['boss@x.com'];
+    assert.equal(isAdmin({ email: 'Boss@x.com', emailVerified: true }, admins), true);
+    assert.equal(isAdmin({ email: 'boss@x.com', emailVerified: false }, admins), false);
+    assert.equal(isAdmin({ email: 'other@x.com', emailVerified: true }, admins), false);
+    assert.equal(isAdmin(null, admins), false);
+    assert.equal(isAdmin({ email: 'boss@x.com', emailVerified: true }, []), false);
+  });
+
+  test('requireAdmin refuses everyone else with a 403', () => {
+    let status = null;
+    const res = { status(s) { status = s; return this; }, json() { return this; } };
+    requireAdmin({ user: { email: 'nobody@x.com', emailVerified: true } }, res, () => assert.fail('must not pass'));
+    assert.equal(status, 403);
+  });
+
+  test('raw provider errors never reach a visitor; messages written for people do', () => {
+    const raw = Object.assign(new Error('DeepSeek 402: {"error":"Insufficient Balance"}'), { code: 'DEEPSEEK_ERROR' });
+    assert.equal(publicMessage(raw), GENERIC_ERROR);
+    assert.equal(publicMessage(raw, RUN_FAILED), RUN_FAILED);
+    assert.equal(publicMessage(new Error('Cannot read properties of undefined')), GENERIC_ERROR);
+    const friendly = Object.assign(new Error('No videos found.'), { code: 'NO_RESULTS' });
+    assert.equal(publicMessage(friendly), 'No videos found.');
+    const quota = Object.assign(new Error('YouTube search failed (403 quotaExceeded): {"raw":"body"}'), { code: 'QUOTA_EXHAUSTED' });
+    assert.doesNotMatch(publicMessage(quota), /raw|403/);
+  });
+
+  test('errorResponse hides internals and names what the caller got wrong', () => {
+    const crash = errorResponse(Object.assign(new Error('E11000 duplicate key'), { code: 11000 }));
+    assert.deepEqual(crash, { status: 500, body: { error: GENERIC_ERROR, code: 'INTERNAL' } });
+    assert.equal(errorResponse(Object.assign(new Error('x'), { status: 400, type: 'entity.parse.failed' })).body.code, 'BAD_JSON');
+    assert.equal(errorResponse(Object.assign(new Error('x'), { status: 413, type: 'entity.too.large' })).body.code, 'TOO_LARGE');
+    assert.equal(errorResponse(Object.assign(new Error('Niche too short'), { status: 400, code: 'VALIDATION' })).body.error, 'Niche too short');
+    assert.equal(errorResponse(Object.assign(new Error('Not Found'), { status: 404 })).body.code, 'NOT_FOUND');
+  });
+
+  test('a failed job shows the browser the safe message and keeps its code', () => {
+    const id = jobs.create({});
+    jobs.fail(id, Object.assign(new Error('DeepSeek 500: secret detail'), { code: 'DEEPSEEK_ERROR' }));
+    assert.deepEqual(jobs.get(id).error, { message: RUN_FAILED, code: 'DEEPSEEK_ERROR' });
+  });
+
+  test('region and language must be real two-letter codes before a run is spent', () => {
+    assert.equal(validate({ niche: 'chess', regionCode: ' in ' }).regionCode, 'IN');
+    assert.equal(validate({ niche: 'chess', relevanceLanguage: 'TA' }).relevanceLanguage, 'ta');
+    assert.equal(validate({ niche: 'chess' }).regionCode, undefined);
+    for (const regionCode of ['12', 'x', 'USA', '!!']) assert.throws(() => validate({ niche: 'chess', regionCode }), { code: 'VALIDATION' });
+    assert.throws(() => validate({ niche: 'chess', relevanceLanguage: 'eng' }), { code: 'VALIDATION' });
+  });
+
+  test('limitsFor gives listed testers their bigger allowance, whatever the email case', () => {
+    const saved = config.users.testerEmails;
+    config.users.testerEmails = ['t@x.com'];
+    try {
+      assert.equal(limitsFor({ email: 'T@x.com' }).analyses, config.users.testerDailyAnalyses);
+      assert.equal(limitsFor({ email: 'o@x.com' }).analyses, config.users.dailyAnalyses);
+      assert.equal(limitsFor(null).analyses, config.users.dailyAnalyses);
+    } finally {
+      config.users.testerEmails = saved;
+    }
+  });
+
+  test('CSV: a commenter cannot plant a spreadsheet formula, and numbers are left alone', () => {
+    for (const evil of ['=HYPERLINK("http://x")', '+1+1', '-2+3', '@SUM(A1)', '\tx']) {
+      const cell = gapsToCsv({ gaps: [{ question: evil, demandScore: -1 }] }).split('\r\n')[1];
+      assert.match(cell, /^"?'/, evil);
+      assert.match(cell, /,-1,/);
+    }
+    assert.equal(gapsToCsv({ gaps: [{ question: 'plain' }] }).split('\r\n')[1].startsWith('plain,'), true);
+  });
+
+  describe('pollJob', () => {
+    const realFetch = globalThis.fetch;
+    afterEach(() => { globalThis.fetch = realFetch; });
+    const answers = (list) => {
+      let i = 0;
+      globalThis.fetch = async () => {
+        const a = list[Math.min(i++, list.length - 1)];
+        if (a === 'drop') throw new TypeError('network down');
+        return new Response(JSON.stringify(a.body), { status: a.status ?? 200 });
+      };
+      return () => i;
+    };
+
+    test('rides out dropped polls while the server keeps working', async () => {
+      answers(['drop', 'drop', { body: { status: 'running' } }, 'drop', { body: { status: 'done', result: { runId: 'r' } } }]);
+      assert.deepEqual(await pollJob('j', null, { intervalMs: 1 }), { runId: 'r' });
+    });
+
+    test('too many drops in a row end as "lost touch, still running", since the server carries on', async () => {
+      answers(['drop']);
+      await assert.rejects(pollJob('j', null, { intervalMs: 1 }), { code: 'RUN_UNREACHABLE' });
+    });
+
+    test('a job the server does not know fails at once, with its code', async () => {
+      const calls = answers([{ status: 404, body: { error: 'gone', code: 'JOB_NOT_FOUND' } }]);
+      await assert.rejects(pollJob('j', null, { intervalMs: 1 }), { code: 'JOB_NOT_FOUND' });
+      assert.equal(calls(), 1);
+    });
+
+    test('running past the wait limit is "still running", not a failure', async () => {
+      answers([{ body: { status: 'running' } }]);
+      await assert.rejects(pollJob('j', null, { intervalMs: 1, timeoutMs: -1 }), { code: 'STILL_RUNNING' });
+      assert.equal(describeRunError({ code: 'STILL_RUNNING' }).kind, 'slow');
+    });
+  });
+
+  test('a run the server lost reads as interrupted, not as a failed analysis', () => {
+    const d = describeRunError(Object.assign(new Error('gone'), { code: 'JOB_NOT_FOUND' }));
+    assert.equal(d.title, 'We lost track of that run');
+    assert.equal(d.kind, 'generic');
+  });
+
+  test('new accounts need 8 characters; the shared floor stays for old passwords', () => {
+    assert.equal(MIN_NEW_PASSWORD, 8);
+    assert.equal(passwordStrength('abcd12').ok, true);
+    assert.match(passwordStrength('abcd12').tip, /at least 8/);
+  });
+});
+
+describe('emailTypoFix', () => {
+  test('catches misspelt big providers and offers the address they meant', () => {
+    const cases = {
+      'lovespellinkk@gmai.com': 'lovespellinkk@gmail.com',
+      'a@gm.com': 'a@gmail.com',
+      'a@gml.com': 'a@gmail.com',
+      'a@gmial.com': 'a@gmail.com',
+      'a@gamil.com': 'a@gmail.com',
+      'a@gmal.com': 'a@gmail.com',
+      'a@gnail.com': 'a@gmail.com',
+      'a@gmaill.com': 'a@gmail.com',
+      'a@gma.com': 'a@gmail.com',
+      'a@gmail.con': 'a@gmail.com',
+      'a@gmail.co': 'a@gmail.com',
+      'a@gmail.cm': 'a@gmail.com',
+      'a@gmai.co': 'a@gmail.com',
+      'A.Name+tag@GMAI.COM': 'A.Name+tag@gmail.com',
+      ' a@gmai.com ': 'a@gmail.com',
+      'a@hotmial.com': 'a@hotmail.com',
+      'a@outlok.com': 'a@outlook.com',
+      'a@yaho.com': 'a@yahoo.com',
+      'a@iclod.com': 'a@icloud.com',
+    };
+    for (const [typed, meant] of Object.entries(cases)) assert.equal(emailTypoFix(typed), meant, typed);
+  });
+
+  test('leaves real addresses alone', () => {
+    for (const ok of [
+      'a@gmail.com', 'a@googlemail.com', 'a@hotmail.com', 'a@outlook.com', 'a@yahoo.com', 'a@icloud.com',
+      'a@mail.com', 'a@email.com', 'a@ymail.com', 'a@gmx.com', 'a@me.com', 'a@mac.com', 'a@cloud.com',
+      'a@yahoo.co.in', 'a@yahoo.de', 'a@hotmail.fr', 'a@outlook.in', 'a@gmx.de',
+      'a@rail.com', 'a@mall.com', 'a@sail.com', 'a@goal.com',
+      'a@company.com', 'a@student.university.edu', 'a@example.org',
+    ]) assert.equal(emailTypoFix(ok), null, ok);
+  });
+
+  test('has nothing to say about something that is not an address', () => {
+    for (const odd of ['', 'nope', '@gmai.com', 'a@gmai', null, undefined]) assert.equal(emailTypoFix(odd), null, String(odd));
+  });
+});
+
+describe('domainAcceptsMail', () => {
+  const dnsError = (code) => async () => { throw Object.assign(new Error(code), { code }); };
+  const answers = (rows) => async () => rows;
+
+  test('a domain with mail servers passes', async () => {
+    assert.equal(await domainAcceptsMail('x.com', { resolveMx: answers([{ exchange: 'mx.x.com', priority: 10 }]) }), true);
+  });
+
+  test('a domain that does not exist fails', async () => {
+    assert.equal(await domainAcceptsMail('hdhdhdhhj.com', { resolveMx: dnsError('ENOTFOUND') }), false);
+  });
+
+  test('no MX records falls back to the domain\'s own address', async () => {
+    const base = { resolveMx: dnsError('ENODATA') };
+    assert.equal(await domainAcceptsMail('x.com', { ...base, resolve4: answers(['1.2.3.4']), resolve6: dnsError('ENODATA') }), true);
+    assert.equal(await domainAcceptsMail('x.com', { ...base, resolve4: dnsError('ENODATA'), resolve6: answers(['::1']) }), true);
+    assert.equal(await domainAcceptsMail('x.com', { ...base, resolve4: dnsError('ENODATA'), resolve6: dnsError('ENODATA') }), false);
+  });
+
+  test('a null MX declares that the domain takes no mail', async () => {
+    assert.equal(await domainAcceptsMail('x.com', { resolveMx: answers([{ exchange: '', priority: 0 }]) }), false);
+    assert.equal(await domainAcceptsMail('x.com', { resolveMx: answers([{ exchange: '.', priority: 0 }]) }), false);
+  });
+
+  test('a DNS fault never blocks a sign-up', async () => {
+    for (const code of ['ETIMEOUT', 'ESERVFAIL', 'ECONNREFUSED']) {
+      assert.equal(await domainAcceptsMail('x.com', { resolveMx: dnsError(code) }), true, code);
+    }
+    assert.equal(await domainAcceptsMail('x.com', { resolveMx: dnsError('ENODATA'), resolve4: dnsError('ETIMEOUT') }), true);
+  });
+});
+
+test('a wrong email and a wrong password read the same on the login page', () => {
+  for (const code of ['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found', 'auth/invalid-login-credentials']) {
+    assert.equal(authError({ code }).message, 'Invalid email or password.', code);
+    assert.equal(authError({ code }).code, 'INVALID_CREDENTIALS', code);
+  }
+});
+
+describe('profile picture', () => {
+  const jpeg = (n = 50) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(n, 1), Buffer.from([0xff, 0xd9])]);
+  const url = (buf) => `data:image/jpeg;base64,${buf.toString('base64')}`;
+
+  test('accepts a JPEG data URL and returns its bytes', () => {
+    const bytes = jpeg();
+    assert.deepEqual(parseAvatarDataUrl(url(bytes)), bytes);
+  });
+
+  test('refuses anything that is not a browser-made JPEG', () => {
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(40)]);
+    const cases = [
+      undefined, null, 42, '', 'data:image/jpeg;base64,',
+      `data:image/png;base64,${jpeg().toString('base64')}`,   // wrong declared type
+      `data:text/html;base64,${Buffer.from('<script>1</script>').toString('base64')}`,
+      url(png),                                               // right label, not a JPEG
+      url(Buffer.from('FFD8FF-but-not-really')),
+      'data:image/jpeg;base64,@@@@',
+      `${url(jpeg())}x`,                                      // bad padding
+      url(jpeg(MAX_AVATAR_BYTES)),                            // too big
+    ];
+    for (const c of cases) assert.throws(() => parseAvatarDataUrl(c), { code: 'VALIDATION', status: 400 }, String(c).slice(0, 40));
+  });
+
+  test('a truncated JPEG (no end marker) is refused', () => {
+    assert.throws(() => parseAvatarDataUrl(url(jpeg().subarray(0, 30))), { code: 'VALIDATION' });
+  });
+
+  test('squareCrop centres the longer side', () => {
+    assert.deepEqual(squareCrop(400, 400), { sx: 0, sy: 0, side: 400 });
+    assert.deepEqual(squareCrop(1000, 600), { sx: 200, sy: 0, side: 600 });
+    assert.deepEqual(squareCrop(600, 1000), { sx: 0, sy: 200, side: 600 });
+    assert.equal(squareCrop(0, 10).side, 0);
+  });
+
+  test('checkFile rejects the wrong type and oversized files in plain words', () => {
+    assert.throws(() => checkFile(null), /Choose an image/);
+    assert.throws(() => checkFile({ type: 'application/pdf', size: 10 }), /JPEG, PNG, WebP or GIF/);
+    assert.throws(() => checkFile({ type: 'image/svg+xml', size: 10 }), /JPEG, PNG, WebP or GIF/);
+    assert.throws(() => checkFile({ type: 'image/png', size: 6 * 1024 * 1024 }), /over 5 MB/);
+    const ok = { type: 'image/webp', size: 1000 };
+    assert.equal(checkFile(ok), ok);
+  });
+});
+
+describe('profile picture storage', { skip: !process.env.MONGODB_URI && 'MONGODB_URI not set' }, () => {
+  before(() => connectMongo({ uri: process.env.MONGODB_URI, dbName: `gs_test_av_${process.pid}_${Date.now()}` }));
+  after(async () => { await dropDatabase(); await closeMongo(); });
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]);
+
+  test('an upload wins over the Google photo, is never returned with the profile, and can be removed', async () => {
+    await upsertUser({ uid: 'p1', email: 'p@x.com', picture: 'https://google.example/p.jpg', provider: 'google.com' });
+    assert.equal((await getUser('p1')).photoUrl, 'https://google.example/p.jpg');
+    assert.equal(await setAvatar('p1', jpeg), true);
+    const u = await getUser('p1');
+    assert.match(u.photoUrl, /^\/api\/avatar\/p1\?v=\d+$/);
+    assert.equal(u.hasCustomAvatar, true);
+    assert.equal('avatar' in u, false);
+    assert.deepEqual(await getAvatar('p1'), jpeg);
+    // The next sign-in refreshes the Google photo; it must not displace the upload.
+    assert.match((await upsertUser({ uid: 'p1', email: 'p@x.com', picture: 'https://google.example/new.jpg' })).photoUrl, /^\/api\/avatar\//);
+    await clearAvatar('p1');
+    assert.equal((await getUser('p1')).photoUrl, 'https://google.example/new.jpg');
+    assert.equal(await getAvatar('p1'), null);
+  });
+
+  test('no account, no picture; deleting the account deletes the picture', async () => {
+    assert.equal(await setAvatar('ghost', jpeg), false);
+    assert.equal(await getAvatar('ghost'), null);
+    await upsertUser({ uid: 'p2', email: 'q@x.com' });
+    await setAvatar('p2', jpeg);
+    await deleteUserData('p2');
+    assert.equal(await getAvatar('p2'), null);
+  });
+});
+
+describe('picture crop maths', () => {
+  const box = 200;
+  const shapes = [[4000, 3000], [3000, 4000], [200, 200], [120, 90], [90, 600], [5000, 5000], [201, 200]].map(([width, height]) => ({ width, height }));
+  const inside = (r, { width, height }) => r.sx >= -1e-9 && r.sy >= -1e-9 && r.sx + r.side <= width + 1e-9 && r.sy + r.side <= height + 1e-9;
+
+  test('the starting view just covers the frame and is centred', () => {
+    for (const imageSize of shapes) {
+      const v = initialView({ imageSize, box });
+      assert.ok(Math.abs(Math.min(imageSize.width, imageSize.height) * v.scale - box) < 1e-9);
+      const r = cropRect({ view: v, imageSize, box });
+      assert.ok(inside(r, imageSize));
+      assert.ok(Math.abs(r.side - Math.min(imageSize.width, imageSize.height)) < 1e-6, 'starts on the whole short side');
+      assert.ok(Math.abs(r.sx - (imageSize.width - r.side) / 2) < 1e-6 && Math.abs(r.sy - (imageSize.height - r.side) / 2) < 1e-6);
+    }
+  });
+
+  test('panning can never leave the frame uncovered', () => {
+    for (const imageSize of shapes) {
+      const v = initialView({ imageSize, box });
+      for (const [x, y] of [[1e6, 1e6], [-1e6, -1e6], [0, 0], [-50, 30]]) {
+        const offset = clampOffset({ scale: v.scale, offset: { x, y }, imageSize, box });
+        assert.ok(offset.x <= 0 && offset.y <= 0);
+        assert.ok(imageSize.width * v.scale + offset.x >= box - 1e-9 && imageSize.height * v.scale + offset.y >= box - 1e-9);
+        assert.ok(inside(cropRect({ view: { scale: v.scale, offset }, imageSize, box }), imageSize));
+      }
+    }
+  });
+
+  test('zoom stays between "covers" and four times that, keeps the anchor still, and stays covered', () => {
+    for (const imageSize of shapes) {
+      const v0 = initialView({ imageSize, box });
+      assert.equal(zoomOf({ view: v0, imageSize, box }), 1);
+      const anchor = { x: 50, y: 150 };
+      const before = cropRect({ view: v0, imageSize, box });
+      const z = zoomAt({ view: v0, scale: v0.scale * 2, anchor, imageSize, box });
+      assert.ok(Math.abs(zoomOf({ view: z, imageSize, box }) - 2) < 1e-9);
+      assert.ok(inside(cropRect({ view: z, imageSize, box }), imageSize));
+      // Square stays square and shrinks to half.
+      assert.ok(Math.abs(cropRect({ view: z, imageSize, box }).side - before.side / 2) < 1e-6);
+      assert.equal(zoomAt({ view: v0, scale: 1e9, anchor, imageSize, box }).scale, v0.scale * MAX_ZOOM);
+      assert.equal(zoomAt({ view: z, scale: 1e-9, anchor, imageSize, box }).scale, v0.scale);
+    }
+  });
+
+  test('a point under the anchor stays under it while zooming (when not pinned by an edge)', () => {
+    const imageSize = { width: 4000, height: 4000 };
+    const v0 = initialView({ imageSize, box });
+    const anchor = { x: 100, y: 100 };
+    const under = (v) => ({ x: (anchor.x - v.offset.x) / v.scale, y: (anchor.y - v.offset.y) / v.scale });
+    const a = under(v0);
+    const b = under(zoomAt({ view: v0, scale: v0.scale * 2, anchor, imageSize, box }));
+    assert.ok(Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6);
+  });
+
+  test('fitImage uses the short side', () => {
+    assert.equal(fitImage({ width: 400, height: 100, box: 50 }), 0.5);
+    assert.equal(fitImage({ width: 100, height: 400, box: 50 }), 0.5);
+  });
+});
+
+describe('site address, sitemap and real 404s', () => {
+  const req = (over = {}) => ({ protocol: 'http', get: () => 'preview.example:8790', secure: false, path: '/x', originalUrl: '/x?a=1', ...over });
+
+  test('every route in the app is a known path, and nothing else is', () => {
+    const source = readFileSync(new URL('../../web/src/routes.jsx', import.meta.url), 'utf8');
+    const paths = [...source.matchAll(/path: '([^']+)'/g)].map((m) => m[1]).filter((p) => p !== '*');
+    assert.ok(paths.length >= 12);
+    for (const p of paths) assert.equal(isAppPath(p.replace(':id', 'abc-123')), true, p);
+    for (const p of ['/nope', '/r', '/r/a/b', '/channel/r/', '/login/x', '/favicon.icon', '/r/<script>', '/.env']) assert.equal(isAppPath(p), false, p);
+    assert.equal(isAppPath('/privacy/'), true);
+  });
+
+  test('the public address comes from SITE_URL, else from the request', () => {
+    assert.equal(siteOrigin(req(), 'https://gap.example/'), 'https://gap.example');
+    assert.equal(siteOrigin(req(), ''), 'http://preview.example:8790');
+  });
+
+  test('the sitemap holds public pages only, and robots points at it', () => {
+    const xml = sitemapXml('https://gap.example');
+    assert.match(xml, /<loc>https:\/\/gap\.example\/<\/loc>/);
+    assert.match(xml, /<loc>https:\/\/gap\.example\/privacy<\/loc>/);
+    assert.doesNotMatch(xml, /dashboard|profile|\/r\//);
+    const robots = robotsTxt('https://gap.example');
+    assert.match(robots, /^Sitemap: https:\/\/gap\.example\/sitemap\.xml$/m);
+    assert.match(robots, /^Disallow: \/api\/$/m);
+  });
+
+  test('previews get an absolute image; only known pages get a canonical link', () => {
+    const html = '<head><meta property="og:image" content="/og.png" /><meta name="twitter:image" content="/og.png" /></head>';
+    const page = renderIndex(html, 'https://gap.example', '/terms/');
+    assert.equal(page.match(/content="https:\/\/gap\.example\/og\.png"/g).length, 2);
+    assert.match(page, /rel="canonical" href="https:\/\/gap\.example\/terms"/);
+    const missing = renderIndex(html, 'https://gap.example', '/"><script>alert(1)</script>');
+    assert.doesNotMatch(missing, /canonical|script/);
+  });
+
+  test('plain http is sent to https in production behind a proxy, and only then', () => {
+    const opts = { isProd: true, trustProxy: 1, siteUrl: '' };
+    assert.equal(httpsRedirectFor(req(), opts), 'https://preview.example:8790/x?a=1');
+    assert.equal(httpsRedirectFor(req(), { ...opts, siteUrl: 'https://gap.example' }), 'https://gap.example/x?a=1');
+    assert.equal(httpsRedirectFor(req({ secure: true }), opts), null);
+    assert.equal(httpsRedirectFor(req({ path: '/api/health' }), opts), null);
+    assert.equal(httpsRedirectFor(req(), { ...opts, isProd: false }), null);
+    assert.equal(httpsRedirectFor(req(), { ...opts, trustProxy: 0 }), null);
+  });
+});
+
+describe('theme palettes', () => {
+  // The owner's two palettes, tones 0 to 100 plus each key colour. Nothing else may be painted.
+  const PALETTE = `
+    000000 0C1C2C 233142 3A485B 516073 6A788C 8393A6 9EACC1 B9C9DD D5E5FA EAF1FF FFFFFF 0F1E2E
+    001352 002583 0038B7 1F4FDF 436BFA 6B89FF 92A8FF B8C4FF DDE1FF EFEFFF 2F5BEA
+    251A00 3A300D 524720 6B5E36 86764D A08F64 BCAA7D D8C597 F5E1B0 FFEFCD F3DFAE
+    1C1C19 31302D 474744 5F5E5C 787774 92918D ADABA8 C8C6C3 E6E2DE F4F0EC FBF8F3
+    1A1C1A 30312E 464744 5E5F5C 767774 90918E ABABA8 C6C7C4 E3E3E0 F1F1EE E8E8E4
+    1A1C1F 2D3134 45474A 5B5F62 75777B 8F9195 AAABAF C5C7CA E1E3E6 F0F1F5 F4F6FA
+    1D1C16 32302A 484740 605E57 79776F 949089 AFABA3 CBC6BD E7E2D9 F5F0E7 9A978F
+    1C1B1B 313030 474646 5F5E5E 787776 929090 ADABAA CAC6C5 E6E2E1 F4F0EF 050505
+  `.trim().split(/\s+/);
+  // Agreed exceptions: Google's own "G", and the ground of the logo video's artwork.
+  const EXCEPT = { 'GoogleButton.jsx': ['4285F4', '34A853', 'FBBC05', 'EA4335'], 'Logo.jsx': ['F4EFE4'] };
+  const root = new URL('../../web/', import.meta.url);
+  const files = [...readdirSync(new URL('src/', root), { recursive: true }).map((f) => `src/${f}`).filter((f) => /\.(jsx?|css)$/.test(f)), 'index.html', 'public/favicon.svg'];
+  const hex2 = (n) => Number(n).toString(16).padStart(2, '0').toUpperCase();
+
+  test('every colour in the web app comes from the palettes', () => {
+    const stray = [];
+    for (const f of files) {
+      const text = readFileSync(new URL(f, root), 'utf8');
+      const allowed = new Set([...PALETTE, ...(EXCEPT[f.split('/').pop()] ?? [])]);
+      for (const [, h] of text.matchAll(/#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g)) {
+        const full = (h.length === 3 ? [...h].map((c) => c + c).join('') : h).toUpperCase();
+        if (!allowed.has(full)) stray.push(`${f}: #${h}`);
+      }
+      for (const [, r, g, b] of text.matchAll(/rgba?\(\s*(\d+)[\s,_]+(\d+)[\s,_]+(\d+)/g)) {
+        const full = hex2(r) + hex2(g) + hex2(b);
+        if (!allowed.has(full)) stray.push(`${f}: rgb(${r} ${g} ${b})`);
+      }
+      if (/hsla?\(\s*\d/.test(text)) stray.push(`${f}: hsl()`);
+    }
+    assert.deepEqual(stray, []);
+  });
+
+  test('no default Tailwind colour classes slip in', () => {
+    const named = /\b(?:bg|text|border|ring|from|to|via|outline|fill|stroke)-(?:red|green|blue|yellow|amber|orange|emerald|sky|indigo|slate|gray|zinc|stone|rose|pink|purple|violet|teal|cyan|lime)-\d/;
+    for (const f of files) assert.doesNotMatch(readFileSync(new URL(f, root), 'utf8'), named, f);
+  });
+});
+
+test('only an unverified email-and-password account is kept out of the app', () => {
+  assert.equal(clientNeedsVerification({ provider: 'password', emailVerified: false }), true);
+  assert.equal(clientNeedsVerification({ provider: 'password', emailVerified: true }), false);
+  assert.equal(clientNeedsVerification({ provider: 'google.com', emailVerified: false }), false);
+  assert.equal(clientNeedsVerification(null), false);
+});
+
+describe('cancelling a run', async () => {
+  const jobs = await import('../src/lib/jobs.js');
+  const { withRun, throwIfCancelled, CancelledError } = await import('../src/lib/runContext.js');
+
+  test('the only owner stopping a run aborts it, and it settles as cancelled, not failed', () => {
+    const id = jobs.create({ niche: 'x' }, { owner: 'u1' });
+    let settled;
+    jobs.whenSettled(id, (err) => { settled = err; });
+    assert.equal(jobs.cancel(id, 'u1'), 'cancelled');
+    assert.equal(jobs.get(id).controller.signal.aborted, true);
+    jobs.markCancelled(id);
+    assert.equal(jobs.get(id).status, 'cancelled');
+    assert.equal(settled.code, 'CANCELLED');
+    assert.equal(jobs.get(id).result, null);
+  });
+
+  test('a run someone else joined carries on when one of them stops', () => {
+    const id = jobs.create({ niche: 'y' }, { owner: 'u1' });
+    jobs.addOwner(id, 'u2');
+    assert.equal(jobs.cancel(id, 'u1'), 'detached');
+    assert.equal(jobs.get(id).controller.signal.aborted, false);
+    assert.equal(jobs.cancel(id, 'u2'), 'cancelled');
+  });
+
+  test('a stranger cannot stop someone else\'s run, and a finished run has nothing to stop', () => {
+    const id = jobs.create({ niche: 'z' }, { owner: 'u1' });
+    assert.equal(jobs.cancel(id, 'intruder'), null);
+    assert.equal(jobs.cancel('no-such-job', 'u1'), null);
+    jobs.finish(id, { runId: 'r' });
+    assert.equal(jobs.cancel(id, 'u1'), 'finished');
+  });
+
+  test('throwIfCancelled does nothing outside a run and throws inside a stopped one', async () => {
+    assert.doesNotThrow(() => throwIfCancelled());
+    const controller = new AbortController();
+    await withRun({ signal: controller.signal }, async () => {
+      assert.doesNotThrow(() => throwIfCancelled());
+      controller.abort();
+      assert.throws(() => throwIfCancelled(), (e) => e instanceof CancelledError && e.code === 'CANCELLED');
+    });
+  });
+
+  test('the result cache keeps a finished analysis for 6 hours unless the environment says otherwise', () => {
+    if (!process.env.CACHE_TTL_SECONDS) assert.equal(config.cache.ttlSeconds, 21600);
+    if (!process.env.YOUTUBE_SOURCE_CACHE_SECONDS) assert.equal(config.cache.sourceTtlSeconds, 21600);
+  });
+});
+
+describe('offline', async () => {
+  const { isOffline, offlineError } = await import('../../web/src/lib/authErrors.js');
+  const { describeRunError } = await import('../../web/src/lib/runRows.js');
+
+  test('isOffline believes only an explicit false', () => {
+    const real = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    try {
+      for (const [onLine, expected] of [[false, true], [true, false], [undefined, false]]) {
+        Object.defineProperty(globalThis, 'navigator', { value: { onLine }, configurable: true });
+        assert.equal(isOffline(), expected);
+      }
+    } finally {
+      if (real) Object.defineProperty(globalThis, 'navigator', real); else delete globalThis.navigator;
+    }
+  });
+
+  test('the offline error reads as a connection problem and the run page shows it as one', () => {
+    const err = offlineError();
+    assert.equal(err.code, 'NETWORK');
+    assert.match(err.message, /internet connection/);
+    assert.equal(describeRunError(err).kind, 'offline');
+  });
+});
+
+describe('losing the connection mid-analysis', async () => {
+  const { pollJob } = await import('../../web/src/lib/api.js');
+  const { describeRunError } = await import('../../web/src/lib/runRows.js');
+  const setOnline = (onLine) => Object.defineProperty(globalThis, 'navigator', { value: { onLine }, configurable: true });
+
+  test('polling waits while offline: no request is sent and the run is not failed', async () => {
+    const realFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => { calls++; throw new TypeError('offline'); };
+    setOnline(false);
+    try {
+      let stop = false;
+      setTimeout(() => { stop = true; }, 120);
+      await assert.rejects(pollJob('j', null, { intervalMs: 10, isCancelled: () => stop }), (e) => e.cancelled === true);
+      assert.equal(calls, 0);
+    } finally { globalThis.fetch = realFetch; delete globalThis.navigator; }
+  });
+
+  test('many unanswered polls while the browser says online end as "still running", not a failure', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
+    setOnline(true);
+    try {
+      await assert.rejects(pollJob('j', null, { intervalMs: 1 }), (e) => e.code === 'RUN_UNREACHABLE');
+    } finally { globalThis.fetch = realFetch; delete globalThis.navigator; }
+    const shown = describeRunError({ code: 'RUN_UNREACHABLE', message: 'x' });
+    assert.equal(shown.kind, 'slow');
+    assert.match(shown.message, /still running/);
   });
 });

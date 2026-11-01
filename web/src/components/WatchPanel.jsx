@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useId, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { getWatches, createWatch, updateWatch, deleteWatch, getDigest } from '../lib/api.js';
+import { useConsent } from '../lib/consent.jsx';
 import { cx } from '../lib/cx.js';
 import { Badge } from './Bits.jsx';
 import { Button } from './ui/Button.jsx';
 import { Panel } from './ui/Panel.jsx';
+import { Collapse } from './ui/Disclosure.jsx';
 
 const INTERVALS = [
   { hours: 24, label: 'Daily' },
@@ -41,6 +43,7 @@ export function WatchPanel({ currentQuery, onOpenRun, mode = 'niche' }) {
   const [digests, setDigests] = useState({});
   const [busyId, setBusyId] = useState(null);
   const panelId = useId();
+  const ensureConsent = useConsent();
 
   const load = useCallback(() => {
     getWatches().then(setState).catch((e) => setError(e.message));
@@ -58,6 +61,8 @@ export function WatchPanel({ currentQuery, onOpenRun, mode = 'niche' }) {
 
   const add = async (hours) => {
     setError(null);
+    // A watch reads YouTube data on a schedule, and a shared report gets here without a run.
+    if (!(await ensureConsent())) return;
     try {
       await createWatch(currentQuery, hours);
       load();
@@ -103,14 +108,14 @@ export function WatchPanel({ currentQuery, onOpenRun, mode = 'niche' }) {
         variant="ghost"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-controls={open ? panelId : undefined}
+        aria-controls={panelId}
         className="-ml-2"
       >
         {open ? 'Hide watches' : `Watches${watches.length ? ` (${watches.length})` : ''}`}
-        <ChevronDown aria-hidden className={cx('h-4 w-4', open && 'rotate-180')} />
+        <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]', open && 'rotate-180')} />
       </Button>
 
-      {open && (
+      <Collapse open={open}>
         <Panel id={panelId} padding="none" className="mt-2 overflow-hidden">
           <div className="border-b border-line-soft px-5 py-4">
             <p className="max-w-[68ch] text-[15px] leading-relaxed text-fg-2">
@@ -224,7 +229,7 @@ export function WatchPanel({ currentQuery, onOpenRun, mode = 'niche' }) {
             );
           })}
         </Panel>
-      )}
+      </Collapse>
     </div>
   );
 }

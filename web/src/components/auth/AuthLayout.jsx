@@ -8,7 +8,7 @@ import { Link } from '../../lib/router.jsx';
  * the text, a glint crosses it, and every word ends fully bright.
  */
 const REALISTIC_LIGHT = true;
-const SPILL = { eyebrow: 0.55, phrase: 0.55, line: 0.6 }; // base-layer brightness outside the beams
+const SPILL = { eyebrow: 0.8, phrase: 0.85, line: 0.85 }; // base-layer brightness outside the beams
 
 /** What the brand panel says over the lights. Phrases, not viewer quotes: nothing here pretends to be a comment. */
 const BRANDS = {
@@ -26,7 +26,7 @@ const BRANDS = {
 
 function StudioBrand({ brand, lamps, bright = false }) {
   const { eyebrow, phrase, line } = BRANDS[brand] ?? BRANDS.quote;
-  const halo = '0 0 30px color-mix(in oklab, var(--accent) 55%, transparent), 0 0 4px color-mix(in oklab, var(--accent) 25%, transparent)';
+  const halo = '0 0 30px color-mix(in oklab, var(--sl-light) 55%, transparent), 0 0 4px color-mix(in oklab, var(--sl-light) 25%, transparent)';
 
   if (REALISTIC_LIGHT) {
     // Base layer: faint while the lamps blink, then it settles to a spill level; the bright
@@ -34,7 +34,7 @@ function StudioBrand({ brand, lamps, bright = false }) {
     const level = (n) => (bright ? undefined : { opacity: lamps.settled ? n : 0.1, transition: lamps.settled ? 'opacity 900ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none' });
     return (
       <div className="max-w-[440px]">
-        <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-fg-3" style={level(SPILL.eyebrow)}>{eyebrow}</p>
+        <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-fg-2" style={level(SPILL.eyebrow)}>{eyebrow}</p>
         <p
           className="mt-4 text-balance text-[44px] font-semibold leading-[1.08] tracking-[-0.03em]"
           style={{ ...level(SPILL.phrase), ...(bright ? { textShadow: halo } : {}) }}
@@ -53,7 +53,7 @@ function StudioBrand({ brand, lamps, bright = false }) {
   const dim = !bright && !lamps.flooded ? { opacity: 0.1 } : undefined;
   return (
     <div className="max-w-[440px]">
-      <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-fg-3" style={dim}>{eyebrow}</p>
+      <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-fg-2" style={dim}>{eyebrow}</p>
       <p
         className={`mt-4 text-balance text-[44px] font-semibold leading-[1.08] tracking-[-0.03em] ${live ? 'sl-sheen sl-bloom' : ''}`}
         style={{ ...dim, '--sh': 'var(--fg)', ...(bright ? { textShadow: halo } : {}) }}
@@ -107,10 +107,11 @@ function BeamText({ brand, lamps }) {
  * the form (passed as children), so the brand side uses no heading.
  *
  * `brand`: 'quote' (welcome back, for log in and reset) or 'benefits' (sign up).
+ * `onBack` replaces the "Back to overview" link with a "Back" button for that step.
  * The brand side is a dark studio whose ceiling lights flicker on (StudioLights);
  * its words light up with them.
  */
-export default function AuthLayout({ brand = 'quote', children }) {
+export default function AuthLayout({ brand = 'quote', onBack, children }) {
   const lamps = useStudioFlicker();
   return (
     <div className="min-h-dvh bg-bg text-fg lg:grid lg:grid-cols-[480fr_560fr]">
@@ -129,7 +130,7 @@ export default function AuthLayout({ brand = 'quote', children }) {
         </header>
       </div>
 
-      {/* The brand panel floats inside the page margin: deep navy in light mode, a lifted violet in dark. */}
+      {/* The brand panel floats inside the page margin: the Primary scale in light mode, Neutral in dark. */}
       <div className="theme-night hidden p-3 lg:block">
         <aside className="relative isolate flex h-[calc(100dvh-1.5rem)] min-h-[560px] flex-col justify-between overflow-hidden rounded-[3rem] bg-surface px-14 py-12 text-fg">
           <StudioLights state={lamps} className="-z-10" />
@@ -142,9 +143,15 @@ export default function AuthLayout({ brand = 'quote', children }) {
 
       <main id="auth-form" tabIndex={-1} className="flex flex-col items-center px-4 pb-14 pt-6 focus:outline-none sm:px-6 lg:min-h-dvh lg:pb-12">
         <div className="flex w-full max-w-[400px] items-center justify-between lg:max-w-[460px]">
-          <Link href="/" className="inline-flex min-h-11 items-center gap-1 text-sm text-fg-2 transition-colors hover:text-fg">
-            <ArrowLeft aria-hidden className="h-4 w-4" /> Back to overview
-          </Link>
+          {onBack ? (
+            <button type="button" onClick={onBack} className="inline-flex min-h-11 items-center gap-1 text-sm text-fg-2 transition-colors hover:text-fg">
+              <ArrowLeft aria-hidden className="h-4 w-4" /> Back
+            </button>
+          ) : (
+            <Link href="/" className="inline-flex min-h-11 items-center gap-1 text-sm text-fg-2 transition-colors hover:text-fg">
+              <ArrowLeft aria-hidden className="h-4 w-4" /> Back to overview
+            </Link>
+          )}
           <ThemeToggle className="-mr-2" />
         </div>
         <div className="fade-in mt-6 w-full max-w-[400px] lg:mt-16">{children}</div>

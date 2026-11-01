@@ -18,7 +18,7 @@ import {
 } from 'firebase/auth';
 import { auth, firebaseConfigured } from './firebase.js';
 import { acceptConsent, deleteMe, setTokenGetter } from './api.js';
-import { authError, notConfiguredError } from './authErrors.js';
+import { authError, isOffline, notConfiguredError, offlineError } from './authErrors.js';
 
 /**
  * Who is signed in. `user` is `{ uid, email, name, photoUrl, emailVerified,
@@ -46,6 +46,18 @@ const toUser = (fb) => fb && ({
   createdAt: fb.metadata?.creationTime ? new Date(fb.metadata.creationTime).toISOString() : null,
 });
 
+// Where Firebase's "email verified" page leads back to. A domain missing from
+// Firebase's authorized list makes the send fail, and a plain link beats no email.
+const sendVerification = (fb) =>
+  sendEmailVerification(fb, { url: `${window.location.origin}/dashboard` }).catch((err) => {
+    if (err?.code === 'auth/unauthorized-continue-uri') return sendEmailVerification(fb);
+    throw err;
+  });
+
+// A tab opened after verifying holds a token from before it, and the server trusts the token.
+const refreshStaleToken = (fb) =>
+  fb.getIdTokenResult().then((t) => (t.claims.email_verified === false ? fb.getIdToken(true) : null)).catch(() => {});
+
 const AuthContext = createContext(null);
 
 export const useAuth = () => {
@@ -57,6 +69,7 @@ export const useAuth = () => {
 /** Runs a Firebase call, turning whatever it throws into a plain-words Error. */
 async function guarded(fn) {
   if (!auth) throw notConfiguredError();
+  if (isOffline()) throw offlineError();
   try { return await fn(auth); } catch (err) { throw authError(err); }
 }
 
@@ -77,11 +90,15 @@ export function AuthProvider({ children }) {
       if (signingUp.current) return;
       setUser(toUser(fb));
       setLoading(false);
+      if (fb?.emailVerified && providerOf(fb) === 'password') refreshStaleToken(fb);
     });
   }, []);
 
   const signInWithGoogle = useCallback(() => guarded(async (a) => {
     const provider = new GoogleAuthProvider();
+    // Always show Google's account chooser, so a shared browser never signs someone in as
+    // whichever Google account happens to be open. No password is asked for here.
+    provider.setCustomParameters({ prompt: 'select_account' });
     try {
       await signInWithPopup(a, provider);
     } catch (err) {
@@ -97,7 +114,7 @@ export function AuthProvider({ children }) {
     try {
       const { user: fb } = await createUserWithEmailAndPassword(a, email, password);
       if (name) await updateProfile(fb, { displayName: name.trim() });
-      await sendEmailVerification(fb).catch(() => {}); // they can resend from the banner
+      await sendVerification(fb).catch(() => {}); // they can resend from the banner
       // The signup form has a required terms checkbox; this is where it is recorded.
       await acceptConsent().catch(() => {}); // not agreed here? the consent dialog asks later
       await fb.getIdToken(true); // so the token carries the display name
@@ -125,7 +142,7 @@ export function AuthProvider({ children }) {
 
   const resendVerification = useCallback(() => guarded(async (a) => {
     if (!a.currentUser) throw Object.assign(new Error('Log in first.'), { code: 'AUTH_REQUIRED' });
-    await sendEmailVerification(a.currentUser);
+    await sendVerification(a.currentUser);
   }), []);
 
   const getIdToken = useCallback(async (forceRefresh = false) => (
@@ -142,11 +159,54 @@ export function AuthProvider({ children }) {
     return next;
   }), []);
 
+  /**
+   * Quiet check behind useVerificationWatch: true once the email is verified.
+   * The token is only refreshed then, so polling never hits Firebase's token endpoint.
+   */
+  const checkVerified = useCallback(() => guarded(async (a) => {
+    const fb = a.currentUser;
+    if (!fb) return false;
+    await fb.reload();
+    if (!fb.emailVerified) return false;
+    await fb.getIdToken(true);
+    setUser(toUser(fb));
+    return true;
+  }), []);
+
+  /**
+   * Removes an unverified account, so its address is free to sign up again.
+   * Resolves false, leaving the account alone, if it turns out to be verified:
+   * the link may have been opened a moment ago in another tab.
+   */
+  const discardNewAccount = useCallback(() => guarded(async (a) => {
+    const fb = a.currentUser;
+    if (!fb) return true;
+    await fb.reload();
+    if (fb.emailVerified) {
+      await fb.getIdToken(true);
+      setUser(toUser(fb));
+      return false;
+    }
+    await deleteMe().catch(() => {}); // an unverified account holds nothing worth stopping for
+    try {
+      await deleteUser(fb);
+    } catch (err) {
+      // An older session may not delete without a fresh sign-in: leaving it signed out is enough.
+      if (err?.code !== 'auth/requires-recent-login') throw err;
+    }
+    await signOut(a).catch(() => {});
+    return true;
+  }), []);
+
   const deleteAccount = useCallback(({ password } = {}) => guarded(async (a) => {
     const fb = a.currentUser;
     if (!fb) throw Object.assign(new Error('Log in first.'), { code: 'AUTH_REQUIRED' });
     // Deleting an account needs a recent sign-in, so prove it again first.
-    if (providerOf(fb) === 'google.com') await reauthenticateWithPopup(fb, new GoogleAuthProvider());
+    if (providerOf(fb) === 'google.com') {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'login', login_hint: fb.email ?? undefined }); // Google asks for the password again
+      await reauthenticateWithPopup(fb, provider);
+    }
     else await reauthenticateWithCredential(fb, EmailAuthProvider.credential(fb.email, password ?? ''));
     await deleteMe(); // our server's data first; the Firebase account is the last thing to go
     await deleteUser(fb);
@@ -166,7 +226,9 @@ export function AuthProvider({ children }) {
     deleteAccount,
     getIdToken,
     reloadUser,
-  }), [user, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, sendReset, signOutUser, resendVerification, deleteAccount, getIdToken, reloadUser]);
+    checkVerified,
+    discardNewAccount,
+  }), [user, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, sendReset, signOutUser, resendVerification, deleteAccount, getIdToken, reloadUser, checkVerified, discardNewAccount]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
