@@ -32,7 +32,7 @@ const dataDate = (result) => {
 const asOf = (result) => (dataDate(result) ? `YouTube data as of ${dataDate(result)}` : 'YouTube data');
 // CSV stays one record per row, so a spreadsheet import never trips on footer
 // lines: the provenance rides along as two trailing columns instead.
-const CSV_SOURCE = 'YouTube API Services; scores calculated by Gapstronaut, not YouTube metrics';
+const CSV_SOURCE = 'YouTube API Services';
 const withSource = (result, rows) => rows.map((r, i) => (i === 0 ? [...r, 'data_as_of', 'source'] : [...r, dataDate(result), CSV_SOURCE]));
 const watchUrl = (id) => `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
 const quoteSource = (e) => (e.videoId ? ` ([video](${watchUrl(e.videoId)}))` : '');

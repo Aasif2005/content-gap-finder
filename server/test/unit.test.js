@@ -797,7 +797,7 @@ describe('export serializers', () => {
   test('exports say where the data came from, when, and which figures are ours', () => {
     const [header, row] = gapsToCsv(result).split('\r\n');
     assert.match(header, /,data_as_of,source$/);
-    assert.match(row, /2026-09-24 \d\d:\d\d UTC,"YouTube API Services; scores calculated by Gapstronaut, not YouTube metrics"$/);
+    assert.match(row, /2026-09-24 \d\d:\d\d UTC,YouTube API Services$/);
     const md = reportToMarkdown(result);
     assert.match(md, /YouTube data as of 2026-09-24/);
     assert.match(md, /not YouTube metrics/);

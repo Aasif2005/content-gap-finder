@@ -9,6 +9,7 @@ import { Derived } from '../ui/Derived.jsx';
 import { Disclosure, Collapse } from '../ui/Disclosure.jsx';
 import { compact } from '../../lib/format.js';
 import { cx } from '../../lib/cx.js';
+import { EqualRows } from './EqualRows.jsx';
 
 const ROW_SUMMARY = 'flex min-h-11 cursor-pointer list-none gap-4 px-5 py-5 transition-colors hover:bg-surface-2 sm:px-6 [&::-webkit-details-marker]:hidden';
 // One white card holding hairline-separated rows (gaps, skip).
@@ -333,12 +334,14 @@ export function ReportSections({ result, canMake, canRun, evidence }) {
         <div>
           {result.objections?.length ? (
             <>
-            <div className="grid items-start gap-4 md:grid-cols-2">
+            <EqualRows className="md:grid-cols-2">
               {result.objections.slice(0, PREVIEW).map((o, i) => <ComplaintTile key={o.label + i} objection={o} rank={i + 1} />)}
-            </div>
+            </EqualRows>
             {result.objections.length > PREVIEW && (
-              <Collapse open={open.complaints} className="grid items-start gap-4 pt-4 md:grid-cols-2">
+              <Collapse open={open.complaints} className="pt-4">
+                <EqualRows className="md:grid-cols-2">
                 {result.objections.slice(PREVIEW).map((o, i) => <ComplaintTile key={o.label + i + PREVIEW} objection={o} rank={i + PREVIEW + 1} />)}
+                </EqualRows>
               </Collapse>
             )}
             </>
@@ -364,12 +367,14 @@ export function ReportSections({ result, canMake, canRun, evidence }) {
         <div>
           {result.topics.length ? (
             <>
-            <div className="grid items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <EqualRows className="md:grid-cols-2 lg:grid-cols-3">
               {result.topics.slice(0, 3).map((t, i) => <TrendTile key={t.label + i} topic={t} rank={i + 1} />)}
-            </div>
+            </EqualRows>
             {result.topics.length > 3 && (
-              <Collapse open={open.trending} className="grid items-start gap-4 pt-4 md:grid-cols-2 lg:grid-cols-3">
+              <Collapse open={open.trending} className="pt-4">
+                <EqualRows className="md:grid-cols-2 lg:grid-cols-3">
                 {result.topics.slice(3).map((t, i) => <TrendTile key={t.label + i + 3} topic={t} rank={i + 4} />)}
+                </EqualRows>
               </Collapse>
             )}
             </>
