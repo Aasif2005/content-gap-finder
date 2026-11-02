@@ -3,7 +3,7 @@ import * as jobs from '../lib/jobs.js';
 import * as cache from '../lib/cache.js';
 import { rateLimit, briefRateLimit, createRateLimit } from '../lib/rateLimit.js';
 import * as brief from '../services/brief.js';
-import { quotaStatus, quotaDay, nextQuotaReset } from '../lib/quota.js';
+import { quotaStatus, quotaDay, nextQuotaReset, canAfford } from '../lib/quota.js';
 import * as runner from '../services/runner.js';
 import { config } from '../config.js';
 import { MAX_CUSTOM_WINDOW_DAYS, parseChannelInput } from '../services/youtube.js';
@@ -29,6 +29,16 @@ const quietly = (p) => Promise.resolve(p).catch((err) => console.error('[account
 // that need an account say so with requireUser.
 router.use(loadUser);
 
+/**
+ * YouTube's API policies (III.A): reading YouTube data needs the account's
+ * agreement to the Terms and Privacy Policy. The app asks before every analysis
+ * or draft (web/src/lib/consent.jsx); this holds for any other client too.
+ */
+const requireTerms = wrap(async (req, res, next) => {
+  if ((await getUser(req.user.uid))?.termsAcceptedAt) return next();
+  res.status(403).json({ error: 'Agree to the Terms and Privacy Policy first.', code: 'TERMS_REQUIRED' });
+});
+
 /** A client-fixable input problem: 400 with a code that says so. */
 const bad = (message) => Object.assign(new Error(message), { status: 400, code: 'VALIDATION' });
 
@@ -43,6 +53,24 @@ export function dailyLimitBody(limit, noun, now = new Date()) {
     error: `You've used your ${limit} ${limit === 1 ? noun[0] : noun[1]} for today. They reset at midnight Pacific.`,
     resetsAt: nextQuotaReset(now),
   };
+}
+
+/**
+ * YouTube answered, but the person's own input or filters left nothing usable.
+ * Free retries here would let one account spend the project's search quota
+ * without limit (a minViews nothing passes, a new niche each time), so these stay charged.
+ */
+const INPUT_FAILURES = new Set(['NO_RESULTS', 'NO_RESULTS_AFTER_FILTER', 'CHANNEL_NOT_FOUND', 'CHANNEL_NO_UPLOADS', 'VALIDATION']);
+
+/**
+ * Whether a failed analysis keeps its charge. Only a cancel (started on purpose,
+ * quota spent) and an input failure do. Everything on our side or YouTube's is
+ * refunded even when YouTube was already called: QUOTA_EXHAUSTED / QUOTA_BUSY
+ * (the project's daily quota, not the person's fault), YOUTUBE_ERROR (5xx and
+ * other API errors) and any error with no code (our own backend).
+ */
+export function chargedFailure(err) {
+  return err?.code === 'CANCELLED' || INPUT_FAILURES.has(err?.code);
 }
 
 // Watches carry their owner's uid for filtering; clients have no use for it.
@@ -128,12 +156,12 @@ router.get('/health', (_req, res) => res.json({ ok: true }));
  * no YouTube quota and so is free -- and either way the report is linked to the
  * caller, so it shows up in their history.
  */
-router.post('/analyze', requireUser, requireVerified, wrap(async (req, res) => {
+router.post('/analyze', requireUser, requireVerified, requireTerms, wrap(async (req, res) => {
   const uid = req.user.uid;
   const input = validate(req.body ?? {}); // a 400 reaches the error handler through wrap()
 
   const force = req.body?.force === true;
-  const key = cache.cacheKey(input);
+  const key = runner.analysisKey(input);
 
   // A cache hit costs nothing, so it bypasses the rate limit entirely --
   // browsing already-computed reports should never be throttled.
@@ -153,6 +181,12 @@ router.post('/analyze', requireUser, requireVerified, wrap(async (req, res) => {
     jobs.addOwner(running, uid);
     jobs.whenSettled(running, (err, result) => { if (!err) quietly(linkRun(uid, result?.runId)); });
     return res.status(202).json({ status: 'running', jobId: running, cached: false, joined: true });
+  }
+
+  // A fresh run the shared YouTube quota cannot finish would spend its search
+  // calls and then fail: say so up front, before anything is charged.
+  if (!(await canAfford({ contentType: input.contentType, deepScan: input.deepScan, channelMode: Boolean(input.channelId) }))) {
+    throw Object.assign(new Error('Daily YouTube quota cannot cover another analysis.'), { status: 503, code: 'QUOTA_EXHAUSTED' });
   }
 
   // The allowance is taken BEFORE the per-person limiter so someone who is out of
@@ -183,13 +217,9 @@ router.post('/analyze', requireUser, requireVerified, wrap(async (req, res) => {
     if (started.status === 'done') await linkRun(uid, started.result?.runId);
     else jobs.whenSettled(started.jobId, (err, result) => { if (!err) quietly(linkRun(uid, result?.runId)); });
   } else {
-    // Refund on ANY failure. Telling "failed before spending YouTube quota"
-    // from "failed after" would need the pipeline to report its spend, and the
-    // person who sees a failed run is owed the analysis either way; the quota
-    // ledger is what protects the project, not this counter.
+    // Refunded unless the failure was the person's own doing: see chargedFailure.
     jobs.whenSettled(started.jobId, (err, result) => {
-      // A run the person stopped was started on purpose and its quota was spent, so it stays charged.
-      if (err) { if (err.code !== 'CANCELLED') quietly(refund(uid, day, 'analyses')); }
+      if (err) { if (!chargedFailure(err)) quietly(refund(uid, day, 'analyses')); }
       else quietly(linkRun(uid, result?.runId));
     });
   }
@@ -275,9 +305,11 @@ router.get('/runs', wrap(async (req, res) => {
   // Your history is the reports you ran or joined, not everyone's: the index is shared.
   if (!req.user) return res.json({ runs: [] });
   const limit = clampLimit(req.query.limit, 30, 200);
+  const own = await runIdsFor(req.user.uid);
   res.json({
     runs: store.ownRuns(await store.listRuns({
-      limit: Infinity,
+      limit,
+      runIds: own,
       // Same key derivation the pipeline and the store use, so "runs of this
       // subject" means one thing everywhere.
       nicheKey: req.query.niche || req.query.channelId
@@ -286,7 +318,7 @@ router.get('/runs', wrap(async (req, res) => {
       // Scopes history to one page's mode (niche explorer vs channel analyzer)
       // when the caller isn't already asking for one specific subject.
       channelMode: req.query.mode === 'channel' ? true : req.query.mode === 'niche' ? false : undefined,
-    }), await runIdsFor(req.user.uid)).slice(0, limit),
+    }), own),
   });
 }));
 
@@ -321,7 +353,7 @@ router.get('/runs/:runId/gaps/:i/brief', wrap(async (req, res) => {
   res.json({ status: saved ? 'done' : 'none', cached: Boolean(saved), brief: saved });
 }));
 
-router.post('/runs/:runId/gaps/:i/brief', requireUser, requireVerified, wrap(async (req, res) => {
+router.post('/runs/:runId/gaps/:i/brief', requireUser, requireVerified, requireTerms, wrap(async (req, res) => {
   const uid = req.user.uid;
   const index = Number(req.params.i);
   const force = req.body?.force === true;
@@ -331,6 +363,11 @@ router.post('/runs/:runId/gaps/:i/brief', requireUser, requireVerified, wrap(asy
   const style = ['points', 'script'].includes(req.body?.style) ? req.body.style : '';
   const minutes = Number(req.body?.targetMinutes);
   const targetMinutes = Number.isInteger(minutes) && minutes >= 1 && minutes <= config.brief.maxMinutes ? minutes : null;
+  // A redraft replaces the one saved brief everyone with the link sees, so only
+  // someone who has this report in their own history may ask for one.
+  if (force && !(await runIdsFor(uid)).includes(req.params.runId)) {
+    return res.status(403).json({ error: 'Only someone who ran this report can redraft its briefs.', code: 'NOT_OWNER' });
+  }
   {
     // Saved briefs and joins of a running job cost nothing, so they skip the limiter.
     const free = !force && ((await store.readBrief(req.params.runId, index, language)) || null);
@@ -359,7 +396,7 @@ router.post('/runs/:runId/gaps/:i/brief', requireUser, requireVerified, wrap(asy
       const started = await brief.startBrief(req.params.runId, index, { force, language, format, style, targetMinutes, core: req.body?.core === true,
         // Which saved brief's essentials to keep; null re-plans from scratch.
         planFrom: typeof req.body?.planFrom === 'string' ? req.body.planFrom.trim().slice(0, 40) : null });
-      if (started.status === 'done' || !started.jobId) await refund(uid, day, 'briefs');
+      if (started.status === 'done' || !started.jobId || started.joined) await refund(uid, day, 'briefs');
       else jobs.whenSettled(started.jobId, (err) => { if (err) quietly(refund(uid, day, 'briefs')); }); // a failed draft is owed back
       res.status(started.status === 'done' ? 200 : 202).json(started);
     } catch (err) {
@@ -505,16 +542,17 @@ router.get('/avatar/:uid', wrap(async (req, res) => {
 }));
 
 /**
- * Deletes everything held about the account: profile (and picture), report links, usage,
- * watches and waitlist rows. Reports and drafts stay: other people may have the same report
- * linked, it holds no personal data about the deleted person, and the retention
+ * Deletes everything held about the account: profile (and picture), report links, usage
+ * (except today's counter, see deleteUserData), watches and waitlist rows. Reports and
+ * drafts stay: other people may have the same report linked, it holds no personal
+ * data about the deleted person, and the retention
  * sweep removes it within YOUTUBE_DATA_MAX_DAYS regardless. The browser deletes
  * the Firebase account itself (the server holds no admin credentials).
  */
 router.delete('/me', requireUser, wrap(async (req, res) => {
   const { uid, email } = req.user;
   await watches.removeOwned(uid);
-  await deleteUserData(uid, email);
+  await deleteUserData(uid, email, quotaDay());
   forgetUser(uid);
   res.json({ ok: true });
 }));

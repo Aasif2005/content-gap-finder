@@ -253,6 +253,7 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
       const baselines = await yt.getChannelBaselines(topChannels, { minAgeDays: config.outlier.minBaselineAgeDays });
       outlierSummary = annotateOutliers(ranked, baselines);
     } catch (err) {
+      if (err.code === 'CANCELLED') throw err; // stopped: end the run here, not at the next checkpoint
       console.error('[pipeline] channel baselines failed:', err.message);
       warnings.push('Channel-median outliers were not measured for this run.');
     }

@@ -148,7 +148,11 @@ export function unitsPerAnalysis({ contentType = 'both', deepScan = false, chann
   // a videos.list batch per channel. Channel mode is already one channel's own
   // uploads, so it needs none.
   const baseline = channelMode ? 0 : config.outlier.channels * (cost.playlistItems + cost.videos);
-  return discovery + cost.videos + cost.channels + cost.commentThreads * maxCommentVideos + baseline;
+  // Each search slice brings up to 50 videos, and videos.list / channels.list take
+  // 50 ids a call, so a niche pool needs one batch of each per slice (a 2-slice
+  // long-form search is 100 videos: 2 + 2 calls, not 1 + 1).
+  const batches = channelMode ? 1 : Math.max(1, searchCallsPerAnalysis({ contentType, deepScan }));
+  return discovery + batches * (cost.videos + cost.channels) + cost.commentThreads * maxCommentVideos + baseline;
 }
 
 /** search.list calls one analysis makes: one per slice, none in channel mode. */

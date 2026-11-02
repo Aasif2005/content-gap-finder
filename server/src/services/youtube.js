@@ -10,6 +10,15 @@ export { searchPlan };
 const { base, apiKey } = config.youtube;
 
 /**
+ * YouTube's ways of saying the project's daily quota is gone: QUOTA_EXHAUSTED, which
+ * stops the run (nothing more can be fetched today). A short-term rate limit is a
+ * YOUTUBE_ERROR instead, so one throttled comment fetch does not end the run.
+ * Both are system-side and refunded (routes/api.js chargedFailure).
+ */
+const QUOTA_REASONS = new Set(['quotaExceeded', 'dailyLimitExceeded']);
+export const youtubeErrorCode = (reason) => (QUOTA_REASONS.has(reason) ? 'QUOTA_EXHAUSTED' : 'YOUTUBE_ERROR');
+
+/**
  * The key for a cached response. The search window's start moves every
  * millisecond (it is "now minus N days"), so it is rounded to the hour or no
  * two runs would ever share a key.
@@ -57,7 +66,7 @@ async function call(endpoint, params, quotaKind, quotaTimes = 1) {
     );
     err.status = res.status;
     err.reason = reason;
-    err.code = reason === 'quotaExceeded' ? 'QUOTA_EXHAUSTED' : 'YOUTUBE_ERROR';
+    err.code = youtubeErrorCode(reason);
     throw err;
   }
   const data = await res.json();
@@ -414,7 +423,7 @@ export async function getChannelBaselines(channelIds, { minAgeDays = 0 } = {}) {
       });
       idsByChannel.set(channelId, hits.map((h) => h.videoId));
     } catch (err) {
-      if (err.code === 'QUOTA_EXHAUSTED') throw err;
+      if (err.code === 'QUOTA_EXHAUSTED' || err.code === 'CANCELLED') throw err;
     }
   }
 

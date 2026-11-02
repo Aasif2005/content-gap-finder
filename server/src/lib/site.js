@@ -21,9 +21,19 @@ const trimSlashes = (path) => (path.length > 1 ? path.replace(/\/+$/, '') : path
 
 export const isAppPath = (path) => APP_PATHS.some((re) => re.test(trimSlashes(path)));
 
+/**
+ * The request's Host, only if it is a plain hostname[:port]. Without SITE_URL the
+ * origin is built from it, and it lands in HTML attributes, the sitemap and the
+ * https redirect: a crafted Host (quotes, slashes, @) must never get that far.
+ */
+export function safeHost(req) {
+  const host = String(req.get('host') ?? '');
+  return /^[a-z0-9.-]{1,253}(:\d{1,5})?$/i.test(host) ? host : 'localhost';
+}
+
 /** The site's public origin, with no trailing slash. */
 export function siteOrigin(req, configured = config.site.url) {
-  return configured ? configured.replace(/\/+$/, '') : `${req.protocol}://${req.get('host')}`;
+  return configured ? configured.replace(/\/+$/, '') : `${req.protocol}://${safeHost(req)}`;
 }
 
 export function sitemapXml(origin) {

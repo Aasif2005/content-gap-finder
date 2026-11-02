@@ -90,9 +90,9 @@ export function fail(id, error) {
     status: 'error',
     detail: 'Failed',
     // Polled by the browser, so it holds only what a visitor may read. The runner has logged the rest.
-    error: { message: publicMessage(error, RUN_FAILED), code: error.code ?? null },
+    error: { message: publicMessage(error, RUN_FAILED), code: error?.code ?? null },
   });
-  settle(id, jobs.get(id)?.error ?? { message: publicMessage(error, RUN_FAILED), code: error.code ?? null }, null);
+  settle(id, jobs.get(id)?.error ?? { message: publicMessage(error, RUN_FAILED), code: error?.code ?? null }, null);
 }
 
 /** Someone joined a run already in flight: stopping it now needs them to agree too. */
@@ -120,6 +120,23 @@ export function markCancelled(id) {
   const error = { message: 'Stopped.', code: 'CANCELLED' };
   update(id, { status: 'cancelled', detail: 'Cancelled', error });
   settle(id, error, null);
+}
+
+/**
+ * For shutdown: waits up to `ms` for running jobs to land, then fails any still
+ * running, so their settle callbacks (refunds) fire before the process goes and
+ * nobody is left charged for a run a redeploy killed. Resolves to how many it failed.
+ */
+export async function drain(ms) {
+  const deadline = Date.now() + ms;
+  const running = () => [...jobs.values()].filter((j) => j.status === 'running');
+  while (running().length && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));
+  const left = running();
+  for (const job of left) {
+    job.controller.abort();
+    fail(job.id, new Error('The server restarted during this run.'));
+  }
+  return left.length;
 }
 
 // Keep the map from growing without bound in a long-lived process.

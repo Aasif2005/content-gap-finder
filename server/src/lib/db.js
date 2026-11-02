@@ -135,14 +135,19 @@ export async function refund(uid, day, kind) {
   await col('usage').updateOne({ uid, day, [f]: { $gt: 0 } }, { $inc: { [f]: -1 } });
 }
 
-/** Erases everything held about one account. Reports are not touched; see routes/api.js. */
-export async function deleteUserData(uid, email = null) {
+/**
+ * Erases everything held about one account. Reports are not touched; see routes/api.js.
+ * Today's usage counter (`keepDay`) stays until its TTL: it holds only counts, and
+ * deleting it would hand a fresh daily allowance to anyone who calls DELETE /me
+ * and carries on with the same sign-in.
+ */
+export async function deleteUserData(uid, email = null, keepDay = null) {
   // A waitlist row may hold the address without the uid: joined while logged out.
   const waitlistRows = email ? { $or: [{ uid }, { email: String(email).toLowerCase() }] } : { uid };
   const [users, runs, usage, waitlist] = await Promise.all([
     col('users').deleteOne({ _id: uid }),
     col('user_runs').deleteMany({ uid }),
-    col('usage').deleteMany({ uid }),
+    col('usage').deleteMany(keepDay ? { uid, day: { $ne: keepDay } } : { uid }),
     col('waitlist').deleteMany(waitlistRows),
   ]);
   return { users: users.deletedCount, runs: runs.deletedCount, usage: usage.deletedCount, waitlist: waitlist.deletedCount };

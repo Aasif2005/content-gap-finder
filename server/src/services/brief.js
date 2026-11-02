@@ -697,70 +697,79 @@ export async function startBrief(runId, index, { force = false, language = '', f
   }
 
   const key = briefKey(runId, index, language);
-  if (inFlight.has(key)) return { status: 'running', jobId: inFlight.get(key), cached: false };
+  // Joined: someone else's request is drafting it, so this one spent nothing (the route refunds it).
+  if (inFlight.has(key)) return { status: 'running', jobId: inFlight.get(key), cached: false, joined: true };
 
   const id = jobs.create({ kind: 'brief', runId, index, language });
   inFlight.set(key, id);
   jobs.update(id, { phase: 'gaps', detail: 'Drafting hooks, script and SEO', progress: 15 });
 
-  const house = houseTitles(run);
-  const corpus = [run.query.niche ?? '', run.channel?.title ?? '', gap.question, gap.suggestedTitle, ...gap.evidence.map((e) => e.text)].join(' ');
-  const nameCorpus = [corpus, ...(gap.coveringVideos ?? []).map((v) => v.title), ...house].join(' ');
-  const format = formatOverride || gap.suggestedFormat;
-  const target = isShortFormat(format) ? null : targetMinutes;
-  // Reports saved before sensitivity was recorded on the gap get it detected here.
-  const sensitive = gap.sensitive
-    ?? assessSensitivity([gap.question, gap.explanation, ...gap.evidence.map((e) => e.text)].join(' '));
-  const opportunity = buildOpportunity(gap);
-  // A full long-form script is several times the words of an outline.
-  const maxTokens = style !== 'points' && !isShortFormat(format) ? 22000 : 14000;
+  // Anything below that throws before the model call is chained must still free
+  // the key, or every later request joins a job that never settles.
+  try {
+    const house = houseTitles(run);
+    const corpus = [run.query.niche ?? '', run.channel?.title ?? '', gap.question, gap.suggestedTitle, ...gap.evidence.map((e) => e.text)].join(' ');
+    const nameCorpus = [corpus, ...(gap.coveringVideos ?? []).map((v) => v.title), ...house].join(' ');
+    const format = formatOverride || gap.suggestedFormat;
+    const target = isShortFormat(format) ? null : targetMinutes;
+    // Reports saved before sensitivity was recorded on the gap get it detected here.
+    const sensitive = gap.sensitive
+      ?? assessSensitivity([gap.question, gap.explanation, ...gap.evidence.map((e) => e.text)].join(' '));
+    const opportunity = buildOpportunity(gap);
+    // A full long-form script is several times the words of an outline.
+    const maxTokens = style !== 'points' && !isShortFormat(format) ? 22000 : 14000;
 
-  // The plan comes from the saved brief in the database, never from the request body.
-  // A core cut is that plan minus the optional (single-comment) essentials, so
-  // it is decided in code rather than by asking the model to drop something.
-  // A read failure here must not leave the draft marked running forever.
-  const saved = planFrom !== null ? await store.readBrief(runId, index, planFrom).catch(() => null) : null;
-  let plan = (saved?.essentials ?? []).map(({ point, answers, seconds, demo, thin }) => ({ point, answers, seconds, demo, thin }));
-  if (core && plan.length) plan = plan.filter((e) => !e.thin);
-  if (isShortFormat(format) && !isShortFormat(saved?.runtime?.format)) plan = []; // a Short re-plans: it holds at most 2
-  plan = plan.map(({ thin, ...e }) => e);
-  const usePlan = plan.length > 0;
+    // The plan comes from the saved brief in the database, never from the request body.
+    // A core cut is that plan minus the optional (single-comment) essentials, so
+    // it is decided in code rather than by asking the model to drop something.
+    // A read failure here must not leave the draft marked running forever.
+    const saved = planFrom !== null ? await store.readBrief(runId, index, planFrom).catch(() => null) : null;
+    let plan = (saved?.essentials ?? []).map(({ point, answers, seconds, demo, thin }) => ({ point, answers, seconds, demo, thin }));
+    if (core && plan.length) plan = plan.filter((e) => !e.thin);
+    if (isShortFormat(format) && !isShortFormat(saved?.runtime?.format)) plan = []; // a Short re-plans: it holds at most 2
+    plan = plan.map(({ thin, ...e }) => e);
+    const usePlan = plan.length > 0;
 
-  chatJSON({
-    system: systemPrompt({ format, language, sensitive, style, targetMinutes: target, core: core && !usePlan && !isShortFormat(format), plan: usePlan ? plan : null }),
-    user: briefPrompt({ run, gap, language }),
-    maxTokens,
-    ...(config.brief.thinking ? { thinking: config.brief.thinking, temperature: config.brief.temperature } : {}),
-  })
-    .then(async ({ data, usage }) => {
-      const languageRepair = await repairLanguage(data, language);
-      return { data, usage, languageRepair };
+    chatJSON({
+      system: systemPrompt({ format, language, sensitive, style, targetMinutes: target, core: core && !usePlan && !isShortFormat(format), plan: usePlan ? plan : null }),
+      user: briefPrompt({ run, gap, language }),
+      maxTokens,
+      ...(config.brief.thinking ? { thinking: config.brief.thinking, temperature: config.brief.temperature } : {}),
     })
-    .then(async ({ data, usage, languageRepair }) => {
-      const brief = {
-        ...finalizeBrief(data, {
-          title: gap.suggestedTitle, thumbnailText: gap.thumbnailText, corpus, nameCorpus, format, sensitive,
-          evidenceCount: Math.min(EVIDENCE_SHOWN, gap.evidence.length),
-          evidenceLikes: gap.evidence.slice(0, EVIDENCE_SHOWN).map((e) => e.likes ?? 0),
-          opportunity, style, targetMinutes: target, plan: usePlan ? plan : null,
-        }),
-        languageRepair,
-        // Fields still not in the requested language after any repair.
-        languageDrift: mismatchedFields(data, language).map((f) => f.id),
-        runId,
-        gapIndex: index,
-        language,
-        generatedAt: new Date().toISOString(),
-        usage: { total_tokens: usage?.total_tokens ?? null },
-      };
-      try { await store.saveBrief(runId, index, brief, language); } catch (err) { console.error(`[brief ${id}] could not persist:`, err.message); }
-      jobs.finish(id, brief);
-    })
-    .catch((err) => {
-      console.error(`[brief ${id}] failed:`, err.message);
-      jobs.fail(id, err);
-    })
-    .finally(() => inFlight.delete(key));
+      .then(async ({ data, usage }) => {
+        const languageRepair = await repairLanguage(data, language);
+        return { data, usage, languageRepair };
+      })
+      .then(async ({ data, usage, languageRepair }) => {
+        const brief = {
+          ...finalizeBrief(data, {
+            title: gap.suggestedTitle, thumbnailText: gap.thumbnailText, corpus, nameCorpus, format, sensitive,
+            evidenceCount: Math.min(EVIDENCE_SHOWN, gap.evidence.length),
+            evidenceLikes: gap.evidence.slice(0, EVIDENCE_SHOWN).map((e) => e.likes ?? 0),
+            opportunity, style, targetMinutes: target, plan: usePlan ? plan : null,
+          }),
+          languageRepair,
+          // Fields still not in the requested language after any repair.
+          languageDrift: mismatchedFields(data, language).map((f) => f.id),
+          runId,
+          gapIndex: index,
+          language,
+          generatedAt: new Date().toISOString(),
+          usage: { total_tokens: usage?.total_tokens ?? null },
+        };
+        try { await store.saveBrief(runId, index, brief, language); } catch (err) { console.error(`[brief ${id}] could not persist:`, err.message); }
+        jobs.finish(id, brief);
+      })
+      .catch((err) => {
+        console.error(`[brief ${id}] failed:`, err.message);
+        jobs.fail(id, err);
+      })
+      .finally(() => inFlight.delete(key));
+  } catch (err) {
+    inFlight.delete(key);
+    jobs.fail(id, err);
+    throw err;
+  }
 
   return { status: 'running', jobId: id, cached: false };
 }

@@ -96,8 +96,10 @@ export async function readRun(runId) {
  * Newest first. `nicheKey` narrows to one niche's history, which is what the
  * recurrence pass and the "previous runs of this niche" UI both want.
  */
-export async function listRuns({ limit = 30, nicheKey: key, channelId, channelMode } = {}) {
+export async function listRuns({ limit = 30, nicheKey: key, channelId, channelMode, runIds } = {}) {
   const filter = {};
+  // One person's history: only their own runs are read, not the whole shared index.
+  if (runIds) filter._id = { $in: [...runIds] };
   if (key) filter.nicheKey = key;
   if (channelId) filter.channelId = channelId;
   // Lets the two separate pages (niche explorer / channel analyzer) each show

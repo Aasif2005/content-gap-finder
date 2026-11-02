@@ -7,7 +7,7 @@ import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.j
 import { parseCommentIndex, selectComments, groundGaps, groundObjections, truncate } from '../src/services/analyze.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords, nicheVideoIdSet } from '../src/lib/relevance.js';
 import { avoidVerdict } from '../src/lib/avoid.js';
-import { commentErrorKind } from '../src/services/youtube.js';
+import { commentErrorKind, youtubeErrorCode } from '../src/services/youtube.js';
 import { arrayOf } from '../src/services/analyze.js';
 import { hasScriptFilter, matchesLanguageScript, hasLatinHeuristic, matchesLatinLanguage, languageQueryHint, matchesAudioLanguage, matchesRequestedLanguage, namedLanguages, languageDecision, languageMismatch, languageCodeFor } from '../src/lib/language.js';
 import { scoreVideos, scoreTopic } from '../src/lib/heat.js';
@@ -59,9 +59,10 @@ import { upsertUser, getUser, acceptTerms, linkRun, runIdsFor, usageFor, tryCons
 import { ownRuns, featuredCandidates, featuredReports, trimFeatured } from '../src/lib/store.js';
 import { isPublicSafe } from '../src/lib/publicFilter.js';
 import { ownedBy, ownedWatch, atOwnerCap, hasDuplicate } from '../src/lib/watches.js';
-import { dailyLimitBody } from '../src/routes/api.js';
+import { dailyLimitBody, chargedFailure } from '../src/routes/api.js';
 import { normalizeEmail, joinWaitlist } from '../src/lib/waitlist.js';
 import * as jobsRegistry from '../src/lib/jobs.js';
+import { analysisKey } from '../src/services/runner.js';
 
 describe('parseDuration', () => {
   test('parses the ISO-8601 forms YouTube actually returns', () => {
@@ -2347,6 +2348,31 @@ describe('accounts database', { skip: !process.env.MONGODB_URI && 'MONGODB_URI n
     assert.deepEqual(await runIdsFor('b'), ['shared-run']);
     assert.equal((await usageFor('b', DAY)).analyses, 1);
   });
+
+  test('deleteUserData keeps today\'s counter, so deleting does not hand out a fresh allowance', async () => {
+    await upsertUser(user('a'));
+    await tryConsume('a', DAY, 'analyses', 3);
+    await tryConsume('a', DAY, 'analyses', 3);
+    await tryConsume('a', '2000-01-01', 'analyses', 3);
+    await deleteUserData('a', null, DAY);
+    assert.equal((await usageFor('a', DAY)).analyses, 2);
+    assert.equal((await usageFor('a', '2000-01-01')).analyses, 0);
+  });
+});
+
+describe('which failed analyses stay charged', () => {
+  const failure = (code) => Object.assign(new Error('x'), code ? { code } : {});
+  test('system-side failures are refunded, even after YouTube was called', () => {
+    for (const code of ['QUOTA_EXHAUSTED', 'QUOTA_BUSY', 'YOUTUBE_ERROR', undefined]) assert.equal(chargedFailure(failure(code)), false, String(code));
+  });
+  test('a used-up daily quota is QUOTA_EXHAUSTED; rate limits and other errors are YOUTUBE_ERROR (refunded too)', () => {
+    for (const r of ['quotaExceeded', 'dailyLimitExceeded']) assert.equal(youtubeErrorCode(r), 'QUOTA_EXHAUSTED', r);
+    for (const r of ['rateLimitExceeded', 'userRateLimitExceeded', 'backendError']) assert.equal(youtubeErrorCode(r), 'YOUTUBE_ERROR', r);
+    assert.equal(youtubeErrorCode(''), 'YOUTUBE_ERROR');
+  });
+  test('a cancel and the person\'s own input or filters stay charged', () => {
+    for (const code of ['CANCELLED', 'NO_RESULTS', 'NO_RESULTS_AFTER_FILTER', 'CHANNEL_NOT_FOUND', 'CHANNEL_NO_UPLOADS', 'VALIDATION']) assert.equal(chargedFailure(failure(code)), true, code);
+  });
 });
 
 describe('daily reset time', () => {
@@ -3341,6 +3367,9 @@ describe('site address, sitemap and real 404s', () => {
   test('the public address comes from SITE_URL, else from the request', () => {
     assert.equal(siteOrigin(req(), 'https://gap.example/'), 'https://gap.example');
     assert.equal(siteOrigin(req(), ''), 'http://preview.example:8790');
+    // A crafted Host never reaches the page head, the sitemap or a redirect.
+    const evil = { protocol: 'http', get: () => 'x"><script>alert(1)</script>' };
+    assert.equal(siteOrigin(evil, ''), 'http://localhost');
   });
 
   test('the sitemap holds public pages only, and robots points at it', () => {
@@ -3522,5 +3551,21 @@ describe('losing the connection mid-analysis', async () => {
     const shown = describeRunError({ code: 'RUN_UNREACHABLE', message: 'x' });
     assert.equal(shown.kind, 'slow');
     assert.match(shown.message, /still running/);
+  });
+});
+
+describe('analysisKey', () => {
+  const base = { window: '7d', contentType: 'both', gapMode: 'inclusive', minViews: 0, deepScan: false };
+  test('the same niche in another case or spacing is the same search', () => {
+    assert.equal(analysisKey({ ...base, niche: 'Gym  Workout ' }), analysisKey({ ...base, niche: 'gym workout' }));
+    assert.notEqual(analysisKey({ ...base, niche: 'gym workout' }), analysisKey({ ...base, niche: 'gym workouts' }));
+  });
+  test('a channel URL and its bare id share a key; handles ignore case', () => {
+    const id = 'UCaaaaaaaaaaaaaaaaaaaaaa';
+    assert.equal(analysisKey({ ...base, niche: '', channelId: `https://www.youtube.com/channel/${id}` }), analysisKey({ ...base, niche: '', channelId: id }));
+    assert.equal(analysisKey({ ...base, niche: '', channelId: '@SomeChannel' }), analysisKey({ ...base, niche: '', channelId: 'youtube.com/@somechannel' }));
+  });
+  test('other settings still separate searches', () => {
+    assert.notEqual(analysisKey({ ...base, niche: 'x y' }), analysisKey({ ...base, niche: 'x y', window: '30d' }));
   });
 });

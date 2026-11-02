@@ -12,6 +12,7 @@ import { router } from './routes/api.js';
 import * as scheduler from './services/scheduler.js';
 import * as retention from './services/retention.js';
 import { connectMongo, closeMongo } from './lib/mongo.js';
+import * as jobs from './lib/jobs.js';
 
 assertConfig();
 
@@ -84,10 +85,21 @@ const server = app.listen(config.port, () => {
   console.log(`  youtube budget: ${config.youtube.searchDailyCalls} searches + ${config.youtube.dailyUnitBudget} units/day; data kept ${config.store.maxDataDays} days`);
 });
 
-// Let in-flight requests finish and close the database cleanly on stop/redeploy.
+// Let in-flight requests and running analyses finish, then close the database
+// cleanly on stop/redeploy. Runs still going at the deadline are failed, which
+// refunds their owners (the refund callbacks live only in this process).
 for (const sig of ['SIGINT', 'SIGTERM']) {
-  process.once(sig, () => {
-    server.close(() => closeMongo().finally(() => process.exit(0)));
-    setTimeout(() => process.exit(0), 5000).unref();
+  process.once(sig, async () => {
+    setTimeout(() => process.exit(0), 25_000).unref();
+    server.close();
+    const failed = await jobs.drain(15_000);
+    if (failed) {
+      console.log(`[shutdown] stopped ${failed} unfinished run(s); their allowance was given back`);
+      await new Promise((r) => setTimeout(r, 1000)); // let the refund writes land
+    }
+    closeMongo().finally(() => process.exit(0));
   });
 }
+
+// A stray rejection must be logged, not crash the process (and every run in it).
+process.on('unhandledRejection', (err) => console.error('[process] unhandled rejection:', err?.stack ?? err));

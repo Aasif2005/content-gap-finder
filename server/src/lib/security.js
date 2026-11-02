@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { safeHost } from './site.js';
 
 /** True for same-origin/non-browser requests (no Origin header) and for origins listed in CORS_ORIGINS. */
 export function corsOriginAllowed(origin, allowed = config.corsOrigins) {
@@ -31,6 +32,6 @@ export const securityHeaders = makeSecurityHeaders();
  */
 export function httpsRedirectFor(req, { isProd = config.isProd, trustProxy = config.trustProxy, siteUrl = config.site.url } = {}) {
   if (!isProd || !trustProxy || req.secure || req.path === '/api/health') return null;
-  const origin = siteUrl ? siteUrl.replace(/\/+$/, '') : `https://${req.get('host')}`;
+  const origin = siteUrl ? siteUrl.replace(/\/+$/, '') : `https://${safeHost(req)}`;
   return `${origin}${req.originalUrl}`;
 }

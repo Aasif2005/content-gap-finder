@@ -3,6 +3,20 @@ import * as cache from '../lib/cache.js';
 import * as store from '../lib/store.js';
 import { runPipeline } from './pipeline.js';
 import { withRun } from '../lib/runContext.js';
+import { parseChannelInput } from './youtube.js';
+
+/**
+ * The cache and in-flight key for an analysis. Inputs that are the same search
+ * share it: the niche ignores case and spacing ("Gym  Workout" = "gym workout"),
+ * and a channel URL, its /channel/ path and its bare id are one key (a handle
+ * ignores case). Without this, each spelling spent its own search quota.
+ */
+export function analysisKey(input) {
+  const niche = String(input.niche ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const ref = input.channelId ? parseChannelInput(input.channelId) : null;
+  const channelId = ref ? (ref.kind === 'handle' ? `handle:${ref.value.toLowerCase()}` : `id:${ref.value}`) : input.channelId;
+  return cache.cacheKey({ ...input, niche, channelId });
+}
 
 /**
  * Starts an analysis and wires up everything that has to happen when it lands:
@@ -18,10 +32,15 @@ import { withRun } from '../lib/runContext.js';
 // rows in the gap history that made every gap look like repeat demand.
 const inFlight = new Map();
 
-/** The running job for this input, if there is one. */
+/**
+ * The running job for this input, if there is one. A run already told to stop is
+ * not one: it reads "running" until the pipeline's next checkpoint, and joining
+ * it would hand the newcomer a run that quietly ends as cancelled.
+ */
 export function runningJobFor(key) {
   const id = inFlight.get(key);
-  return id && jobs.get(id)?.status === 'running' ? id : null;
+  const job = id && jobs.get(id);
+  return job && job.status === 'running' && !job.controller.signal.aborted ? id : null;
 }
 
 // onFinish is the scheduler's hook. If it throws, that must not turn a finished
@@ -38,7 +57,7 @@ export async function usableHit(key) {
 }
 
 export async function startAnalysis(input, { force = false, onFinish, owner } = {}) {
-  const key = cache.cacheKey(input);
+  const key = analysisKey(input);
 
   if (!force) {
     const hit = await usableHit(key);
