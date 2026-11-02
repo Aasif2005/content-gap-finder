@@ -2729,6 +2729,10 @@ describe('safeNext (post-login redirect)', () => {
       assert.equal(safeNext(bad), '/dashboard', bad);
     }
   });
+  test('rejects paths that only become protocol-relative once dot segments resolve', () => {
+    for (const bad of ['/.//evil.com', '/a/..//evil.com/x', '/%2e//evil.com', '/./\\evil.com']) assert.equal(safeNext(bad), '/dashboard', bad);
+    assert.equal(safeNext('/a/../explore'), '/explore');
+  });
   test('rejects control characters that browsers strip before parsing', () => {
     for (const bad of ['/\t/evil.com', '/\n/evil.com', '/\r/evil.com', '/ok\u0000', '/a\\b']) assert.equal(safeNext(bad), '/dashboard');
   });

@@ -26,7 +26,7 @@ const link = 'font-semibold text-fg underline underline-offset-2 hover:text-focu
  */
 const REDIRECT_MS = 1500;
 
-function CheckInbox({ email, onContinue }) {
+function CheckInbox({ email, onContinue, toDashboard = true }) {
   const { resendVerification, reloadUser, user } = useAuth();
   const toast = useToast();
   const cooldown = useCooldown(30);
@@ -84,7 +84,7 @@ function CheckInbox({ email, onContinue }) {
       </h1>
       <p className="mt-3 text-base leading-normal text-fg-2">
         {verified ? (
-          <span role="status"><span className="break-all font-medium text-fg">{email}</span> is confirmed. Taking you to your dashboard…</span>
+          <span role="status"><span className="break-all font-medium text-fg">{email}</span> is confirmed. {toDashboard ? 'Taking you to your dashboard…' : 'Taking you back…'}</span>
         ) : (
           <>We sent a link to <span className="break-all font-medium text-fg">{email}</span>. Open it to verify your address, and this page will move on by itself. If it isn’t in your inbox, look in your spam folder and mark it “Not spam”.</>
         )}
@@ -139,14 +139,25 @@ export default function Signup() {
   // already-signed-in redirect stands down.
   const holding = useRef(false);
   const discarding = useRef(false);
+  // Set once THIS page created the account. Someone sent here to verify an older
+  // account (from the app, or a reload) has no form state to go back to.
+  const createdHere = useRef(false);
 
-  // Back from the inbox step. The form still holds what they typed; the account
-  // goes, or that address would come back as "already in use".
+  // Back from the inbox step. For an account just made here, the form still holds
+  // what they typed; the account goes, or that address would come back as
+  // "already in use". An older account is never deleted: Back just signs out.
   useEffect(() => {
     if (!sentTo || atInbox || holding.current) return;
     discarding.current = true;
     setSentTo(null);
     setBusy('back');
+    if (!createdHere.current) {
+      signOutUser()
+        .catch(() => {})
+        .finally(() => { discarding.current = false; setBusy(null); navigate(`/login${nextSuffix(next)}`, { replace: true }); });
+      return;
+    }
+    createdHere.current = false;
     discardNewAccount()
       .then((gone) => { if (!gone) goNext(); })
       .catch(() => signOutUser().catch(() => {}))
@@ -226,6 +237,7 @@ export default function Signup() {
     try {
       if (await checkEmail(email.trim())) {
         await signUpWithEmail({ name: name.trim(), email: email.trim(), password });
+        createdHere.current = true;
         setSentTo(email.trim());
         navigate(inboxUrl);
       } else {
@@ -261,7 +273,7 @@ export default function Signup() {
   if (sentTo) {
     return (
       <AuthLayout brand="benefits" onBack={() => navigate(formUrl, { replace: true })}>
-        <CheckInbox email={sentTo} onContinue={goNext} />
+        <CheckInbox email={sentTo} onContinue={goNext} toDashboard={safeNext(next) === '/dashboard'} />
       </AuthLayout>
     );
   }

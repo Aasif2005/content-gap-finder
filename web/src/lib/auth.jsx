@@ -118,10 +118,12 @@ export function AuthProvider({ children }) {
       // The signup form has a required terms checkbox; this is where it is recorded.
       await acceptConsent().catch(() => {}); // not agreed here? the consent dialog asks later
       await fb.getIdToken(true); // so the token carries the display name
-      setUser(toUser(fb));
-      setLoading(false);
     } finally {
       signingUp.current = false;
+      // Always, even if a step above threw after the account was created: the
+      // listener skipped that sign-in and Firebase will not report it again, so
+      // without this the app stays "logged out" until a reload.
+      if (a.currentUser) { setUser(toUser(a.currentUser)); setLoading(false); }
     }
   }), []);
 

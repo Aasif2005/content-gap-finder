@@ -22,6 +22,9 @@ export function safeNext(next, fallback = FALLBACK_NEXT) {
   let url;
   try { url = new URL(next, PROBE_ORIGIN); } catch { return fallback; }
   if (url.origin !== PROBE_ORIGIN) return fallback;
+  // URL() resolves dot segments, so "/.//evil.com" comes out as "//evil.com":
+  // the checks above passed, but navigating there leaves the site. Check again.
+  if (/^\/[/\\]/.test(url.pathname)) return fallback;
   if (AUTH_PATHS.has(normalizePath(url.pathname))) return fallback;
   return `${url.pathname}${url.search}${url.hash}`;
 }
@@ -122,7 +125,7 @@ export function passwordStrength(pw) {
   let tip;
   if (len < MIN_PASSWORD) {
     score = 0;
-    tip = `Use at least ${MIN_PASSWORD} characters.`;
+    tip = `Use at least ${MIN_NEW_PASSWORD} characters.`; // the hint is for new passwords: never suggest less than sign-up accepts
   } else if (obvious) {
     score = 1;
     tip = 'That is easy to guess. Try a few unrelated words.';
