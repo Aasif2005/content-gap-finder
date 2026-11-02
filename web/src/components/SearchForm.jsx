@@ -274,8 +274,13 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
   );
 }
 
-/** Height-and-fade collapse (grid rows 0fr to 1fr). Children stay mounted, so their state survives; closed, they are inert. */
+/** Height-and-fade collapse (grid rows 0fr to 1fr). Children stay mounted, so their state survives; closed, they are inert.
+ * It clips only while closed or moving: once open it lets overflow show, so a Panel's soft shadow isn't cut square. */
 function Collapse({ open, id, children }) {
+  const [settled, setSettled] = useState(open);
+  if (!open && settled) setSettled(false);
+  // Reduced motion has no transition, so no transitionend: it is settled at once.
+  const unclipped = open && (settled || Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
   return (
     <div
       id={id}
@@ -286,8 +291,9 @@ function Collapse({ open, id, children }) {
         'grid w-full transition-[grid-template-rows,opacity] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none',
         open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
       )}
+      onTransitionEnd={(e) => { if (open && e.target === e.currentTarget && e.propertyName === 'grid-template-rows') setSettled(true); }}
     >
-      <div className="-mx-2 -my-1 min-h-0 overflow-hidden px-2 py-1">{children}</div>
+      <div className={cx('-mx-2 -my-1 min-h-0 px-2 py-1', unclipped ? 'overflow-visible' : 'overflow-hidden')}>{children}</div>
     </div>
   );
 }
