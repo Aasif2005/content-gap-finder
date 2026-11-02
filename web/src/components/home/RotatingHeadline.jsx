@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-const PHRASES = ['asking for.', 'waiting for.', 'searching for.', 'commenting about.'];
+const PHRASES = ['asking for.', 'begging for.', 'waiting for.', 'coming back for.'];
 
 /**
  * The hero line. One static sentence for assistive tech; the rotating word is
@@ -16,9 +16,9 @@ export default function RotatingHeadline({ className, id }) {
   }, [at]);
 
   return (
-    <h1 id={id} className={className} aria-label={`Find the video your audience is still ${PHRASES[0]}`}>
-      <span aria-hidden>
-        Find the video your audience is still
+    <h1 id={id} className={className} aria-label={`Make the video your audience keeps ${PHRASES[0]}`}>
+      <span aria-hidden className="text-balance">
+        Make the video your{'\u00a0'}audience{'\u00a0'}keeps
         <br />
         <span className="rotator">
           {PHRASES.map((p, i) => (

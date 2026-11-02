@@ -44,7 +44,7 @@ export default function MarketingShell({ anchors, children }) {
             ) : (
               <>
                 <Link href="/login" className="inline-flex min-h-11 items-center whitespace-nowrap font-medium text-fg">Log in</Link>
-                <Button href="/signup" className="!rounded-full !px-4 sm:!px-5"><span className="sm:hidden">Sign up</span><span className="hidden sm:inline">Sign up free</span></Button>
+                <Button href="/signup" className="!rounded-full !px-4 sm:!px-5"><span className="sm:hidden">Sign up</span><span className="hidden sm:inline">Start free</span></Button>
               </>
             ))}
           </nav>

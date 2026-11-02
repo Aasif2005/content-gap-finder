@@ -43,16 +43,16 @@ export default function Home() {
   return (
     <>
       <section aria-labelledby="hero-h" className="fade-in mx-auto max-w-[1200px] px-5 pt-11 text-center sm:px-10 md:pt-[72px]">
-        <p className="mx-auto inline-block rounded-full bg-surface-2 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-fg-2">
-          YouTube audience intelligence
+        <p className="mx-auto inline-block rounded-full bg-surface-2 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-fg-2 max-[359px]:px-3 max-[359px]:text-[11px] max-[359px]:tracking-[0.06em]">
+          Your viewers already told you
         </p>
-        <RotatingHeadline id="hero-h" className="mx-auto mt-6 max-w-[1120px] text-[clamp(2.25rem,1.1rem+3.6vw,4rem)] font-semibold max-[359px]:text-[1.875rem] leading-[1.05] tracking-[-0.035em]" />
+        <RotatingHeadline id="hero-h" className="mx-auto mt-6 max-w-[1120px] text-[clamp(2.25rem,1.1rem+3.6vw,4rem)] font-semibold max-[389px]:text-[2rem] max-[359px]:text-[1.75rem] leading-[1.05] tracking-[-0.035em]" />
         <p className="mx-auto mt-5 max-w-[640px] text-[17px] leading-[1.5] text-fg-2 md:mt-7 md:text-[21px]">
-          Gapstronaut reads the comments under a niche’s YouTube videos and shows the questions nobody has answered, with every comment linked back to its video.
+          We read the comments across your niche’s YouTube videos and hand you the questions no video has answered yet, each one linked to the comment that asked it.
         </p>
         <div className="mx-auto max-w-[780px] text-left"><SearchConsole /></div>
         <p className="mt-3.5 text-[13px] leading-[1.5] text-fg-3 md:mt-4 md:text-sm">
-          Free during beta · 3 fresh analyses a day · cached and saved reports cost nothing
+          Free in beta · 3 new reports a day · reopening a report is always free
         </p>
       </section>
 

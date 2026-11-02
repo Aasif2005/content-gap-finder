@@ -12,9 +12,9 @@ const h2 = 'text-[clamp(2rem,1.4rem+1.9vw,3rem)] font-semibold leading-[1.08] tr
 export const DISPLAY = 'text-[clamp(2.875rem,1.57rem+5.35vw,5.25rem)] font-semibold leading-[1.03] tracking-[-0.035em] text-balance';
 
 const STEPS = [
-  { title: 'Search a niche or a channel', body: 'Pick a time window and a format. Add a region or language if your audience is regional.' },
-  { title: 'We read what viewers said', body: 'Comments under the videos that are working, filtered down to the ones that sound like unmet demand. About a minute and a half.' },
-  { title: 'You choose, then make it', body: 'Open the evidence, pick the gap, and get a plan and a script as long as the topic needs.' },
+  { title: 'Pick your niche', body: 'Pick a time window and a format. Add a region or language if your audience is regional.' },
+  { title: 'We read the comments', body: 'Comments under the videos that are working, filtered down to the ones that sound like unmet demand. About a minute and a half.' },
+  { title: 'You film the gap', body: 'Open the evidence, pick the gap, and get a plan and a script as long as the topic needs.' },
 ];
 
 const ANSWERS = [
@@ -28,7 +28,7 @@ const ANSWERS = [
 export function HowItWorks() {
   return (
     <section id="how" aria-labelledby="how-h" className={`${wrap} ${gapTop} scroll-mt-6`}>
-      <h2 id="how-h" className={`${h2} max-w-[760px]`}>From a niche to one video worth making.</h2>
+      <h2 id="how-h" className={`${h2} max-w-[760px]`}>From a niche to your next upload in three steps.</h2>
       <ol className="mt-8 grid list-none gap-7 md:mt-14 md:grid-cols-3 md:gap-10">
         {STEPS.map((s) => (
           <li key={s.title} className="border-t border-line-strong pt-[18px] md:pt-6">
@@ -116,7 +116,7 @@ export function Statement() {
   return (
     <section aria-labelledby="statement-h" className={`${wrap} ${gapTop}`}>
       <h2 id="statement-h" className="mx-auto max-w-[900px] text-balance text-center text-[clamp(1.75rem,1rem+2.8vw,3.25rem)] font-semibold leading-[1.15] tracking-[-0.03em]">
-        Most creators guess what to make next. Gapstronaut shows you the questions viewers already asked, and the videos that still don’t answer them.
+        Most creators guess what to make next. You’ll know: the questions viewers already asked, and the videos that never answered them.
       </h2>
     </section>
   );
@@ -149,7 +149,7 @@ export function GapSplit() {
       </div>
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-info-fg">Evidence behind every answer</p>
-        <h2 id="get-h" className={`${h2} mt-3`}>Every claim, with the viewer behind it.</h2>
+        <h2 id="get-h" className={`${h2} mt-3`}>Every idea comes with a receipt.</h2>
         <ul className="mt-8 grid list-none gap-2">
           {FEATURES.map((f, i) => (
             <li key={f.title}>
@@ -180,7 +180,7 @@ export function EvidenceSplit() {
     <section id="evidence" aria-labelledby="evidence-h" className={`${wrap} ${gapTop} grid scroll-mt-6 items-center gap-10 lg:grid-cols-2 lg:gap-16`}>
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-info-fg">Evidence</p>
-        <h2 id="evidence-h" className={`${h2} mt-3`}>Evidence you can trace.</h2>
+        <h2 id="evidence-h" className={`${h2} mt-3`}>Click any claim. See who said it.</h2>
         <p className={`mt-5 max-w-[520px] text-lg leading-[1.55] ${SOFT}`}>
           Not “AI says people want this.” The comment itself, who liked it, and the video it was written under. Open it on YouTube and check.
         </p>
@@ -217,7 +217,7 @@ const LENSES = [
 export function Lenses() {
   return (
     <section id="how-lenses" aria-labelledby="lens-h" className={`${wrap} ${gapTop}`}>
-      <h2 id="lens-h" className={`${h2} text-center`}>One report, four lenses.</h2>
+      <h2 id="lens-h" className={`${h2} text-center`}>One search. Four ways to win.</h2>
       <p className="mx-auto mt-4 max-w-[560px] text-center text-lg leading-[1.5] text-fg-2">The same comments, read four ways. Open any answer to the videos, numbers and exact comments behind it.</p>
       <ul className="mt-10 grid list-none gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {LENSES.map((l) => (
@@ -253,7 +253,7 @@ export function CtaCard() {
   return (
     <section aria-labelledby="close-h" className={`${wrap} ${gapTop} pb-[72px] md:pb-[120px]`}>
       <div className="mx-auto max-w-[1000px] rounded-[1.75rem] bg-surface-2 px-6 py-12 text-center md:rounded-[3rem] md:px-16 md:py-20">
-        <h2 id="close-h" className={`${h2} mx-auto max-w-[640px]`}>Find your next video before anyone else.</h2>
+        <h2 id="close-h" className={`${h2} mx-auto max-w-[640px]`}>Film it before anyone else does.</h2>
         <p className="mx-auto mt-4 max-w-[560px] text-base leading-[1.55] text-fg-2 md:text-lg">
           Free while we’re in beta: 3 fresh analyses and 20 Make it drafts a day. Opening a saved or cached report costs nothing. No card needed.
         </p>

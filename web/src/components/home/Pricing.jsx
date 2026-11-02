@@ -16,7 +16,7 @@ const PLANS = [
     name: 'Starter',
     monthly: 0,
     annual: 0,
-    blurb: 'For trying a niche before you film it.',
+    blurb: 'Test a niche before you hit record.',
     features: [
       '3 fresh analyses a day',
       '20 Make it drafts a day',
@@ -31,7 +31,7 @@ const PLANS = [
     monthly: 12,
     annual: 9,
     popular: true,
-    blurb: 'For a channel that publishes every week.',
+    blurb: 'For channels that upload every week.',
     features: [
       '15 fresh analyses a day',
       '100 Make it drafts a day',
@@ -45,7 +45,7 @@ const PLANS = [
     name: 'Studio',
     monthly: 39,
     annual: 31,
-    blurb: 'For teams and agencies working several channels.',
+    blurb: 'For teams running more than one channel.',
     features: [
       '50 fresh analyses a day',
       'Unlimited Make it drafts',

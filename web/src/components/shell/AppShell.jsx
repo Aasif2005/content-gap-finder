@@ -171,7 +171,7 @@ export default function AppShell({ children }) {
             {!user && !loading && (
               <>
                 <Link href={`/login?next=${next}`} className="inline-flex min-h-11 items-center px-2 text-[15px] font-medium">Log in</Link>
-                <Button href="/signup" className="!rounded-full !px-4 sm:!px-5"><span className="sm:hidden">Sign up</span><span className="hidden sm:inline">Sign up free</span></Button>
+                <Button href="/signup" className="!rounded-full !px-4 sm:!px-5"><span className="sm:hidden">Sign up</span><span className="hidden sm:inline">Start free</span></Button>
               </>
             )}
           </div>
