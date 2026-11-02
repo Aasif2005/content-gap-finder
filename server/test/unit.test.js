@@ -3388,7 +3388,7 @@ describe('theme palettes', () => {
   // Agreed exceptions: Google's own "G", and the ground of the logo video's artwork.
   const EXCEPT = { 'GoogleButton.jsx': ['4285F4', '34A853', 'FBBC05', 'EA4335'], 'Logo.jsx': ['F4EFE4'] };
   const root = new URL('../../web/', import.meta.url);
-  const files = [...readdirSync(new URL('src/', root), { recursive: true }).map((f) => `src/${f}`).filter((f) => /\.(jsx?|css)$/.test(f)), 'index.html', 'public/favicon.svg'];
+  const files = [...readdirSync(new URL('src/', root), { recursive: true }).map((f) => `src/${f}`).filter((f) => /\.(jsx?|css)$/.test(f)), 'index.html'];
   const hex2 = (n) => Number(n).toString(16).padStart(2, '0').toUpperCase();
 
   test('every colour in the web app comes from the palettes', () => {

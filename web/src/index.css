@@ -44,6 +44,8 @@
   /* The lamp rig on the sign-in panel. */
   --sl-light: #F3DFAE; --sl-deep: #0C1C2C; --sl-dark: #233142; --sl-mid: #3A485B; --sl-high: #516073;
 
+  --brand-logo: url(/brand/logo-light.webp);
+
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-1: 150ms;
   --dur-2: 200ms;
@@ -77,6 +79,7 @@
     --warn-bg: #32302A; --warn-fg: #E7E2D9;
     --info-bg: #30312E; --info-fg: #E3E3E0;
   --sl-light: #E8E8E4; --sl-deep: #1C1B1B; --sl-dark: #313030; --sl-mid: #474646; --sl-high: #5F5E5E; /* the lamp rig on the sign-in panel */
+  --brand-logo: url(/brand/logo-dark.webp);
   }
 }
 
@@ -107,6 +110,7 @@
   --warn-bg: #32302A; --warn-fg: #E7E2D9;
   --info-bg: #30312E; --info-fg: #E3E3E0;
   --sl-light: #E8E8E4; --sl-deep: #1C1B1B; --sl-dark: #313030; --sl-mid: #474646; --sl-high: #5F5E5E; /* the lamp rig on the sign-in panel */
+  --brand-logo: url(/brand/logo-dark.webp);
 }
 
 /* A pinned dark ground inside the light theme: the Primary scale. */
@@ -135,6 +139,7 @@
   --warn-bg: #3A300D; --warn-fg: #F5E1B0;
   --info-bg: #001352; --info-fg: #B8C4FF;
   --sl-light: #F3DFAE; --sl-deep: #0C1C2C; --sl-dark: #233142; --sl-mid: #3A485B; --sl-high: #516073; /* the lamp rig on the sign-in panel */
+  --brand-logo: url(/brand/logo-dark.webp);
 }
 
 @theme inline {
@@ -737,3 +742,4 @@ html { scroll-padding-top: 88px; }
 .crop-range:active::-webkit-slider-thumb { transform: scale(1.12); }
 .crop-range:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 999px; }
 @media (prefers-reduced-motion: reduce) { .crop-range::-webkit-slider-thumb { transition: none; } }
+
