@@ -31,9 +31,9 @@ export function HeatBar({ value, label = 'Buzz' }) {
 export function Stat({ label, value, hint, sub }) {
   return (
     <div title={hint} className="min-w-0">
-      <div className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-fg-3">{label}</div>
-      <div className="nums mt-1.5 text-[28px] font-semibold leading-none tracking-[-0.03em] text-fg">{value}</div>
-      {sub && <div className="mt-1.5 text-[12px] text-fg-2">{sub}</div>}
+      <div className="truncate font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-fg-3 sm:text-[11px] sm:tracking-[0.14em]">{label}</div>
+      <div className="nums mt-1 text-[22px] font-semibold sm:mt-1.5 sm:text-[28px] leading-none tracking-[-0.03em] text-fg">{value}</div>
+      {sub && <div className="mt-1.5 text-[12px] text-fg-2 max-sm:hidden">{sub}</div>}
     </div>
   );
 }
@@ -66,7 +66,7 @@ export function EmptyState({ title, children }) {
 
 export function StatRow({ stats }) {
   return (
-    <div className="grid grid-cols-2 gap-y-6 sm:grid-cols-5 [&>*]:sm:border-l [&>*]:sm:border-line [&>*]:sm:pl-5 [&>*:first-child]:sm:border-l-0 [&>*:first-child]:sm:pl-0">
+    <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-5 sm:gap-x-0 sm:gap-y-6 [&>*]:sm:border-l [&>*]:sm:border-line [&>*]:sm:pl-5 [&>*:first-child]:sm:border-l-0 [&>*:first-child]:sm:pl-0">
       <Stat label="Videos" value={compact(stats.videosAnalyzed)} sub="Scored uploads" hint="Videos that passed your filters and were scored" />
       <Stat label="Comments" value={compact(stats.commentsAnalyzed)} sub="Highest-signal" hint={`${compact(stats.commentsFetched)} fetched, filtered down to the highest-signal ones`} />
       <Stat label="Topics" value={stats.topicsFound} sub="Distinct clusters" />

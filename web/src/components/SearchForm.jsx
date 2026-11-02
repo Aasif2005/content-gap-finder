@@ -1,5 +1,5 @@
 import { cloneElement, useId, useState } from 'react';
-import { ChevronDown, Search } from 'lucide-react';
+import { ChevronDown, Search, ArrowRight } from 'lucide-react';
 import { ShinyButton } from './ui/ShinyButton.jsx';
 import { SlideGroup, SLIDE_ITEM } from './ui/SlideTabs.jsx';
 import { cx } from '../lib/cx.js';
@@ -133,13 +133,13 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
   return (
     <form onSubmit={submit} className="space-y-5">
       {/* The search console: one panel, the field and the button on one line. */}
-      <Panel padding="none" data-orb-origin="" className="search-console flex flex-col items-stretch gap-2 rounded-[2rem] p-2 pl-5 sm:flex-row sm:items-center sm:rounded-full">
-        <Search aria-hidden className="search-icon hidden h-5 w-5 shrink-0 sm:block" strokeWidth={1.6} />
+      <Panel padding="none" data-orb-origin="" className="search-console flex items-center gap-1.5 rounded-full p-1.5 pl-4 sm:gap-2 sm:p-2 sm:pl-5">
+        <Search aria-hidden className="search-icon h-5 w-5 shrink-0" strokeWidth={1.6} />
         {channelMode ? (
           <input
             value={channelId}
             onChange={(e) => setChannelId(e.target.value)}
-            placeholder="Paste a channel URL, @handle, or UC… id"
+            placeholder="Channel URL or @handle"
             aria-label="YouTube channel URL, handle or id"
             disabled={busy}
             className={mainInputCls}
@@ -148,14 +148,14 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
           <input
             value={niche}
             onChange={(e) => setNiche(e.target.value)}
-            placeholder="Enter a niche, e.g. sourdough baking, home lab, watercolour portraits"
+            placeholder="A niche, like sourdough baking"
             aria-label="Niche or keyword"
             disabled={busy}
             className={mainInputCls}
           />
         )}
-        <ShinyButton type="submit" disabled={busy || !ready} loading={busy} className="shrink-0">
-          {busy ? 'Analyzing…' : 'Find gaps'}
+        <ShinyButton type="submit" disabled={busy || !ready} loading={busy} aria-label={busy ? 'Analyzing' : 'Find gaps'} className="cta-fold shrink-0">
+          {busy ? <span className="max-sm:sr-only">Analyzing…</span> : <><ArrowRight aria-hidden className="h-5 w-5 sm:hidden" /><span className="max-sm:sr-only">Find gaps</span></>}
         </ShinyButton>
       </Panel>
 
@@ -297,7 +297,7 @@ const controlCls =
 
 // The big field inside the console panel: borderless, the panel is its frame.
 const mainInputCls =
-  'min-h-12 min-w-0 flex-1 rounded-control bg-transparent px-3.5 text-lg font-medium text-fg placeholder:font-normal placeholder:text-fg-3 disabled:cursor-not-allowed disabled:opacity-60';
+  'min-h-11 min-w-0 flex-1 rounded-control bg-transparent px-2 text-base sm:min-h-12 sm:px-3.5 sm:text-lg font-medium text-fg placeholder:font-normal placeholder:text-fg-3 disabled:cursor-not-allowed disabled:opacity-60';
 
 /** A labelled select, wired like the kit's Field (which only knows about Input). */
 function SelectField({ label, hint, className, children }) {

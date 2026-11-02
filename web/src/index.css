@@ -504,7 +504,19 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .shiny-cta:is(:hover, :focus-visible)::after { animation-play-state: running; }
 .shiny-cta:is(:hover, :focus-visible) > span::before { opacity: 1; }
 
-.shiny-cta:disabled { cursor: not-allowed; opacity: 0.55; }
+.shiny-cta:disabled { cursor: not-allowed; }
+/* Not ready yet: a quiet tint of the ink, not a faded grey wash. A running request keeps full ink. */
+.shiny-cta:disabled:not([data-loading]) {
+  --shiny-bg: color-mix(in oklab, var(--ink) 45%, var(--surface));
+  --shiny-bg-subtle: transparent;
+  --shiny-highlight: transparent;
+  --shiny-highlight-subtle: transparent;
+}
+.shiny-cta:disabled:not([data-loading]) > span::before { display: none; }
+/* Phones: the search button folds into a round arrow beside the field. */
+@media (max-width: 639px) {
+  .shiny-cta.cta-fold { width: 44px; min-height: 44px; height: 44px; padding: 0; }
+}
 .shiny-cta[data-loading],
 .shiny-cta[data-loading]::before,
 .shiny-cta[data-loading]::after { animation-play-state: paused; }
@@ -537,8 +549,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   75% { transform: translate(calc(-50% + 4px), -50%); }
 }
 
-.mo-root { position: relative; height: clamp(460px, 62vh, 600px); border-radius: 28px; border: 1px solid var(--line); background: var(--bg); overflow: hidden; color: var(--fg); font-family: inherit; }
+.mo-root { position: relative; height: clamp(300px, 46vh, 380px); border-radius: 28px; border: 1px solid var(--line); background: var(--bg); overflow: hidden; color: var(--fg); font-family: inherit; }
 .mo-root[data-phase="reset"] { pointer-events: none; }
+@media (min-width: 640px) { .mo-root { height: clamp(380px, 52vh, 460px); } }
+@media (min-width: 1024px) { .mo-root { height: clamp(460px, 62vh, 600px); } }
 .mo-bg { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 0%, color-mix(in oklab, var(--accent) 12%, var(--bg)), var(--bg) 70%); animation: mo-fade-in 450ms var(--ease-out) both; }
 .mo-root[data-phase="reset"] .mo-bg { animation: mo-fade-out 260ms var(--ease-out) forwards; }
 .mo-halo {

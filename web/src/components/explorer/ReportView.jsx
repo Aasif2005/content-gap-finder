@@ -34,10 +34,10 @@ export function ReportView({ result, cacheInfo, busy, canRun, canMake, formOpen,
       <div className="mx-auto grid max-w-[1200px] gap-x-12 lg:grid-cols-[208px_minmax(0,1fr)]">
         <ReportIndex sections={sections} meta={indexMeta} />
 
-        <div className="min-w-0 space-y-10">
+        <div className="min-w-0 space-y-6 sm:space-y-10">
           <ReportHeader result={result} canRun={canRun} busy={busy} formOpen={formOpen} onToggleForm={onToggleForm} onRefresh={onRefresh} />
 
-          <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-4 rounded-panel bg-surface px-6 py-5 shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-4 rounded-panel bg-surface px-4 py-4 shadow-card sm:px-6 sm:py-5">
             <div className="min-w-0 flex-1 basis-96">
               <StatRow stats={result.stats} />
             </div>

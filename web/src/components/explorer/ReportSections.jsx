@@ -84,12 +84,12 @@ function GapRow({ gap, rank, runId, index, canMake, channel }) {
           <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
             <Badge tone={tone}>{label}</Badge>
             <span className="nums font-mono text-[12px] capitalize text-fg-2">{gap.demandStrength}</span>
-            <span className="nums font-mono text-[12px] text-fg-3">&middot; {gap.evidenceCount} {channel ? 'inquiries' : 'comments'}</span>
+            {/* One unit, so a phone wraps it onto its own line instead of starting a line with a dot. */}
             <span
-              className="nums font-mono text-[12px] text-fg-3"
+              className="nums whitespace-nowrap font-mono text-[12px] text-fg-3 max-sm:basis-full"
               title="Demand score: comment count, spread across videos, and how many likes those comments got."
             >
-              &middot; demand score {gap.demandScore} <Derived className="text-[12px] text-fg-3" />
+              <span className="max-sm:hidden">&middot; </span>{gap.evidenceCount} {channel ? 'inquiries' : 'comments'} &middot; demand score {gap.demandScore} <Derived className="text-[12px] text-fg-3" />
             </span>
           </span>
         </span>
@@ -164,14 +164,14 @@ function TrendTile({ topic, rank }) {
       >
         <div className="h-full rounded-full bg-focus" style={{ width: `${Math.max(2, Math.min(100, topic.heatScore))}%` }} />
       </div>
-      <h3 className="mt-4 min-h-[2lh] text-[18px] font-semibold leading-snug tracking-[-0.015em] text-fg [text-wrap:balance]">{topic.label}</h3>
-      {topic.summary && <p className="mt-2 line-clamp-4 min-h-[4lh] text-[15px] leading-relaxed text-fg-2">{topic.summary}</p>}
-      <p className="nums mt-3 flex min-h-[3lh] flex-wrap content-start items-center gap-x-2 border-t border-line-soft pt-3 font-mono text-[12px] text-fg-3">
+      <h3 className="mt-4 text-[18px] sm:min-h-[2lh] font-semibold leading-snug tracking-[-0.015em] text-fg [text-wrap:balance]">{topic.label}</h3>
+      {topic.summary && <p className="mt-2 line-clamp-4 text-[15px] sm:min-h-[4lh] leading-relaxed text-fg-2">{topic.summary}</p>}
+      <p className="nums mt-3 flex flex-wrap sm:min-h-[3lh] content-start items-center gap-x-2 border-t border-line-soft pt-3 font-mono text-[12px] text-fg-3">
         <span className="font-medium text-focus">
           #{String(rank).padStart(2, '0')} &middot; buzz {topic.heatScore} <Derived className="text-[12px] text-fg-3" />
         </span>
-        <span aria-hidden>&middot;</span>
-        {topic.videos.length} video{topic.videos.length === 1 ? '' : 's'} · {topic.breadth} channel{topic.breadth === 1 ? '' : 's'} · {compact(topic.totalViews)} views
+        <span aria-hidden className="max-sm:hidden">&middot;</span>
+        <span className="max-sm:basis-full">{topic.videos.length} video{topic.videos.length === 1 ? '' : 's'} · {topic.breadth} channel{topic.breadth === 1 ? '' : 's'} · {compact(topic.totalViews)} views</span>
       </p>
       {(topic.nicheRelevant === false || (topic.evidence && topic.evidence.level !== 'solid')) && (
         <div className="mt-2 flex flex-wrap gap-1.5">

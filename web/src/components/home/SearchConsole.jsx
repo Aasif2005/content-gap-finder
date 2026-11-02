@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, ArrowRight } from 'lucide-react';
 import { ShinyButton } from '../ui/index.js';
 import { navigate } from '../../lib/router.jsx';
 import { useAuth } from '../../lib/auth.jsx';
@@ -35,8 +35,8 @@ export default function SearchConsole() {
       noValidate
       className="mt-7 max-w-[780px] md:mt-11"
     >
-      <div className="search-console flex flex-col items-stretch gap-2 rounded-[2rem] p-2 pl-5 sm:flex-row sm:items-center sm:rounded-full">
-        <Search aria-hidden className="search-icon hidden h-5 w-5 shrink-0 sm:block" strokeWidth={1.6} />
+      <div className="search-console flex items-center gap-1.5 rounded-full p-1.5 pl-4 sm:gap-2 sm:p-2 sm:pl-5">
+        <Search aria-hidden className="search-icon h-5 w-5 shrink-0" strokeWidth={1.6} />
         <label htmlFor={id} className="sr-only">Your niche</label>
         <input
           ref={inputRef}
@@ -45,16 +45,16 @@ export default function SearchConsole() {
           type="text"
           value={niche}
           onChange={(e) => { setNiche(e.target.value); if (error) setError(''); }}
-          placeholder="Your niche, like sourdough starter"
+          placeholder="A niche, like sourdough"
           autoComplete="off"
           enterKeyHint="search"
           maxLength={120}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
-          className="min-h-12 min-w-0 flex-1 rounded-control bg-transparent px-3.5 text-lg font-medium text-fg placeholder:font-normal placeholder:text-fg-3"
+          className="min-h-11 min-w-0 flex-1 rounded-control bg-transparent px-2 text-base sm:min-h-12 sm:px-3.5 sm:text-lg font-medium text-fg placeholder:font-normal placeholder:text-fg-3"
         />
-        <ShinyButton type="submit" className="w-full shrink-0 sm:w-auto">
-          Find gaps
+        <ShinyButton type="submit" aria-label="Find gaps" className="cta-fold shrink-0">
+          <ArrowRight aria-hidden className="h-5 w-5 sm:hidden" /><span className="max-sm:sr-only">Find gaps</span>
         </ShinyButton>
       </div>
       {error && (
