@@ -40,26 +40,26 @@ export function ExportMenu({ result }) {
   const items = [
     {
       label: 'Copy as Markdown',
-      hint: 'Pastes into Notion, Obsidian, Docs with structure intact',
+      hint: 'For Notion or Docs',
       run: async () => {
         const ok = await copyToClipboard(reportToMarkdown(result));
         flash(ok ? 'Copied' : 'Copy failed');
       },
     },
     {
-      label: 'Download Markdown',
-      hint: 'The whole report, quotes included',
+      label: 'Download report',
+      hint: 'Markdown file',
       run: () => { download(`${stem}.md`, reportToMarkdown(result), 'text/markdown'); setOpen(false); },
     },
     {
-      label: 'Gaps as CSV',
-      hint: `${result.gaps?.length ?? 0} rows, with evidence quotes`,
+      label: 'Gaps (CSV)',
+      hint: `${result.gaps?.length ?? 0} rows`,
       run: () => { download(`${stem}-gaps.csv`, gapsToCsv(result), 'text/csv'); setOpen(false); },
       disabled: !result.gaps?.length,
     },
     {
-      label: 'Topics as CSV',
-      hint: `${result.topics?.length ?? 0} rows, with buzz and angles`,
+      label: 'Topics (CSV)',
+      hint: `${result.topics?.length ?? 0} rows`,
       run: () => { download(`${stem}-topics.csv`, topicsToCsv(result), 'text/csv'); setOpen(false); },
       disabled: !result.topics?.length,
     },
