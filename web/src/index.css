@@ -743,3 +743,8 @@ html { scroll-padding-top: 88px; }
 .crop-range:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 999px; }
 @media (prefers-reduced-motion: reduce) { .crop-range::-webkit-slider-thumb { transition: none; } }
 
+
+/* Phones: iOS zooms the page into any field under 16px, so fields never go smaller there. */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea { font-size: max(16px, 1em); }
+}

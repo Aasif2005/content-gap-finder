@@ -70,7 +70,7 @@ export function FloatingCards() {
   return (
     <section aria-labelledby="float-h" className={`${wrap} ${gapTop} relative`}>
       <h2 id="float-h" className="sr-only">What a report looks like</h2>
-      <p aria-hidden className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 select-none overflow-x-clip text-center text-[clamp(4rem,2rem+11vw,10rem)] font-semibold leading-[0.9] tracking-[-0.05em] text-fg/[0.05]">
+      <p aria-hidden className="pointer-events-none absolute inset-x-0 max-md:hidden top-1/2 -translate-y-1/2 select-none overflow-x-clip text-center text-[clamp(4rem,2rem+11vw,10rem)] font-semibold leading-[0.9] tracking-[-0.05em] text-fg/[0.05]">
         Content<br />Intelligence
       </p>
       <div className="relative grid items-start gap-5 md:grid-cols-2 md:gap-x-10 md:gap-y-24">

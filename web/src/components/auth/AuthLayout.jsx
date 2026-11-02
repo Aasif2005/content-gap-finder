@@ -103,7 +103,7 @@ function BeamText({ brand, lamps }) {
 /**
  * The two-panel frame for log in, sign up and reset. The brand side is a rounded
  * panel on a pinned night ground; the form side follows the theme. Under 1024px the brand side
- * collapses to a slim strip above the form. The page's one `<h1>` belongs to
+ * gives way to the site's usual pill header (logo, theme switch) above the form. The page's one `<h1>` belongs to
  * the form (passed as children), so the brand side uses no heading.
  *
  * `brand`: 'quote' (welcome back, for log in and reset) or 'benefits' (sign up).
@@ -122,11 +122,11 @@ export default function AuthLayout({ brand = 'quote', onBack, children }) {
         Skip to the form
       </a>
 
-      {/* Narrow screens: a strip, not a second screen. */}
-      <div className="theme-night px-3 pt-3 lg:hidden">
-        <header className="flex items-center justify-between gap-4 rounded-full bg-surface px-5 py-2.5 text-fg">
+      {/* Narrow screens: the same floating pill as every other page, not a slice of the studio. */}
+      <div className="px-3 pt-3 lg:hidden">
+        <header className="nav-pill relative flex [--p:0] items-center justify-between gap-4 rounded-full pl-5 pr-2">
           <Logo href="/" size={24} />
-          <span className="text-sm text-fg-3">Free during beta</span>
+          <ThemeToggle />
         </header>
       </div>
 
@@ -152,9 +152,9 @@ export default function AuthLayout({ brand = 'quote', onBack, children }) {
               <ArrowLeft aria-hidden className="h-4 w-4" /> Back to overview
             </Link>
           )}
-          <ThemeToggle className="-mr-2" />
+          <ThemeToggle className="-mr-2 max-lg:hidden" />
         </div>
-        <div className="fade-in mt-6 w-full max-w-[400px] lg:mt-16">{children}</div>
+        <div className="fade-in mt-4 w-full max-w-[400px] lg:mt-16">{children}</div>
       </main>
     </div>
   );
