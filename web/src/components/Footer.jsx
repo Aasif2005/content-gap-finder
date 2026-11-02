@@ -6,17 +6,11 @@ import { cx } from '../lib/cx.js';
  * On every page: the Privacy Policy must be reachable at all times (YouTube
  * API policies III.A.2.a), and we say plainly that we are not YouTube.
  *
- * `newTab` makes the Privacy Policy and Terms open in a new tab. The signed-in
- * app uses it so reading a policy never tears down an analysis that is running.
  * `containerClassName` sets the gutters to match the page above it.
  */
-export function Footer({ newTab = false, containerClassName = 'px-4 sm:px-8', className }) {
+export function Footer({ containerClassName = 'px-4 sm:px-8', className }) {
   const link = 'text-fg-2 underline-offset-2 hover:text-fg hover:underline';
-  const legal = (href, label) => (newTab ? (
-    <a href={href} target="_blank" rel="noreferrer noopener" className={link}>{label}</a>
-  ) : (
-    <Link href={href} className={link}>{label}</Link>
-  ));
+  const legal = (href, label) => <Link href={href} className={link}>{label}</Link>;
   return (
     <footer className={cx('border-t border-line text-sm text-fg-3', className)}>
       <div className={cx('mx-auto max-w-[1200px] py-9', containerClassName)}>

@@ -4,6 +4,7 @@ import { acceptConsent } from './api.js';
 import { useAuth } from './auth.jsx';
 import { useMe } from './me.jsx';
 import { currentPathAndSearch, navigate } from './navigation.js';
+import { Link } from './router.jsx';
 
 /**
  * YouTube's API policies (III.A) require users to agree to our Terms (which
@@ -99,9 +100,9 @@ function ConsentDialog({ open, onAgreed, onCancel, refresh }) {
     >
       <Checkbox checked={checked} onChange={(e) => setChecked(e.target.checked)} error={error}>
         I agree to the{' '}
-        <a href="/terms" target="_blank" rel="noreferrer noopener" className={link}>Terms of Service</a>,
+        <Link href="/terms" onClick={onCancel} className={link}>Terms of Service</Link>,
         the{' '}
-        <a href="/privacy" target="_blank" rel="noreferrer noopener" className={link}>Privacy Policy</a>,
+        <Link href="/privacy" onClick={onCancel} className={link}>Privacy Policy</Link>,
         and the{' '}
         <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer noopener" className={link}>YouTube Terms of Service</a>.
       </Checkbox>

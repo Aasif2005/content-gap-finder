@@ -19,8 +19,8 @@ const COLUMNS = [
   {
     title: 'Legal',
     links: [
-      { href: '/privacy', label: 'Privacy Policy', legal: true },
-      { href: '/terms', label: 'Terms of Service', legal: true },
+      { href: '/privacy', label: 'Privacy Policy' },
+      { href: '/terms', label: 'Terms of Service' },
       { href: 'https://www.youtube.com/t/terms', label: 'YouTube Terms of Service', external: true },
     ],
   },
@@ -33,9 +33,9 @@ const link = 'inline-flex min-h-11 items-center text-[17px] text-fg-2 transition
  * scrolls into view a soft glow warms the top edge and the columns fade up one
  * after another, slowly and once. Reduced motion shows it already in place. It keeps what the YouTube API
  * terms require: the Privacy Policy, YouTube's terms, the "developed with
- * YouTube" line and the not-affiliated notice. `newTab` (the signed-in app) opens the policies in a new tab so a running analysis is never torn down.
+ * YouTube" line and the not-affiliated notice.
  */
-export function SiteFooter({ newTab = false }) {
+export function SiteFooter() {
   const ref = useRef(null);
   const seen = useInView(ref, { threshold: 0.15, rootMargin: '0px' });
   const { user } = useAuth();
@@ -63,7 +63,7 @@ export function SiteFooter({ newTab = false }) {
               <ul className="mt-4 grid list-none">
                 {c.links.map((l) => (
                   <li key={l.label}>
-                    {l.external || (newTab && l.legal) ? (
+                    {l.external ? (
                       <a href={l.href} target="_blank" rel="noreferrer noopener" className={link}>{l.label}</a>
                     ) : (
                       <Link href={l.href} className={link}>{l.label}</Link>

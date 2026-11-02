@@ -185,8 +185,7 @@ export default function AppShell({ children }) {
         <div key={sectionOf(path)} className="page-enter">{children}</div>
       </main>
 
-      {/* The policies open in a new tab so a running analysis is never torn down. */}
-      <SiteFooter newTab />
+      <SiteFooter />
     </div>
   );
 }

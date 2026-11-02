@@ -12,7 +12,7 @@ import { AvatarButton } from '../components/profile/AvatarButton.jsx';
 import { AvatarEditor } from '../components/profile/AvatarEditor.jsx';
 import { useMe } from '../lib/me.jsx';
 import { updateDisplayName } from '../lib/profile.js';
-import { navigate } from '../lib/router.jsx';
+import { Link, navigate } from '../lib/router.jsx';
 import { useColorMode } from '../lib/colorMode.js';
 import { cx } from '../lib/cx.js';
 
@@ -269,9 +269,9 @@ export default function Profile() {
         <SettingRow title="Your data" description="What we keep.">
           <p className="text-[15px] leading-relaxed text-fg-2">
             Your reports and drafts are kept for 30 days, then removed to follow YouTube’s data rules. Your account details stay until you delete the account.{' '}
-            <a href="/privacy" target="_blank" rel="noreferrer noopener" className="font-semibold text-fg underline underline-offset-2 hover:text-focus">
+            <Link href="/privacy" className="font-semibold text-fg underline underline-offset-2 hover:text-focus">
               Read the Privacy Policy
-            </a>
+            </Link>
           </p>
         </SettingRow>
 
