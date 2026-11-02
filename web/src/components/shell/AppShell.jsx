@@ -153,7 +153,7 @@ export default function AppShell({ children }) {
             {user && (
               <Menu
                 label="Account"
-                trigger={<Avatar user={{ ...user, photoUrl: me?.user?.photoUrl ?? user.photoUrl }} size={36} />}
+                trigger={<Avatar user={{ ...user, photoUrl: me?.user?.photoUrl ?? user.photoUrl }} size={36} key={me?.user?.photoUrl ?? user.photoUrl ?? 'none'} />}
                 header={(
                   <>
                     <p className="truncate text-[15px] font-semibold">{user.name || user.email}</p>

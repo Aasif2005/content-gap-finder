@@ -27,7 +27,7 @@ export const Checkbox = forwardRef(function Checkbox({ children, error, classNam
             className={cx(
               'peer absolute inset-0 h-5 w-5 appearance-none rounded-[5px] border bg-surface transition-colors duration-150',
               'checked:border-ink checked:bg-ink hover:border-fg-3 disabled:cursor-not-allowed',
-              error ? 'border-bad-fg' : 'border-line-strong'
+              error ? 'border-bad-fg shadow-[inset_0_0_0_1px_var(--bad-fg)]' : 'border-line-strong'
             )}
             {...rest}
           />

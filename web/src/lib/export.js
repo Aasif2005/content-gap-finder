@@ -101,7 +101,7 @@ export function reportToMarkdown(result) {
     `# Content gaps — ${q.channelId ? (result.channel?.title ?? 'channel') : q.niche}`,
     '',
     `${filters}`,
-    `Analysed ${result.stats.videosAnalyzed} videos and ${result.stats.commentsAnalyzed} comments · ${asOf(result)}`,
+    `Analyzed ${result.stats.videosAnalyzed} videos and ${result.stats.commentsAnalyzed} comments · ${asOf(result)}`,
   ];
 
   if (result.thinPool) {

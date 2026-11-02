@@ -56,7 +56,8 @@ export const Input = forwardRef(function Input({ trailing, invalid, className, i
           // The same pill as the search bars: hairline ink border, lit edge, soft shadow.
           'search-console box-border min-h-[52px] w-full rounded-full px-5 text-base text-fg',
           'placeholder:text-fg-3 disabled:cursor-not-allowed disabled:opacity-55',
-          bad && '!border-bad-fg',
+          // Doubled with an inset ring: in dark mode the alert tone is as light as the focus border.
+          bad && '!border-bad-fg shadow-[inset_0_0_0_1px_var(--bad-fg)]',
           trailing && 'pr-20',
           className
         )}

@@ -3,7 +3,8 @@ import { ImageMinus, ImagePlus } from 'lucide-react';
 import { Button, Dialog } from '../ui/index.js';
 import { MAX_ZOOM, clampOffset, cropRect, decodeImage, initialView, renderAvatar, zoomAt, zoomOf } from '../../lib/avatarImage.js';
 
-const DIM = 'rgba(15, 30, 46, 0.6)';
+// Outside the circle: the theme's own scrim (index.css), so dark mode dims with its own palette.
+const dim = () => getComputedStyle(document.documentElement).getPropertyValue('--scrim').trim() || 'rgba(15, 30, 46, 0.6)';
 const KEY_STEP = 12;
 
 /**
@@ -72,7 +73,7 @@ export function AvatarEditor({ file, onClose, onSave }) {
     g.beginPath();
     g.rect(0, 0, side, side);
     g.arc(side / 2, side / 2, box / 2, 0, Math.PI * 2);
-    g.fillStyle = DIM;
+    g.fillStyle = dim();
     g.fill('evenodd');
     g.beginPath();
     g.arc(side / 2, side / 2, box / 2, 0, Math.PI * 2);

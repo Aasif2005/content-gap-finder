@@ -45,6 +45,7 @@
   --sl-light: #F3DFAE; --sl-deep: #0C1C2C; --sl-dark: #233142; --sl-mid: #3A485B; --sl-high: #516073;
 
   --brand-logo: url(/brand/logo-light.webp);
+  --scrim: rgb(15 30 46 / 0.6); /* dims what sits behind a modal or over a photo: Primary */
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-1: 150ms;
@@ -80,6 +81,7 @@
     --info-bg: #30312E; --info-fg: #E3E3E0;
   --sl-light: #E8E8E4; --sl-deep: #1C1B1B; --sl-dark: #313030; --sl-mid: #474646; --sl-high: #5F5E5E; /* the lamp rig on the sign-in panel */
   --brand-logo: url(/brand/logo-dark.webp);
+  --scrim: rgb(5 5 5 / 0.72); /* Neutral */
   }
 }
 
@@ -111,6 +113,7 @@
   --info-bg: #30312E; --info-fg: #E3E3E0;
   --sl-light: #E8E8E4; --sl-deep: #1C1B1B; --sl-dark: #313030; --sl-mid: #474646; --sl-high: #5F5E5E; /* the lamp rig on the sign-in panel */
   --brand-logo: url(/brand/logo-dark.webp);
+  --scrim: rgb(5 5 5 / 0.72); /* Neutral */
 }
 
 /* A pinned dark ground inside the light theme: the Primary scale. */
@@ -222,6 +225,11 @@ body {
 .search-console:focus-within .search-icon { color: var(--fg); }
 
 .search-console input:focus-visible { outline: none; }
+
+/* A used-up allowance bar: stripes as well as the alert tone (see UsageMeter). */
+.meter-spent {
+  background-image: repeating-linear-gradient(-45deg, transparent 0 4px, color-mix(in oklab, var(--surface) 60%, transparent) 4px 7px);
+}
 @media (forced-colors: active) {
   .search-console:focus-within { outline: 2px solid Highlight; }
 }

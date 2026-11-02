@@ -1,8 +1,9 @@
 import { cx } from '../../lib/cx.js';
 
 /**
- * "Fresh analyses  1 of 3 used" over a 6px bar. The bar turns the alert colour
- * once the allowance is gone, so running out is visible without reading.
+ * "Fresh analyses  1 of 3 used" over a 6px bar. Once the allowance is gone the
+ * bar turns the alert tone AND gets diagonal stripes: in the dark palette the
+ * alert and normal tones are both near-white, so colour alone would not show it.
  */
 export function UsageMeter({ label, used, limit, unit = 'used', className }) {
   const safeLimit = Math.max(1, limit || 0);
@@ -25,7 +26,7 @@ export function UsageMeter({ label, used, limit, unit = 'used', className }) {
       >
         <div
           style={{ width: `${pct}%` }}
-          className={cx('h-full rounded-full transition-[width] duration-200 ease-[var(--ease-out)]', spent ? 'bg-bad-fg' : 'bg-focus')}
+          className={cx('h-full rounded-full transition-[width] duration-200 ease-[var(--ease-out)]', spent ? 'meter-spent bg-bad-fg' : 'bg-focus')}
         />
       </div>
     </div>

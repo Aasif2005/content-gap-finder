@@ -182,7 +182,7 @@ function Appearance() {
       role="radiogroup"
       aria-label="Appearance"
       className="inline-flex rounded-full bg-surface-2 p-1"
-      pillClassName="bg-surface shadow-[0_6px_18px_-10px_rgba(15,30,46,0.35)]"
+      pillClassName="bg-surface shadow-[0_6px_18px_-10px_var(--scrim)]"
       hoverClassName="bg-hover"
     >
       {CHOICES.map((c) => {

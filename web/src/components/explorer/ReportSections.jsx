@@ -109,6 +109,7 @@ function Tile({ children, className }) {
 
 function ComplaintTile({ objection, rank }) {
   const [first, ...rest] = objection.evidence ?? [];
+  const shownRest = Math.min(rest.length, 5); // the count says only what opening it shows
   return (
     <Tile className="flex flex-col">
       <div className="flex items-center justify-between gap-3">
@@ -135,14 +136,14 @@ function ComplaintTile({ objection, rank }) {
           summaryClassName="flex min-h-11 cursor-pointer items-center gap-1.5 text-sm font-medium text-fg-2 hover:text-fg"
           summary={(
             <>
-              <span className="group-open:hidden">{rest.length} more comment{rest.length === 1 ? '' : 's'}</span>
+              <span className="group-open:hidden">{shownRest} more comment{shownRest === 1 ? '' : 's'}</span>
               <span className="hidden group-open:inline">Hide</span>
               <ChevronDown aria-hidden className="h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] group-open:rotate-180" />
             </>
           )}
         >
           <ul className="mb-1 space-y-4">
-            {rest.slice(0, 5).map((e, i) => <CommentQuote key={i} comment={e} />)}
+            {rest.slice(0, shownRest).map((e, i) => <CommentQuote key={i} comment={e} />)}
           </ul>
         </Disclosure>
       )}
@@ -308,7 +309,7 @@ export function ReportSections({ result, canMake, canRun, evidence }) {
             )}
           >
             <p className="mt-1 text-[13px] text-fg-3">
-              These were open the last time this subject was analysed and no longer show up.
+              These were open the last time this subject was analyzed and no longer show up.
               Usually that means somebody made the video &mdash; the window has closed.
             </p>
             <ul className="mt-3 space-y-2">

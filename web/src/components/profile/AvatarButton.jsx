@@ -30,7 +30,7 @@ export function AvatarButton({ user, size = 96, onFile, disabled }) {
         <Avatar user={user} size={size} key={user.photoUrl ?? 'none'} />
         <span
           aria-hidden
-          className="absolute inset-0 grid place-items-center rounded-full bg-[#0F1E2E]/55 text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none pointer-coarse:hidden"
+          className="absolute inset-0 grid place-items-center rounded-full bg-[var(--scrim)] text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none pointer-coarse:hidden"
         >
           <Pencil className="h-5 w-5" strokeWidth={1.75} />
         </span>

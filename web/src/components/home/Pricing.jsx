@@ -56,7 +56,7 @@ const PLANS = [
       '50 fresh analyses a day',
       'Unlimited Make it drafts',
       '10 watches',
-      'Analyse client channels',
+      'Analyze client channels',
       'Priority queue and early access',
     ],
   },

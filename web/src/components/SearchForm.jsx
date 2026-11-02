@@ -234,10 +234,10 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
           {!channelMode && (
             <>
               <Field label="Region" error={codeErrors.region} hint="ISO code, e.g. US, IN, GB. Excludes only channels that report a different country — many don't set one.">
-                <Input value={regionCode} onChange={(e) => setRegionCode(e.target.value)} placeholder="any" maxLength={2} />
+                <Input value={regionCode} onChange={(e) => { setRegionCode(e.target.value); setCodeErrors((x) => ({ ...x, region: undefined })); }} placeholder="any" maxLength={2} />
               </Field>
               <Field label="Language" error={codeErrors.language} hint="ISO code, e.g. ta, hi, ar, ko, en, es. Real filter using each video's own declared/detected audio language, backed by script/common-word matching and a title dub-label check (e.g. 'Hindi Dubbed') as further evidence.">
-                <Input value={relevanceLanguage} onChange={(e) => setRelevanceLanguage(e.target.value)} placeholder="any" maxLength={2} />
+                <Input value={relevanceLanguage} onChange={(e) => { setRelevanceLanguage(e.target.value); setCodeErrors((x) => ({ ...x, language: undefined })); }} placeholder="any" maxLength={2} />
               </Field>
             </>
           )}
@@ -285,7 +285,7 @@ function Collapse({ open, id, children }) {
     <div
       id={id}
       aria-hidden={!open}
-      // React 18 has no boolean `inert` prop (an empty string warns), so set the attribute directly.
+      // Set as an attribute so it also works where the `inert` prop is not passed through.
       ref={(el) => { if (el) { if (open) el.removeAttribute('inert'); else el.setAttribute('inert', ''); } }}
       className={cx(
         'grid w-full transition-[grid-template-rows,opacity] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none',
