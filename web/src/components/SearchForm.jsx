@@ -132,8 +132,9 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
 
   return (
     <form onSubmit={submit} className="space-y-5">
-      {/* The search console: one panel, the field and the button on one line. */}
-      <Panel padding="none" data-orb-origin="" className="search-console flex items-center gap-1.5 rounded-full p-1.5 pl-4 sm:gap-2 sm:p-2 sm:pl-5">
+      {/* The search console: one pill, the field and the button on one line. A plain
+          div like the homepage's, since Panel's own radius would square the corners. */}
+      <div data-orb-origin="" className="search-console flex items-center gap-1.5 rounded-full p-1.5 pl-4 sm:gap-2 sm:p-2 sm:pl-5">
         <Search aria-hidden className="search-icon h-5 w-5 shrink-0" strokeWidth={1.6} />
         {channelMode ? (
           <input
@@ -157,7 +158,7 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
         <ShinyButton type="submit" disabled={busy || !ready} loading={busy} aria-label={busy ? 'Analyzing' : 'Find gaps'} className="cta-fold shrink-0">
           {busy ? <span className="max-sm:sr-only">Analyzing…</span> : <><ArrowRight aria-hidden className="h-5 w-5 sm:hidden" /><span className="max-sm:sr-only">Find gaps</span></>}
         </ShinyButton>
-      </Panel>
+      </div>
 
       {channelMode && (
         <p className="text-center text-[13px] text-fg-3">
