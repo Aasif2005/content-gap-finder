@@ -136,7 +136,7 @@ export default function Pricing() {
               viewport={{ once: true, margin: '-60px' }}
               transition={{ type: 'spring', stiffness: 110, damping: 26, delay: reduced ? 0 : i * 0.08 }}
               className={cx(
-                'relative flex flex-col rounded-panel bg-surface p-7 shadow-card',
+                'relative flex flex-col rounded-panel bg-surface p-7 shadow-card md:max-lg:p-5',
                 plan.popular ? 'md:-translate-y-3 md:shadow-[0_30px_60px_-30px_rgba(15,30,46,0.35)]' : 'md:mt-3',
                 plan.popular && 'ring-1 ring-fg/70'
               )}
@@ -147,9 +147,9 @@ export default function Pricing() {
               <h3 className="text-[18px] font-semibold tracking-[-0.01em] text-fg">{plan.name}</h3>
               <p className="mt-1.5 min-h-[3lh] text-[15px] leading-relaxed text-fg-2">{plan.blurb}</p>
 
-              <p className="mt-6 flex items-baseline gap-1.5">
+              <p className="mt-6 flex flex-wrap items-baseline gap-x-1.5">
                 {regular && (
-                  <s className="nums mr-1 text-[24px] font-medium leading-none tracking-[-0.02em] text-fg-3 decoration-[1.5px]">
+                  <s className="nums mr-1 text-[24px] md:max-lg:mb-1 md:max-lg:basis-full md:max-lg:text-[20px] font-medium leading-none tracking-[-0.02em] text-fg-3 decoration-[1.5px]">
                     <span className="sr-only">Regular price </span>{usd(regular)}
                   </s>
                 )}
@@ -157,7 +157,7 @@ export default function Pricing() {
                   value={price}
                   format={{ style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }}
                   transformTiming={{ duration: 500, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' }}
-                  className="nums text-[44px] font-semibold leading-none tracking-[-0.03em] text-fg"
+                  className="nums text-[44px] font-semibold md:max-lg:text-[34px] leading-none tracking-[-0.03em] text-fg"
                 />
                 <span className="text-[15px] text-fg-3">{price === 0 ? 'forever' : '/ month'}</span>
               </p>
