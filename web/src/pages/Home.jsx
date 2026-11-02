@@ -69,7 +69,8 @@ export default function Home() {
         />
       </div>
 
-      <div className="mx-auto mt-11 max-w-[1200px] px-5 sm:px-10 md:mt-[72px]">
+      {/* The app-window demo needs the room; on phones the example cards below tell the same story. */}
+      <div className="mx-auto mt-11 max-w-[1200px] px-5 max-md:hidden sm:px-10 md:mt-[72px]">
         <SampleReport views={views} />
       </div>
 
