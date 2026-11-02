@@ -1,4 +1,4 @@
-import { cloneElement, useId, useRef, useState } from 'react';
+import { cloneElement, useId, useState } from 'react';
 import { ChevronDown, Search, ArrowRight } from 'lucide-react';
 import { ShinyButton } from './ui/ShinyButton.jsx';
 import { SlideGroup, SLIDE_ITEM } from './ui/SlideTabs.jsx';
@@ -84,7 +84,6 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
   );
 
   const [codeErrors, setCodeErrors] = useState({});
-  const fieldRef = useRef(null);
 
   const filtersId = useId();
   const [options, setOptions] = useState(Boolean(initial.window && initial.window !== '7d') || Boolean(initial.contentType && initial.contentType !== 'both') || advanced);
@@ -99,9 +98,7 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
     // Where the search pill is on screen: the thinking orb flies out from there.
     const box = e.currentTarget.querySelector('[data-orb-origin]')?.getBoundingClientRect();
     const origin = box ? { x: box.left + box.width / 2, y: box.top + box.height / 2, w: box.width } : undefined;
-    if (busy) return;
-    // Nothing typed yet: the button stays live (solid ink), so a click just points at the field.
-    if (!ready) { fieldRef.current?.focus(); return; }
+    if (!ready || busy) return;
     if (window === 'custom' && !customAfter) return;
     if (!channelMode) {
       // Caught here so a typo costs nothing and the message sits on the field.
@@ -140,7 +137,6 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
         <Search aria-hidden className="search-icon h-5 w-5 shrink-0" strokeWidth={1.6} />
         {channelMode ? (
           <input
-            ref={fieldRef}
             value={channelId}
             onChange={(e) => setChannelId(e.target.value)}
             placeholder="Channel URL or @handle"
@@ -150,7 +146,6 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
           />
         ) : (
           <input
-            ref={fieldRef}
             value={niche}
             onChange={(e) => setNiche(e.target.value)}
             placeholder="A niche, like sourdough baking"
@@ -159,7 +154,7 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
             className={mainInputCls}
           />
         )}
-        <ShinyButton type="submit" disabled={busy} loading={busy} aria-label={busy ? 'Analyzing' : 'Find gaps'} className="cta-fold shrink-0">
+        <ShinyButton type="submit" disabled={busy || !ready} loading={busy} aria-label={busy ? 'Analyzing' : 'Find gaps'} className="cta-fold shrink-0">
           {busy ? <span className="max-sm:sr-only">Analyzing…</span> : <><ArrowRight aria-hidden className="h-5 w-5 sm:hidden" /><span className="max-sm:sr-only">Find gaps</span></>}
         </ShinyButton>
       </Panel>
