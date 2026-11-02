@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Dialog, Field, Input } from '../ui/index.js';
 import { joinWaitlist } from '../../lib/api.js';
 import { EmailTypoHint } from '../auth/EmailTypoHint.jsx';
@@ -16,11 +16,14 @@ export default function WaitlistDialog({ plan, onClose, defaultEmail = '' }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
-  const close = () => {
-    onClose();
-    // Reset after the dialog has closed so the next opening starts clean.
-    setTimeout(() => { setDone(false); setError(''); setEmail(defaultEmail); }, 200);
-  };
+  // Each opening starts clean, with the address as it is now: sign-in may not
+  // have finished when this first rendered, and a late "done" must not carry over.
+  const planId = plan?.id;
+  useEffect(() => {
+    if (planId) { setDone(false); setError(''); setEmail(defaultEmail); }
+  }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const close = () => onClose();
 
   const submit = async (e) => {
     e.preventDefault();

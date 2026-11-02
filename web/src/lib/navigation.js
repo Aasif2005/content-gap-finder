@@ -37,8 +37,10 @@ export function navigate(href, { replace = false, scroll } = {}) {
   const state = replace ? { ...(window.history.state ?? {}) } : { inApp: true };
   window.history[replace ? 'replaceState' : 'pushState'](state, '', next);
   window.dispatchEvent(new Event(NAVIGATE_EVENT));
-  if (scroll ?? !replace) window.scrollTo(0, 0);
+  // Instant: html has scroll-behavior smooth, which made the old page glide up
+  // while the new one swapped in. A hash link only scrolls to its target.
   if (url.hash) scrollToHash(url.hash);
+  else if (scroll ?? !replace) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 }
 
 /** True when history.back() will stay inside the app. */

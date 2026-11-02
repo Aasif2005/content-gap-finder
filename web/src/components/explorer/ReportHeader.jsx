@@ -36,7 +36,7 @@ export function ReportHeader({ result, canRun, busy, formOpen, onToggleForm, onR
         <div className="flex min-w-0 flex-1 basis-96 items-center gap-5">
           {channel && <Avatar user={{ name: channel.title }} size={64} className="hidden sm:inline-flex" />}
           <div className="min-w-0">
-            <h1 className="text-balance break-words text-[34px] font-bold leading-[1.06] tracking-[-0.035em] sm:text-[44px]">
+            <h1 id="report-title" tabIndex={-1} className="outline-none text-balance break-words text-[34px] font-bold leading-[1.06] tracking-[-0.035em] sm:text-[44px]">
               {channel ? reportName(result) : <>&ldquo;{reportName(result)}&rdquo;</>}
             </h1>
             {/* Channel mode reports on one creator's own uploads and viewers: say so,

@@ -41,8 +41,21 @@ export function Dialog({ open, onClose, title, description, actions, children, d
       aria-labelledby={title ? titleId : undefined}
       aria-describedby={description ? descId : undefined}
       onCancel={(e) => { if (!dismissible) e.preventDefault(); }}
-      onClose={() => onClose?.()}
-      onMouseDown={(e) => { if (dismissible && e.target === ref.current) ref.current.close(); }}
+      // Chrome honours preventDefault on cancel only once per user activation, so
+      // a second Escape would still close it: stop the key itself as well.
+      onKeyDown={(e) => { if (!dismissible && e.key === 'Escape') e.preventDefault(); }}
+      onClose={() => {
+        // Closed anyway while it must stay (a request is running): put it back.
+        if (!dismissible && open) { ref.current?.showModal(); return; }
+        onClose?.();
+      }}
+      // The backdrop is the dialog element itself, and so is its scrollbar: only
+      // a press outside the box counts as a backdrop click.
+      onMouseDown={(e) => {
+        if (!dismissible || e.target !== ref.current) return;
+        const r = ref.current.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) ref.current.close();
+      }}
       className={cx(
         'm-auto w-[min(30rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-panel border border-line bg-surface p-0 text-fg',
         'shadow-[0_24px_60px_-20px_rgb(0_0_0/0.5)] backdrop:bg-[#0F1E2E]/60',

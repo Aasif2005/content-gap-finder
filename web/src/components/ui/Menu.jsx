@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from '../../lib/router.jsx';
 import { cx } from '../../lib/cx.js';
@@ -36,9 +36,11 @@ export function Menu({ label, trigger, items, header, align = 'end', triggerClas
     if (refocus) button.current?.focus();
   }, []);
 
+  // Placed before paint, so the panel never shows for a frame unpositioned.
+  useLayoutEffect(() => { if (open) place(); }, [open, place]);
+
   useEffect(() => {
     if (!open) return undefined;
-    place();
     panel.current?.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });
     const onDown = (e) => {
       if (!panel.current?.contains(e.target) && !button.current?.contains(e.target)) close();
@@ -63,7 +65,9 @@ export function Menu({ label, trigger, items, header, align = 'end', triggerClas
     else if (e.key === 'Home') go(0);
     else if (e.key === 'End') go(els.length - 1);
     else if (e.key === 'Escape') { e.preventDefault(); close(true); }
-    else if (e.key === 'Tab') close();
+    // The panel sits at the end of <body>: hand focus back to the button first, so
+    // the browser's own Tab then moves on from there, not off the page.
+    else if (e.key === 'Tab') close(true);
   };
 
   const itemClass = (tone) => cx(

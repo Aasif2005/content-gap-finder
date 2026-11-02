@@ -283,6 +283,9 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
   /** Esc / Cancel on the orb: stop caring about the run in flight, like leaving the page does. */
   const onOrbDismiss = useCallback(({ cancelled }) => {
     setOrbJob(null);
+    // The orb held focus; hand it to the new report's title, or keyboard and
+    // screen-reader users are left on <body>.
+    if (!cancelled) window.requestAnimationFrame(() => document.getElementById('report-title')?.focus({ preventScroll: true }));
     if (cancelled) {
       requestSeq.current++;
       setPhase(null);

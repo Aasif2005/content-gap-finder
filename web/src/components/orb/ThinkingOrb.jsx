@@ -48,7 +48,6 @@ export function ThinkingOrb({ job, progress, offline = false, onDismiss }) {
   const answerRef = useRef(null);
   const bodyRef = useRef(null);
   const liveRef = useRef(null);
-  const ctaRef = useRef(null);
   const cancelRef = useRef(null);
   const ghostRefs = useRef([]);
   const rtRef = useRef(null);
@@ -94,7 +93,8 @@ export function ThinkingOrb({ job, progress, offline = false, onDismiss }) {
             dismissRef.current?.({ cancelled: kind !== 'reset' });
           }
         },
-        focusAnswer: () => { window.requestAnimationFrame(() => ctaRef.current?.focus({ preventScroll: true })); },
+        // The finished card has no control of its own; focus stays put until the report opens.
+        focusAnswer: () => {},
       },
     });
     rtRef.current = rt;
@@ -107,7 +107,6 @@ export function ThinkingOrb({ job, progress, offline = false, onDismiss }) {
       }
     };
     window.addEventListener('keydown', onKey);
-    cancelRef.current?.focus({ preventScroll: true });
 
     const j = jobRef.current;
     rt.start(j.text, { onSubmit: j.onSubmit, minThink: j.minThink ?? 1200, origin: j.origin });
@@ -129,6 +128,11 @@ export function ThinkingOrb({ job, progress, offline = false, onDismiss }) {
     return () => window.clearTimeout(id);
   }, [finished]);
   const active = phase !== 'idle' && phase !== 'reset' && !finished;
+  // The form that had focus is gone during a run: put keyboard focus on Cancel as
+  // soon as it renders (it only appears once the run leaves idle).
+  useEffect(() => {
+    if (active) cancelRef.current?.focus({ preventScroll: true });
+  }, [active]);
   const pct = useSmoothProgress({ phase: progress?.phase, progress: progress?.progress, done: finished });
   // Coarse steps for assistive tech: the live region announces steps, not every percent.
   const pctSr = Math.min(100, Math.round(pct / 5) * 5);

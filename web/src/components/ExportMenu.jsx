@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cx } from '../lib/cx.js';
 import { Button } from './ui/Button.jsx';
@@ -16,6 +16,18 @@ export function ExportMenu({ result }) {
   const trigger = useRef(null);
   const menu = useRef(null);
   const menuId = useId();
+
+  // Lined up with the button's right edge, the menu ran off the left of a phone
+  // screen when the buttons wrap. Before paint, nudge it back inside a 16px gutter.
+  useLayoutEffect(() => {
+    const el = menu.current;
+    if (!open || !el) return;
+    el.style.translate = '';
+    const { left, right } = el.getBoundingClientRect();
+    const gutter = 16;
+    const shift = left < gutter ? gutter - left : right > window.innerWidth - gutter ? window.innerWidth - gutter - right : 0;
+    if (shift) el.style.translate = `${shift}px 0`;
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

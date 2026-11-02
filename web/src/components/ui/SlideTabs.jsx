@@ -41,6 +41,13 @@ export function SlideGroup({ as: Tag = 'div', className, pillClassName, hoverCla
       });
     };
     sync();
+    // A radio group is one Tab stop (the checked option, or the first), and the
+    // arrow keys move within it (see onKeyDown below).
+    if (rest.role === 'radiogroup') {
+      const radios = [...el.querySelectorAll('[role="radio"]')];
+      const current = radios.find((r) => r.getAttribute('aria-checked') === 'true') ?? radios[0];
+      for (const r of radios) r.tabIndex = r === current ? 0 : -1;
+    }
     const ro = new ResizeObserver(sync);
     ro.observe(el);
     return () => ro.disconnect();
@@ -51,6 +58,21 @@ export function SlideGroup({ as: Tag = 'div', className, pillClassName, hoverCla
     if (!item || !root.current?.contains(item) || item.disabled) return;
     hovered.current = item;
     setHover({ ...measure(item), on: item.dataset.active !== 'true' });
+  };
+
+  // Arrow keys move to the next or previous option and choose it, as a native radio group does.
+  const onKeyDown = (e) => {
+    rest.onKeyDown?.(e);
+    if (rest.role !== 'radiogroup' || e.defaultPrevented) return;
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!step) return;
+    const radios = [...root.current.querySelectorAll('[role="radio"]:not(:disabled)')];
+    const i = radios.indexOf(document.activeElement);
+    if (i < 0) return;
+    e.preventDefault();
+    const next = radios[(i + step + radios.length) % radios.length];
+    next.focus();
+    next.click();
   };
 
   const leave = () => {
@@ -67,6 +89,7 @@ export function SlideGroup({ as: Tag = 'div', className, pillClassName, hoverCla
       onMouseLeave={leave}
       onBlurCapture={(e) => { if (!root.current?.contains(e.relatedTarget)) leave(); }}
       {...rest}
+      onKeyDown={onKeyDown}
     >
       {hover && (
         <motion.span

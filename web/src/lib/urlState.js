@@ -97,10 +97,13 @@ export function pushReportUrl(runId, mode = 'niche', { replace = false } = {}) {
 /**
  * Mirrors the search form into the URL (/explore?niche=...). A replace, not a
  * push: typing a search is not a place to come back to, and it keeps whatever
- * the entry already said (`inApp`), so Back still knows where it goes.
+ * the entry already said (`inApp`), so Back still knows where it goes. Leaving a
+ * saved report (/r/...) is the exception: that report IS a place to come back
+ * to, so the new search gets its own entry and Back returns to it.
  */
 export function pushQueryUrl(input, mode = 'niche') {
-  navigate(`${pagePathFor(mode)}${queryToSearch(input)}`, { replace: true, scroll: false });
+  const fromReport = /\/r\/[^/]+\/?$/.test(window.location.pathname);
+  navigate(`${pagePathFor(mode)}${queryToSearch(input)}`, { replace: !fromReport, scroll: false });
 }
 
 /** Client-side navigation lives in navigation.js; re-exported for the callers that import it from here. */
