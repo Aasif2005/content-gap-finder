@@ -10,6 +10,8 @@ import { cx } from '../../lib/cx.js';
 // Prices and limits live here, in one place. Paid plans are not on sale yet (no
 // billing, and YouTube quota is shared), so the CTA is a waitlist, and the real
 // daily limit stays 3 for everyone until billing exists.
+// `regular*` are the planned prices after launch, shown struck through beside the
+// launch price. Keep them true: they are what new subscribers will pay later.
 const PLANS = [
   {
     id: 'starter',
@@ -30,6 +32,8 @@ const PLANS = [
     name: 'Creator',
     monthly: 12,
     annual: 9,
+    regularMonthly: 14,
+    regularAnnual: 11,
     popular: true,
     blurb: 'For channels that upload every week.',
     features: [
@@ -45,6 +49,8 @@ const PLANS = [
     name: 'Studio',
     monthly: 39,
     annual: 31,
+    regularMonthly: 45,
+    regularAnnual: 36,
     blurb: 'For teams running more than one channel.',
     features: [
       '50 fresh analyses a day',
@@ -55,6 +61,8 @@ const PLANS = [
     ],
   },
 ];
+
+const usd = (n) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 
 const BILLING = [
   { value: 'monthly', label: 'Monthly' },
@@ -119,6 +127,7 @@ export default function Pricing() {
       <ul className="mt-12 grid list-none items-stretch gap-4 md:grid-cols-3 md:gap-5">
         {PLANS.map((plan, i) => {
           const price = period === 'annual' ? plan.annual : plan.monthly;
+          const regular = period === 'annual' ? plan.regularAnnual : plan.regularMonthly;
           return (
             <motion.li
               key={plan.id}
@@ -139,6 +148,11 @@ export default function Pricing() {
               <p className="mt-1.5 min-h-[3lh] text-[15px] leading-relaxed text-fg-2">{plan.blurb}</p>
 
               <p className="mt-6 flex items-baseline gap-1.5">
+                {regular && (
+                  <s className="nums mr-1 text-[24px] font-medium leading-none tracking-[-0.02em] text-fg-3 decoration-[1.5px]">
+                    <span className="sr-only">Regular price </span>{usd(regular)}
+                  </s>
+                )}
                 <NumberFlow
                   value={price}
                   format={{ style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }}
@@ -147,7 +161,8 @@ export default function Pricing() {
                 />
                 <span className="text-[15px] text-fg-3">{price === 0 ? 'forever' : '/ month'}</span>
               </p>
-              <p className="mt-1.5 min-h-[1lh] text-[13px] text-fg-3">
+              <p className="mt-1.5 flex min-h-[1lh] items-center gap-2 text-[13px] text-fg-3">
+                {regular && <Badge tone="neutral">Launch price</Badge>}
                 {price === 0 ? 'No card needed' : period === 'annual' ? 'billed annually' : 'billed monthly'}
               </p>
 
