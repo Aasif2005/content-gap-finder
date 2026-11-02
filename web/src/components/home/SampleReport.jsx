@@ -1,6 +1,6 @@
 import { useId, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, Heart, Search } from 'lucide-react';
-import { Badge, Derived, Panel, ShinyButton, Skeleton } from '../ui/index.js';
+import { ArrowRight, ArrowUpRight, Heart } from 'lucide-react';
+import { Badge, Derived, Panel, Skeleton } from '../ui/index.js';
 import { EXAMPLE_REPORTS } from './exampleReport.js';
 import { useAuth } from '../../lib/auth.jsx';
 import { useColorMode } from '../../lib/colorMode.js';
@@ -206,21 +206,26 @@ function SearchBar() {
   };
   return (
     <form role="search" onSubmit={submit} className={cx('border-t p-3 md:px-6 md:py-4', hairline)}>
-      <div className="search-console flex items-center gap-1.5 rounded-full p-1.5 pl-4 sm:gap-2.5 sm:p-2 sm:pl-5">
-        <Search aria-hidden className="search-icon h-5 w-5 shrink-0" strokeWidth={1.6} />
+      <div className="flex items-center gap-2 rounded-full border border-line-strong bg-bg p-1.5 pl-5">
         <label htmlFor={id} className="sr-only">Search any niche</label>
         <input
           id={id}
           type="text"
           value={niche}
           onChange={(e) => setNiche(e.target.value)}
-          placeholder="A niche, like sourdough"
+          placeholder="Search any niche…"
           autoComplete="off"
           enterKeyHint="search"
           maxLength={120}
-          className="min-h-11 min-w-0 flex-1 bg-transparent px-2 text-base sm:min-h-12 sm:px-3.5 sm:text-lg font-medium text-fg placeholder:font-normal placeholder:text-fg-3"
+          className="min-h-9 min-w-0 flex-1 bg-transparent text-[15px] text-fg placeholder:text-fg-3"
         />
-        <ShinyButton type="submit" aria-label="Find gaps" className="cta-fold shrink-0"><ArrowRight aria-hidden className="h-5 w-5 sm:hidden" /><span className="max-sm:sr-only">Find gaps</span></ShinyButton>
+        <button
+          type="submit"
+          aria-label="Find gaps"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink text-on-ink transition-opacity duration-150 hover:opacity-85"
+        >
+          <ArrowRight aria-hidden className="h-4 w-4" />
+        </button>
       </div>
     </form>
   );
