@@ -19,6 +19,8 @@ export async function list() {
   return (await col('watches').find({}).toArray()).map(strip);
 }
 
+export const countOwnedBy = (uid) => col('watches').countDocuments({ ownerUid: uid });
+
 export async function get(id) {
   const d = await col('watches').findOne({ _id: id });
   return d ? strip(d) : null;

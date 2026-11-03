@@ -60,7 +60,10 @@ export async function loadUser(req, _res, next) {
       lastSweep = now;
     }
     if (shouldTouch(touched.get(user.uid), now)) {
-      await upsertUser(user);
+      // Known account: refresh the profile in the background. Only a first sight has to wait for the row.
+      const refresh = upsertUser(user);
+      if (touched.has(user.uid)) refresh.catch((e) => console.warn(`[auth] profile refresh failed: ${e.message}`));
+      else await refresh;
       touched.set(user.uid, now);
     }
     req.user = user;

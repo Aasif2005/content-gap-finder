@@ -494,10 +494,16 @@ router.get('/watches/:id/digest', requireUser, wrap(async (req, res) => {
 /** The signed-in person, today's usage and what the limits are. */
 router.get('/me', requireUser, wrap(async (req, res) => {
   const { uid } = req.user;
-  // The row exists after loadUser unless it was just deleted; recreate rather than 500.
-  const user = (await getUser(uid)) ?? (await upsertUser(req.user));
+  // Independent reads go out together: each is a round trip to the database.
   const day = quotaDay();
-  const usage = await usageFor(uid, day);
+  const [found, usage, watchCount] = await Promise.all([
+    getUser(uid),
+    usageFor(uid, day),
+    // Watches are held back until the audit; when on, count only this person's.
+    config.features.watches ? watches.countOwnedBy(uid) : 0,
+  ]);
+  // The row exists after loadUser unless it was just deleted; recreate rather than 500.
+  const user = found ?? (await upsertUser(req.user));
   res.json({
     user: {
       uid: user.uid, email: user.email, name: user.name, photoUrl: user.photoUrl, provider: user.provider,
@@ -507,7 +513,7 @@ router.get('/me', requireUser, wrap(async (req, res) => {
     usage: { day, analyses: usage.analyses, briefs: usage.briefs },
     limits: limitsFor(req.user),
     resetsAt: nextQuotaReset(),
-    watches: watches.ownedBy(await watches.list(), uid).length,
+    watches: watchCount,
   });
 }));
 
