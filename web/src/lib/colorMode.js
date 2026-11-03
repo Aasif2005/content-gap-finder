@@ -3,13 +3,13 @@ import { useCallback, useSyncExternalStore } from 'react';
 const KEY = 'gapstronaut-color-mode';
 const query = () => matchMedia('(prefers-color-scheme: dark)');
 
-/** The visitor's pick: 'light', 'dark', or null for "follow the OS". */
+/** The visitor's pick: 'light' (the default for a new visitor), 'dark', or 'system' (follow the OS, chosen on purpose). */
 function readPick() {
   try {
     const v = localStorage.getItem(KEY);
-    return v === 'light' || v === 'dark' ? v : null;
+    return v === 'light' || v === 'dark' || v === 'system' ? v : 'light';
   } catch {
-    return null;
+    return 'light';
   }
 }
 
@@ -20,7 +20,7 @@ const notify = () => listeners.forEach((l) => l());
 
 function apply() {
   const el = document.documentElement;
-  if (pick) el.dataset.mode = pick; else delete el.dataset.mode;
+  if (pick === 'system') delete el.dataset.mode; else el.dataset.mode = pick;
 }
 apply();
 
@@ -42,27 +42,27 @@ function subscribe(listener) {
   return () => { listeners.delete(listener); mq.removeEventListener('change', listener); };
 }
 
-const snapshot = () => `${pick ?? 'system'}|${query().matches ? 'dark' : 'light'}`;
+const snapshot = () => `${pick}|${query().matches ? 'dark' : 'light'}`;
 
 /**
- * Light/dark for the whole site. Until the visitor picks one the OS decides
- * (the CSS follows prefers-color-scheme); a pick is remembered and pinned on
- * <html> as data-mode, which the theme tokens key on.
+ * Light/dark for the whole site. A new visitor gets light; the OS decides only
+ * after they choose System (the CSS then follows prefers-color-scheme). A pick is
+ * remembered and pinned on <html> as data-mode, which the theme tokens key on.
  *
  * `choice` is what they chose ('system' | 'light' | 'dark'); `mode` is what
  * they are looking at ('light' | 'dark'). `toggle` flips `mode`; `choose`
  * sets `choice` (the Profile page's three-way control).
  */
 export function useColorMode() {
-  const snap = useSyncExternalStore(subscribe, snapshot, () => 'system|light');
+  const snap = useSyncExternalStore(subscribe, snapshot, () => 'light|light');
   const [choice, system] = snap.split('|');
   const mode = choice === 'system' ? system : choice;
 
   const choose = useCallback((next) => {
     withFade(() => {
-      pick = next === 'light' || next === 'dark' ? next : null;
+      pick = next === 'dark' || next === 'system' ? next : 'light';
       try {
-        if (pick) localStorage.setItem(KEY, pick); else localStorage.removeItem(KEY);
+        localStorage.setItem(KEY, pick);
       } catch { /* private mode: the pick lasts for this visit */ }
       apply();
       notify();
