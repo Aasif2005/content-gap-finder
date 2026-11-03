@@ -26,9 +26,15 @@ export function Menu({ label, trigger, items, header, align = 'end', triggerClas
   const place = useCallback(() => {
     const r = button.current?.getBoundingClientRect();
     if (!r) return;
+    // Kept wholly on screen with the header's 12px gutter. A trigger that is not the last thing
+    // in the bar (the phone hamburger) would otherwise push the panel past the screen edge.
+    const gutter = 12;
+    const width = panel.current?.offsetWidth ?? 256;
+    const room = Math.max(gutter, window.innerWidth - width - gutter);
+    const clamp = (v) => Math.min(Math.max(gutter, v), room);
     setPos(align === 'end'
-      ? { top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) }
-      : { top: r.bottom + 8, left: Math.max(8, r.left) });
+      ? { top: r.bottom + 8, right: clamp(window.innerWidth - r.right) }
+      : { top: r.bottom + 8, left: clamp(r.left) });
   }, [align]);
 
   const close = useCallback((refocus = false) => {

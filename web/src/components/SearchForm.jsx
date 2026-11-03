@@ -31,12 +31,13 @@ const TYPES = [
   { value: 'long', label: 'Long-form' },
 ];
 
-function Pills({ options, value, onChange, name, disabled }) {
+// On a phone the options share the full width in equal cells, so nothing wraps; from sm up they sit in a row.
+function Pills({ options, value, onChange, name, disabled, cols }) {
   return (
     <SlideGroup
       role="radiogroup"
       aria-label={name}
-      className="inline-flex flex-wrap gap-0.5 rounded-full bg-surface-2 p-1"
+      className={cx('grid w-full gap-0.5 rounded-full bg-surface-2 p-1 sm:inline-flex sm:w-auto sm:flex-wrap', cols)}
       pillClassName="bg-ink"
       hoverClassName="bg-hover"
     >
@@ -52,7 +53,7 @@ function Pills({ options, value, onChange, name, disabled }) {
           onClick={() => onChange(o.value)}
           className={cx(
             SLIDE_ITEM,
-            'min-h-10 rounded-full px-4 text-[15px] transition-colors duration-300 disabled:cursor-not-allowed disabled:opacity-55',
+            'min-h-10 whitespace-nowrap rounded-full px-1 text-[14px] transition-colors sm:px-4 sm:text-[15px] duration-300 disabled:cursor-not-allowed disabled:opacity-55',
             value === o.value ? 'font-semibold text-on-ink' : 'font-medium text-fg-2 hover:text-fg'
           )}
         >
@@ -181,17 +182,17 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
 
         <Collapse open={options} id={`${filtersId}-options`}>
           <div className="flex w-full flex-col items-center gap-4 pt-1">
-            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+            <div className="flex w-full flex-col gap-4 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-center sm:gap-x-6 sm:gap-y-3">
               {/* Not <label>: a label forwards clicks to its first button, so clicking
                   the word "Published" silently switched the window to 24 hours. */}
-              <div className="flex flex-wrap items-center gap-3 text-sm text-fg-2">
+              <div className="flex flex-col gap-2 text-sm text-fg-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                 <span className="font-medium" aria-hidden="true">Published</span>
-                <Pills name="Published: time window" options={WINDOWS} value={window} onChange={setWindow} disabled={busy} />
+                <Pills name="Published: time window" options={WINDOWS} value={window} onChange={setWindow} disabled={busy} cols="grid-cols-4" />
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 text-sm text-fg-2">
+              <div className="flex flex-col gap-2 text-sm text-fg-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                 <span className="font-medium" aria-hidden="true">Format</span>
-                <Pills name="Format: content type" options={TYPES} value={contentType} onChange={setContentType} disabled={busy} />
+                <Pills name="Format: content type" options={TYPES} value={contentType} onChange={setContentType} disabled={busy} cols="grid-cols-3" />
               </div>
             </div>
 

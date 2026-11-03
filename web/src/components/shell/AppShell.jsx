@@ -106,7 +106,7 @@ export default function AppShell({ children }) {
         >
           <span aria-hidden className="nav-sheen" data-play={arriving || undefined} />
           <div className="flex items-center gap-x-9">
-            <Logo href={user ? '/dashboard' : '/'} size={24} className="text-lg max-[374px]:[&>span:last-child]:sr-only" />
+            <Logo href={user ? '/dashboard' : '/'} size={24} className="text-lg max-[419px]:[&>span:last-child]:sr-only" />
             {user && (
               <SlideGroup as="nav" aria-label="Main" className="hidden gap-1.5 text-[15px] md:flex" pillClassName="bg-surface-2" hoverClassName="bg-surface-2/50">
                 {NAV.map((item) => {
@@ -148,8 +148,7 @@ export default function AppShell({ children }) {
                 />
               </div>
             )}
-            {/* Logged out on a small phone the bar is full; the theme follows the device there. */}
-            <ThemeToggle className={user ? undefined : 'max-[419px]:hidden'} />
+            <ThemeToggle />
             {user && (
               <Menu
                 label="Account"

@@ -33,12 +33,12 @@ export default function MarketingShell({ anchors, children }) {
           data-arriving={arriving || undefined}
         >
           <span aria-hidden className="nav-sheen" data-play={arriving || undefined} />
-          <Logo href="/" size={26} className="text-xl max-[374px]:[&>span:last-child]:sr-only" />
+          <Logo href="/" size={26} className="text-xl max-[419px]:[&>span:last-child]:sr-only" />
           <nav aria-label="Main" className="flex items-center gap-x-2 text-[15px] sm:gap-x-8">
             {anchors?.map((a) => (
               <a key={a.href} href={a.href} className={cx(link, 'hidden whitespace-nowrap lg:inline-flex')}>{a.label}</a>
             ))}
-            <ThemeToggle className="-mr-1 max-[419px]:hidden sm:-mr-4" />
+            <ThemeToggle className="-mr-1 sm:-mr-4" />
             {!loading && (user ? (
               <Button href="/dashboard" className="!min-h-11 !rounded-full !px-5">Dashboard</Button>
             ) : (

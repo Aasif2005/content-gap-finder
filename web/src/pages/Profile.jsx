@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { KeyRound } from 'lucide-react';
-import { Alert, Avatar, Button, Input, Panel, SlideGroup, SLIDE_ITEM, Skeleton, UsageMeter, useToast } from '../components/ui/index.js';
+import { Alert, Button, Input, Panel, SlideGroup, SLIDE_ITEM, Skeleton, UsageMeter, useToast } from '../components/ui/index.js';
 import { GoogleMark } from '../components/auth/GoogleButton.jsx';
 import { DeleteAccountDialog } from '../components/profile/DeleteAccountDialog.jsx';
 import { SettingRow } from '../components/profile/SettingRow.jsx';
@@ -235,7 +235,6 @@ export default function Profile() {
   return (
     <div className="mx-auto max-w-[880px]">
       <header className="flex flex-wrap items-center gap-5">
-        <Avatar user={shownUser} size={72} key={shownUser.photoUrl ?? 'none'} />
         <div className="min-w-0">
           <h1 className="break-words text-[32px] font-semibold leading-[1.1] tracking-[-0.03em]">{display}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-base text-fg-2">
@@ -246,7 +245,7 @@ export default function Profile() {
       </header>
 
       <Panel padding="none" className="mt-7 divide-y divide-line">
-        <SettingRow title="Profile picture" description="Shown next to your name.">
+        <SettingRow title="Profile picture" description="Shown in the top bar.">
           <PictureForm shownUser={shownUser} />
         </SettingRow>
 
