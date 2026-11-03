@@ -1,0 +1,28 @@
+# What the Vercel CLI must never upload. The frontend build needs web/ and
+# server/src/lib/site.js (+ server/src/config.js); nothing secret or runtime.
+
+# secrets: the server's keys live here, and none of them belong in a frontend build
+.env
+.env.*
+!.env.example
+*.key
+
+# deps and build output (Vercel installs and builds itself)
+node_modules
+dist
+build
+
+# server runtime state and logs
+server/.cache
+server/.state
+server/logs
+logs
+*.log
+
+# local tooling and docs
+.claude
+.impeccable
+.vscode
+.idea
+.DS_Store
+docs

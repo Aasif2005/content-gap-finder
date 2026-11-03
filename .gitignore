@@ -31,3 +31,7 @@ logs/
 .idea/
 .vscode/
 *.swp
+# Vercel CLI link and its pulled env (holds an OIDC token)
+.vercel
+.env*
+!.env.example
