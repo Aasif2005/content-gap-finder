@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 
 /**
  * The web app's Firebase config. It is public by design: it ships in the
@@ -20,7 +21,16 @@ const config = {
 let instance = null;
 if (config.apiKey && config.projectId && config.appId) {
   try {
-    instance = getAuth(initializeApp(config));
+    const app = initializeApp(config);
+    // App Check (reCAPTCHA) proves a request comes from this site, not a script, before
+    // Firebase answers sign-up, sign-in or reset. Off without a site key. Enforcement is
+    // switched on in the Firebase console once it has run in monitor mode.
+    const siteKey = (env.VITE_RECAPTCHA_SITE_KEY ?? '').trim();
+    if (siteKey) {
+      if (env.DEV && env.VITE_APPCHECK_DEBUG_TOKEN) self.FIREBASE_APPCHECK_DEBUG_TOKEN = env.VITE_APPCHECK_DEBUG_TOKEN;
+      initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(siteKey), isTokenAutoRefreshEnabled: true });
+    }
+    instance = getAuth(app);
   } catch (err) {
     console.warn('[auth] Firebase could not start; continuing logged out.', err?.code ?? err?.message);
   }

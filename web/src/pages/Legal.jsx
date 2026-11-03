@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getSite } from '../lib/api.js';
 import { Link, goBackOr } from '../lib/router.jsx';
+import { analyticsConfigured, appCheckEnabled } from '../lib/analytics.js';
 
 // Plain-language drafts written against what the app actually does. Review them
 // (and have them reviewed) before publishing: they are not legal advice.
@@ -175,9 +176,12 @@ export function PrivacyPage() {
       <section>
         <H>Cookies and browser storage</H>
         <p className="mt-2">
-          The app sets no cookies of its own and runs no analytics or advertising trackers. Firebase Authentication keeps
-          your sign-in session in your browser's storage so you stay logged in, and the app stores your light or dark choice and
-          that you have seen the storage notice. Video thumbnails are loaded
+          Firebase Authentication keeps your sign-in session in your browser's storage so you stay logged in, and the app
+          stores your light or dark choice and that you have seen the storage notice.
+          {analyticsConfigured
+            ? ' These are needed for the app to work. Optional analytics: if you press Accept on the notice, Google Analytics sets cookies (_ga) and receives your IP address, browser details and the pages you view, with report ids removed. Press Decline, or ignore the notice, and it is never loaded. You can change your choice any time with "Cookie settings" in the footer.'
+            : ' The app sets no cookies of its own and runs no analytics or advertising trackers.'}
+          Video thumbnails are loaded
           from YouTube's servers, which receive your IP address and browser details when they do.
         </p>
       </section>
@@ -190,7 +194,8 @@ export function PrivacyPage() {
             <b>MongoDB Atlas</b> (MongoDB, Inc.) hosts our database, so it stores everything described above: account records,
             reports, drafts, watches and usage counts. It acts on our instructions and does not use the data for its own purposes.
           </li>
-          <li><b>Google (Firebase Authentication)</b> handles sign-in, and so receives your email address, password or Google account details when you log in.</li>
+          <li><b>Google (Firebase Authentication)</b> handles sign-in, and so receives your email address, password or Google account details when you log in.{appCheckEnabled && ' Sign-in pages also use Firebase App Check with reCAPTCHA to tell people from bots, which receives your IP address and browser details.'}</li>
+          {analyticsConfigured && <li><b>Google Analytics</b> (Google LLC) receives your IP address, browser details and page views, only if you accept analytics cookies.</li>}
           <li>
             <b>DeepSeek</b> (deepseek.com), an AI model provider, receives video titles, statistics and comment text from
             each run in order to cluster topics and find viewer requests. It does not receive your name or email address.

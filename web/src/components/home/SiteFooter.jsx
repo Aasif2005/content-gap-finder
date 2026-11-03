@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/auth.jsx';
 import { YouTubeAttribution } from '../Attribution.jsx';
 import { useInView } from '../../lib/useInView.js';
 import { cx } from '../../lib/cx.js';
+import { analyticsConfigured, openCookieSettings } from '../../lib/analytics.js';
 
 const COLUMNS = [
   {
@@ -43,7 +44,9 @@ export function SiteFooter() {
   const account = user
     ? [{ href: '/dashboard', label: 'Dashboard' }, { href: '/explore', label: 'Explore a niche' }, { href: '/profile', label: 'Profile' }]
     : [{ href: '/login', label: 'Log in' }, { href: '/signup', label: 'Sign up' }];
-  const columns = [COLUMNS[0], { title: 'Account', links: account }, COLUMNS[1]];
+  // Analytics is a choice, so the choice must stay reachable from every page.
+  const legal = analyticsConfigured ? { ...COLUMNS[1], links: [...COLUMNS[1].links, { label: 'Cookie settings', onClick: openCookieSettings }] } : COLUMNS[1];
+  const columns = [COLUMNS[0], { title: 'Account', links: account }, legal];
 
   return (
     <div className="theme-night mt-16 bg-transparent md:mt-24">
@@ -63,7 +66,9 @@ export function SiteFooter() {
               <ul className="mt-4 grid list-none">
                 {c.links.map((l) => (
                   <li key={l.label}>
-                    {l.external ? (
+                    {l.onClick ? (
+                      <button type="button" onClick={l.onClick} className={link}>{l.label}</button>
+                    ) : l.external ? (
                       <a href={l.href} target="_blank" rel="noreferrer noopener" className={link}>{l.label}</a>
                     ) : (
                       <Link href={l.href} className={link}>{l.label}</Link>

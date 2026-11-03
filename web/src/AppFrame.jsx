@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import AppShell from './components/shell/AppShell.jsx';
 import MarketingShell from './components/shell/MarketingShell.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
@@ -6,12 +6,15 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import CookieNotice from './components/CookieNotice.jsx';
 import OfflineBanner from './components/OfflineBanner.jsx';
 import { useRoute } from './lib/router.jsx';
+import { pageView } from './lib/analytics.js';
 
 const SHELLS = { app: AppShell, marketing: MarketingShell };
 
 /** Picks the frame for the matched route (see routes.jsx) and the auth guard around it. */
 export default function AppFrame() {
   const ctx = useRoute();
+  // One analytics page view per route change; a no-op until the visitor has accepted.
+  useEffect(() => { pageView(ctx.path); }, [ctx.path]);
   const { route } = ctx;
   if (!route) return null;
 
