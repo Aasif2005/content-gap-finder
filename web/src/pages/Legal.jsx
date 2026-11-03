@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getSite } from '../lib/api.js';
 import { Link, goBackOr } from '../lib/router.jsx';
 import { analyticsConfigured, appCheckEnabled } from '../lib/analytics.js';
+import { SUPPORT_EMAIL } from '../lib/support.js';
 
 // Plain-language drafts written against what the app actually does. Review them
 // (and have them reviewed) before publishing: they are not legal advice.
@@ -19,7 +20,7 @@ const A = ({ href, children }) => (
 
 function useSite() {
   // The build's address stands in until the API answers (or when the frontend is hosted without one).
-  const [site, setSite] = useState({ contactEmail: import.meta.env.VITE_CONTACT_EMAIL || null, dataMaxDays: 30 });
+  const [site, setSite] = useState({ contactEmail: SUPPORT_EMAIL, dataMaxDays: 30 });
   useEffect(() => {
     let live = true;
     getSite().then((s) => { if (live) setSite((cur) => ({ ...s, contactEmail: s.contactEmail || cur.contactEmail })); }).catch(() => {});

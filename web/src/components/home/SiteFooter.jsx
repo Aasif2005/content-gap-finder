@@ -6,6 +6,7 @@ import { YouTubeAttribution } from '../Attribution.jsx';
 import { useInView } from '../../lib/useInView.js';
 import { cx } from '../../lib/cx.js';
 import { analyticsConfigured, openCookieSettings } from '../../lib/analytics.js';
+import { SUPPORT_MAILTO } from '../../lib/support.js';
 
 const COLUMNS = [
   {
@@ -23,6 +24,7 @@ const COLUMNS = [
       { href: '/privacy', label: 'Privacy Policy' },
       { href: '/terms', label: 'Terms of Service' },
       { href: 'https://www.youtube.com/t/terms', label: 'YouTube Terms of Service', external: true },
+      { href: SUPPORT_MAILTO, label: 'Contact support', mail: true },
     ],
   },
 ];
@@ -68,6 +70,8 @@ export function SiteFooter() {
                   <li key={l.label}>
                     {l.onClick ? (
                       <button type="button" onClick={l.onClick} className={link}>{l.label}</button>
+                    ) : l.mail ? (
+                      <a href={l.href} className={link}>{l.label}</a>
                     ) : l.external ? (
                       <a href={l.href} target="_blank" rel="noreferrer noopener" className={link}>{l.label}</a>
                     ) : (

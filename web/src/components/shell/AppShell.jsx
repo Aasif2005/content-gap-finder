@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { LogOut, Menu as MenuIcon, User as UserIcon } from 'lucide-react';
+import { LifeBuoy, LogOut, Menu as MenuIcon, User as UserIcon } from 'lucide-react';
+import { SUPPORT_MAILTO } from '../../lib/support.js';
 import { SiteFooter } from '../home/SiteFooter.jsx';
 import { Alert, Avatar, Button, Logo, Menu, SlideGroup, SLIDE_ITEM, ThemeToggle } from '../ui/index.js';
 import { useToast } from '../ui/Toast.jsx';
@@ -163,6 +164,7 @@ export default function AppShell({ children }) {
                 )}
                 items={[
                   { label: 'Profile', href: '/profile', icon: <UserIcon aria-hidden className="h-4 w-4 text-fg-3" /> },
+                  { label: 'Help & support', onSelect: () => { window.location.href = SUPPORT_MAILTO; }, icon: <LifeBuoy aria-hidden className="h-4 w-4 text-fg-3" /> },
                   { label: 'Log out', onSelect: logOut, icon: <LogOut aria-hidden className="h-4 w-4 text-fg-3" /> },
                 ]}
               />
