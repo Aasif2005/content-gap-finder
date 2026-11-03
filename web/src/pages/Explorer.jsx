@@ -230,12 +230,18 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
     let settle = null;
     const finished = new Promise((resolve) => { settle = resolve; });
     const closeOrb = () => setOrbJob((j) => (j && j.id === seq ? null : j));
+    const openOrb = () => setOrbJob({ id: seq, text: subject, origin, onSubmit: () => finished, summary });
+    // The orb goes up at once: on the live site the start request takes seconds, and the plain
+    // progress card must never show first. A cached answer lands within ~350ms, so it never gets one.
+    const orbTimer = setTimeout(openOrb, 350);
 
     try {
       const started = await startAnalysis({ ...input, force });
+      clearTimeout(orbTimer);
       if (stale()) {
         // Cancelled while the start request was in flight: stop the run it just began.
         if (started.jobId) stopJob(started.jobId);
+        closeOrb();
         return;
       }
       currentJob.current = started.jobId ?? null;
@@ -251,7 +257,7 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
       }
 
       // Only a real run earns the orb: its full sequence is ten seconds, far longer than a cached answer takes.
-      setOrbJob({ id: seq, text: subject, origin, onSubmit: () => finished, summary });
+      openOrb();
       const final = await pollJob(
         started.jobId,
         (job) => setPhase({ phase: job.phase, detail: job.detail, progress: job.progress, elapsedMs: job.elapsedMs }),
@@ -265,6 +271,7 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
       // Now the report has an id, so give it a URL worth sharing.
       pushReportUrl(final.runId, mode);
     } catch (err) {
+      clearTimeout(orbTimer);
       closeOrb();
       if (err.cancelled || stale()) return;
       const described = describeRunError(err, { limit: me?.limits?.analyses });
@@ -347,7 +354,8 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
 
       {!orbJob && (
       <div className={showForm ? 'report-in mt-8' : 'report-in'}>
-        {busy && <ProgressRail {...phase} />}
+        {/* The first moments (before the run exists) show nothing rather than a card that the orb replaces. */}
+        {busy && phase.detail !== 'Starting…' && <ProgressRail {...phase} />}
 
         {error && (
           <RunError
