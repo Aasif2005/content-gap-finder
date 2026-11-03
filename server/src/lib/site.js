@@ -45,13 +45,16 @@ export function robotsTxt(origin) {
   return ['User-agent: *', 'Disallow: /api/', 'Disallow: /r/', 'Disallow: /channel/r/', 'Disallow: /dashboard', 'Disallow: /profile', '', `Sitemap: ${origin}/sitemap.xml`, ''].join('\n');
 }
 
+/** Previews (og:image, twitter:image) need an absolute image URL. */
+export const absoluteImages = (html, origin) => html.replaceAll('content="/og.png"', `content="${origin}/og.png"`);
+
 /**
  * The built index.html for one request. Previews need an absolute image URL,
  * which a static file cannot know. Only paths from isAppPath get a canonical
  * link, so nothing from the URL reaches the page unchecked.
  */
 export function renderIndex(html, origin, path) {
-  const withImage = html.replaceAll('content="/og.png"', `content="${origin}/og.png"`);
+  const withImage = absoluteImages(html, origin);
   if (!isAppPath(path)) return withImage;
   const url = `${origin}${trimSlashes(path)}`;
   return withImage.replace('</head>', `  <link rel="canonical" href="${url}" />\n    <meta property="og:url" content="${url}" />\n  </head>`);

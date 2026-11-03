@@ -17,10 +17,11 @@ const A = ({ href, children }) => (
 );
 
 function useSite() {
-  const [site, setSite] = useState({ contactEmail: null, dataMaxDays: 30 });
+  // The build's address stands in until the API answers (or when the frontend is hosted without one).
+  const [site, setSite] = useState({ contactEmail: import.meta.env.VITE_CONTACT_EMAIL || null, dataMaxDays: 30 });
   useEffect(() => {
     let live = true;
-    getSite().then((s) => { if (live) setSite(s); }).catch(() => {});
+    getSite().then((s) => { if (live) setSite((cur) => ({ ...s, contactEmail: s.contactEmail || cur.contactEmail })); }).catch(() => {});
     return () => { live = false; };
   }, []);
   return site;

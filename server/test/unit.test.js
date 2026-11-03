@@ -3368,6 +3368,15 @@ describe('site address, sitemap and real 404s', () => {
     assert.equal(isAppPath('/privacy/'), true);
   });
 
+  test('the Vercel rewrites serve exactly the app\'s routes (anything else is a real 404 there too)', () => {
+    const routes = readFileSync(new URL('../../web/src/routes.jsx', import.meta.url), 'utf8');
+    const paths = [...routes.matchAll(/path: '([^']+)'/g)].map((m) => m[1]).filter((p) => p !== '*');
+    const vercel = JSON.parse(readFileSync(new URL('../../web/vercel.json', import.meta.url), 'utf8'));
+    const sources = vercel.rewrites.filter((r) => r.destination === '/index.html').map((r) => r.source.replace(/:id\([^)]*\)/, ':id'));
+    assert.deepEqual([...sources].sort(), [...paths].sort());
+    for (const src of sources) assert.equal(isAppPath(src.replace(':id', 'abc-123')), true, src);
+  });
+
   test('the public address comes from SITE_URL, else from the request', () => {
     assert.equal(siteOrigin(req(), 'https://gap.example/'), 'https://gap.example');
     assert.equal(siteOrigin(req(), ''), 'http://preview.example:8790');
