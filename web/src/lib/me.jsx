@@ -33,44 +33,70 @@ export function MeProvider({ children }) {
   const { user, loading: authLoading } = useAuth();
   const [me, setMe] = useState(null);
   const [error, setError] = useState(null);
-  const seq = useRef(0); // numbers each request
-  const applied = useRef(0); // the newest request whose answer is on screen: an older one must not overwrite it
-  const epoch = useRef(0); // bumped when the account changes: answers from the old account are dropped
   const signedIn = Boolean(user);
   const uid = user?.uid;
-  const authLoadingRef = useRef(authLoading);
-  authLoadingRef.current = authLoading;
+
+  // `refresh` is often called from a callback created before sign-in finished
+  // (the sign-up page awaits sign-in, then refreshes). So `load` reads the
+  // account from refs, never from its closure: a stale closure once ran the
+  // signed-out branch and threw away the real answer, leaving the skeleton up.
+  const uidRef = useRef(uid);
+  uidRef.current = uid;
+  const seq = useRef(0); // numbers each request
+  const applied = useRef(0); // newest request whose answer is on screen: an older one must not overwrite it
+  const inFlight = useRef(0);
+  const [pending, setPending] = useState(0); // mirrors inFlight so the self-heal below re-checks when calls finish
 
   const load = useCallback(async () => {
+    const owner = uidRef.current;
+    if (!owner) return null; // signed out (or not yet known): the uid effect below handles clearing
     const mine = ++seq.current;
-    const era = epoch.current;
-    if (!signedIn) { applied.current = mine; setMe(null); setError(null); if (!authLoadingRef.current) clearCache(); return null; } // signed out: the saved copy holds an email
-    const current = () => era === epoch.current && mine > applied.current;
-    // A slow or dropped first call gets one more try before we show an error.
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        // Never wait forever: a body that stalls after the headers would otherwise leave the skeleton up.
-        const next = await Promise.race([
-          getMe(),
-          new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('Gapstronaut is taking too long to answer. Try again.'), { code: 'TIMEOUT' })), 15_000)),
-        ]);
-        // A newer request that finished first wins; a slower older one is not thrown away if nothing newer landed.
-        if (current()) { applied.current = mine; setMe(next); setError(null); if (uid) writeCache(uid, next); }
-        return next;
-      } catch (err) {
-        const again = attempt === 0 && (err.code === 'TIMEOUT' || err.code === 'NETWORK' || err.code === 'SERVER_DOWN');
-        if (again) continue;
-        if (current()) setError(err);
-        return null;
+    inFlight.current++;
+    setPending((n) => n + 1);
+    const current = () => uidRef.current === owner && mine > applied.current;
+    try {
+      // A slow or dropped first call gets one more try before we show an error.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        let timer;
+        try {
+          // Never wait forever: a body that stalls after the headers would otherwise leave the skeleton up.
+          const next = await Promise.race([
+            getMe(),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('Gapstronaut is taking too long to answer. Try again.'), { code: 'TIMEOUT' })), 15_000); }),
+          ]);
+          if (current()) { applied.current = mine; setMe(next); setError(null); writeCache(owner, next); }
+          return next;
+        } catch (err) {
+          const again = attempt === 0 && (err.code === 'TIMEOUT' || err.code === 'NETWORK' || err.code === 'SERVER_DOWN');
+          if (again) continue;
+          if (current()) setError(err);
+          return null;
+        } finally {
+          clearTimeout(timer);
+        }
       }
+      return null;
+    } finally {
+      inFlight.current--;
+      setPending((n) => n - 1);
     }
-    return null;
-  }, [signedIn, uid]);
+  }, []);
 
-  // A different account must not briefly see the last one's numbers.
-  useEffect(() => { epoch.current++; applied.current = seq.current; setMe(uid ? readCache(uid) : null); setError(null); }, [uid]);
+  // A different account must not briefly see the last one's numbers. Signed
+  // out for real (auth settled, no user): forget the saved copy, it holds an email.
+  useEffect(() => {
+    setMe(uid ? readCache(uid) : null);
+    setError(null);
+    if (!uid && !authLoading) clearCache();
+  }, [uid, authLoading]);
 
-  useEffect(() => { load(); }, [load, user?.uid, user?.emailVerified]);
+  useEffect(() => { if (uid) load(); }, [load, uid, user?.emailVerified]);
+
+  // Self-heal: signed in with nothing to show, no error and nothing on the way means an
+  // answer went missing. Ask again rather than leave the skeleton up.
+  useEffect(() => {
+    if (uid && !me && !error && inFlight.current === 0) load();
+  }, [uid, me, error, pending, load]);
 
   const value = useMemo(() => ({
     me,
