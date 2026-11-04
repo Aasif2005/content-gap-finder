@@ -252,6 +252,12 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
             </select>
           </SelectField>
 
+          {!DEEP_SCAN && !channelMode && (
+            <p className="text-[13px] leading-relaxed text-fg-3 sm:col-span-2 lg:col-span-4">
+              Coming soon: deep scan, custom date range and watches. They are switched off until Gapstronaut&rsquo;s YouTube API quota is extended.
+            </p>
+          )}
+
           {/* Deep scan widens a SEARCH pool. Channel mode has no search to widen
               -- it already reads every upload in the window. */}
           {DEEP_SCAN && !channelMode && (

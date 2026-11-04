@@ -161,7 +161,7 @@ export function PrivacyPage() {
           </li>
           <li>
             <b>Your searches.</b> The niche or channel you type, and the filters you choose, are saved with the report.
-            Saved &ldquo;watches&rdquo; keep their search so they can re-run on a schedule until you delete them.
+            Watches, a feature that is not available yet, will keep a saved search so it can re-run on a schedule until you delete it; no watches exist today.
           </li>
           <li>
             <b>Demand history.</b> To tell recurring demand from a one-off, we keep the questions and scores our analysis

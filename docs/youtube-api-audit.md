@@ -21,7 +21,7 @@ timeline; reports range from a few weeks to a few months.
 - [ ] The developer contact email in the Cloud Console is current, because YouTube sends audit mail there (Developer Policies III.D.5).
 - [ ] The project has made API calls in the last 90 days. Inactive projects can lose quota (III.D.4).
 - [ ] You use one Cloud project and one API key for this app. Never split traffic across projects to get more quota; it is prohibited (III.D.1.c) and gets keys cut off.
-- [ ] Optional: you downloaded the official "developed with YouTube" artwork from https://brand.youtube into `web/public/brand/` and set `LOGO_SRC` in `web/src/components/Attribution.jsx`.
+- [x] The official YouTube logo (from https://brand.youtube) is in `web/public/brand/` and shown in the footer next to "Developed with" (`web/src/components/Attribution.jsx`; white wordmark on dark surfaces).
 - [ ] Screenshots and the screencast below are captured from the deployed site.
 
 ---
@@ -34,7 +34,7 @@ timeline; reports range from a few weeks to a few months.
 
 | Field | Answer |
 |---|---|
-| Applying as | Individual (or your organisation, if you have one) |
+| Applying as | Individual |
 | Full legal name | `[your legal name]` |
 | Organization legal name | `self` (if individual) |
 | Primary website | `[https://your-domain]` |
@@ -63,7 +63,7 @@ timeline; reports range from a few weeks to a few months.
 | Field | Answer |
 |---|---|
 | Target audience | Content creators |
-| Monetization | `[None / Subscription / …]`. If you show ads, re-read Developer Policies III.G.1.d first. |
+| Monetization | Paid subscriptions are planned (Creator and Studio plans, shown on the pricing section with a waitlist); billing is not live yet. The free plan stays. The app shows **no ads**. |
 | Google or YouTube partner manager | No |
 
 ## Section 4: API client
@@ -77,7 +77,7 @@ timeline; reports range from a few weeks to a few months.
 | Terms of Service URL | `[https://your-domain/terms]` |
 | Publicly accessible? | Yes |
 | Demo account | **Required: the app needs a login to run analyses.** Create a dedicated email/password account (never your personal one), verify its email, and put its email and password here. Reviewers need full access, so keep its daily allowance topped up and leave one saved report in its history. |
-| Special instructions | "Open the URL, type a niche such as 'sourdough starter', press Find gaps and accept the terms dialog. A run takes about 60–120 seconds. A finished example report: `[https://your-domain/r/<runId>]`." |
+| Special instructions | "Open the URL, type a niche such as 'sourdough starter', press Find gaps and accept the terms dialog. A run takes about 2 to 2.5 minutes. A finished example report: `[https://your-domain/r/<runId>]`." |
 
 ## Section 5: Use case and quota
 
@@ -86,14 +86,14 @@ timeline; reports range from a few weeks to a few months.
 | Use case categories | **Tools for Creators** and **Analytics & Reporting** |
 | Requires Google sign-in (OAuth)? | **No.** Users can sign in to the app with Google through Firebase Authentication, but only for the app's own login (scopes `openid`, `email`, `profile`). The app never requests YouTube OAuth scopes: it reads public data with a server-side API key. Suggested text: "Users may sign in to our app with Google through Firebase Authentication (openid, email, profile only) or with email and password. This is app login only. The app never requests YouTube OAuth scopes and calls YouTube only with a server-side API key on public data." |
 | Derived metrics and data storage | **Accept the amendment.** See below. |
-| Expected volume | `[pick the bracket matching your target, e.g. "1,000–10,000 requests per day"]` |
+| Expected volume | About 500 fresh analyses a day, which is roughly 750 search.list calls and 33,500 other units a day (calculation below). Pick the form's bracket that contains 40,000 units a day. |
 
 ### Why we accept the derived-metrics amendment
 
 The app calculates figures from API data. Each is labelled in the UI with an ⓘ "Calculated by
 Gapstronaut from YouTube data. Not a YouTube metric." mark, and in exports:
 
-- **Heat score (0–100):** a ranking of videos and topics within one result set. It is built from
+- **Buzz score (0–100)** (internally "heat"; the interface says "buzz"): a ranking of videos and topics within one result set. It is built from
   views per subscriber, views per day and engagement rate, falls under the policy's custom
   scores and ratios category, and is shown next to the raw view counts.
 - **Engagement rate:** (likes + weighted comments) ÷ views, a simple ratio.
@@ -119,40 +119,60 @@ or as statements about YouTube's business.
 
 | Endpoint | Why | Cost per niche run |
 |---|---|---|
-| `youtube.search.list` | Find recent videos for the niche. One call per duration slice: one for "both" or "shorts", two for long-form, doubled by the optional deep scan. | 1–4 search calls |
+| `youtube.search.list` | Find recent videos for the niche. One call per duration slice: one for "both" or "shorts", two for long-form, one call per duration slice only. (Deep scan, which would double it, is switched off; see "Features switched off" below.) | 1–2 search calls |
 | `youtube.videos.list` | Statistics, duration and language for candidates, batched 50 ids per call | ~2 units, plus about 20 for baselines |
 | `youtube.channels.list` | Subscriber counts, and resolving a channel URL in channel mode | ~1–3 units |
 | `youtube.commentThreads.list` | Top comments for the top 25 videos, one call each (it cannot be batched) | ~25 units |
 | `youtube.playlistItems.list` | Recent uploads of the top channels, to compare each video with its own channel's median; in channel mode, the channel's uploads | ~20 units |
 
-A typical niche run costs **1 search call and about 67 units**. Measured live: 1 search call and 65
-units. Channel mode costs 0 search calls and about 39 units.
+A typical niche run costs **1 search call and about 51 units**, measured on 2026-11-04 from our own
+quota ledger over 5 fresh analyses (5 search.list, 77 videos.list, 5 channels.list, 73
+playlistItems.list and 100 commentThreads.list calls = 255 units; per run: 15.4 + 1 + 14.6 + 20 = 51).
+Earlier measurements gave up to 65 units, so **this request uses 67 units a run** to avoid
+understating it. search.list is counted in its own bucket (1 per call), not in the 10,000 units.
+Channel mode costs 0 search calls and about 39 units.
 
 ### Quota requested
 
 Replace the target with your own estimate. The arithmetic is what reviewers want to see.
 
-- **Target:** `[500]` fresh analyses a day, for `[N]` active creators at about 2–3 runs each.
-- **search.list:** average 1.5 calls a run (a mix of standard and long-form runs), × 500 = 750 a
-  day, plus 30% headroom. **Request 1,000 search.list calls a day.**
-- **Other units:** 67 × 500 = 33,500 a day, plus headroom. **Request 40,000 units a day.**
+- **Target:** 500 fresh analyses a day, from creators running about 2–3 each.
+- **search.list:** average 1.5 calls a run (1 for "both" or "shorts", 2 for long-form), x 500 = 750
+  a day, plus about 33% headroom. **Request 1,000 search.list calls a day.**
+- **Other units:** 67 x 500 = 33,500 a day (of which commentThreads is 25 x 500 = 12,500), plus
+  about 19% headroom. **Request 40,000 units a day.**
+
+| Quantity | Calculation | Daily need | Request |
+|---|---|---|---|
+| search.list calls | 500 x 1.5 | 750 | 1,000 |
+| other units | 500 x 67 | 33,500 | 40,000 |
+
+Today's ceiling for comparison: 100 search calls a day, so at most 95 analyses a day across all users.
+
+### Features switched off until the quota is extended
+
+Three features exist in the product but are **disabled** (a "Coming soon" note says so on the pricing
+section and in the search options): **Deep scan** (doubles a run's search calls), **Watches**
+(re-run a saved search on a schedule) and the **custom date range**. They are not part of this
+request. If the quota is extended they will be switched on only as far as the granted quota allows,
+with the existing per-user limits and the 6-hour minimum between scheduled re-runs.
 
 **Detailed justification** (paste and adjust):
 
-> Each analysis makes 1–2 search.list calls (more only when a user opts into a deep scan) and about
+> Each analysis makes 1–2 search.list calls and about
 > 67 units of videos, channels, commentThreads and playlistItems calls. We minimise usage:
 >
 > - Identical queries are served from a cache, and an identical query already running is joined
 >   instead of re-run, so cached views and repeat visits cost nothing.
 > - videos.list and channels.list are batched 50 ids per call.
 > - Comments are read for at most 25 videos a run.
-> - Each user is rate-limited per hour, and scheduled re-runs are limited to one every 6 hours or
->   more.
+> - Each user is rate-limited per hour and per day.
 > - The app tracks the search and unit buckets separately and stops before the daily limits.
 >
 > At the default 100 search calls a day, the service supports at most 95 analyses a day across all
-> users. At our target of [500] analyses a day, we need about [750] search calls and [33,500] units,
-> and we request [1,000] search calls and [40,000] units for headroom.
+> users. At our target of 500 analyses a day, we need about 750 search calls and 33,500 units,
+> and we request 1,000 search calls and 40,000 units for headroom. Deep scan, Watches and a custom
+> date range are disabled and not included in this request.
 
 ### Required evidence (capture from the deployed site)
 
@@ -166,14 +186,14 @@ Replace the target with your own estimate. The arithmetic is what reviewers want
 4. **Dashboard screenshots:**
    - a report with "YouTube data as of …" and the ⓘ legend;
    - a gap card with comment quotes showing "on '<video>' ↗" links;
-   - the ⓘ tooltip open on a heat score;
+   - the ⓘ tooltip open on a buzz score;
    - the consent dialog.
 
 ### Screencast script (about 2 minutes, unlisted YouTube video or Drive link)
 
 1. Open the homepage and point out the footer links.
 2. Type a niche, press **Find gaps**, tick the terms box and agree. Wait through the progress steps.
-3. On the report, show "YouTube data as of …" and the ⓘ legend. Hover a heat score to show the
+3. On the report, show "YouTube data as of …" and the ⓘ legend. Hover a buzz score to show the
    "not a YouTube metric" tooltip.
 4. Open **Content gaps** and click a comment's "on '<video>' ↗" link. It opens the video on YouTube.
 5. Click a video row. It opens on YouTube.
@@ -197,7 +217,7 @@ Replace the target with your own estimate. The arithmetic is what reviewers want
 | III.E.4.h: derived metrics labelled | ✅ ⓘ marks and the export note; amendment accepted | `components/ui/Derived.jsx` |
 | III.E.5: transport security | ✅ HSTS in production; deploy behind TLS | `lib/security.js` |
 | III.E.6, III.I.14: no scraping | ✅ The API only | |
-| III.F.2: attribution and branding | ✅ "Developed with YouTube", per-comment video links, "not affiliated" | `Attribution.jsx`, `CommentQuote.jsx`, `Footer.jsx` |
+| III.F.2: attribution and branding | ✅ "Developed with YouTube", per-comment video links, "not affiliated" | `Attribution.jsx`, `CommentQuote.jsx`, `SiteFooter.jsx`, `Footer.jsx` |
 | III.I.2: no automated actions | ✅ The app is read-only | |
 | III.J: child-directed? | Not child-directed; the policy says so | `/privacy` |
 

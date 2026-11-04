@@ -87,7 +87,7 @@ export function SiteFooter() {
         <div className={cx('footer-item mt-16 border-t border-line pt-6 md:mt-24')} {...step(5)}>
           <div className="flex flex-col gap-3 text-sm text-fg-3 md:flex-row md:items-center md:justify-between">
             <p>© {new Date().getFullYear()} Gapstronaut</p>
-            <YouTubeAttribution />
+            <YouTubeAttribution onDark />
           </div>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-fg-3">
             Gapstronaut uses YouTube API Services to read public videos, statistics and comments. It is not

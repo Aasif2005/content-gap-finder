@@ -1,17 +1,21 @@
 import { Derived } from './ui/Derived.jsx';
+import { useColorMode } from '../lib/colorMode.js';
 
 /**
  * YouTube's branding guidelines: an app that depends entirely on YouTube data
  * shows "developed with YouTube" next to that data, clickable through to
  * YouTube, and never more prominent than the app's own name.
  *
- * Text for now. To use the official artwork, download it from YouTube's brand
- * resources (https://brand.youtube) into web/public/brand/ and set LOGO_SRC;
- * the guidelines forbid redrawing or recolouring the logo, so it is not drawn here.
+ * The official artwork from YouTube's brand resources (https://brand.youtube), unaltered
+ * except for being scaled down: full colour with the almost-black wordmark on light
+ * backgrounds, with the white wordmark on dark ones. The guidelines forbid redrawing,
+ * recolouring or cropping it, so never edit these files.
  */
-const LOGO_SRC = null;
+const LOGO = { light: '/brand/youtube-logo-light.png', dark: '/brand/youtube-logo-dark.png' };
 
-export function YouTubeAttribution({ className = '' }) {
+/** `onDark`: the surface is dark whatever the site theme is (the landing footer is always navy), so use the white wordmark. */
+export function YouTubeAttribution({ className = '', onDark = false }) {
+  const { mode } = useColorMode();
   return (
     <a
       href="https://www.youtube.com"
@@ -19,7 +23,8 @@ export function YouTubeAttribution({ className = '' }) {
       rel="noreferrer noopener"
       className={`inline-flex items-center gap-1.5 text-fg-2 underline-offset-2 hover:text-fg hover:underline ${className}`}
     >
-      {LOGO_SRC ? <img src={LOGO_SRC} alt="Developed with YouTube" className="h-4 w-auto" /> : 'Developed with YouTube'}
+      <span>Developed with</span>
+      <img src={LOGO[onDark || mode === 'dark' ? 'dark' : 'light']} alt="YouTube" width="60" height="20" className="h-5 w-auto" />
     </a>
   );
 }

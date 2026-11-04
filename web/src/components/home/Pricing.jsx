@@ -62,6 +62,10 @@ const PLANS = [
   },
 ];
 
+// Features that exist in the product but are switched off until the YouTube quota extension
+// is approved (see lib/features.js). Shown as "Coming soon" so the page matches the app.
+const COMING_SOON = new Set(['Deep scan for bigger niches', 'Watches: re-run a niche on a schedule', '10 watches']);
+
 const usd = (n) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 
 const BILLING = [
@@ -170,7 +174,10 @@ export default function Pricing() {
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-start gap-2.5 text-[15px] leading-snug text-fg">
                     <Check aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-fg-3" strokeWidth={2} />
-                    {f}
+                    <span>
+                      {f}
+                      {COMING_SOON.has(f) && <Badge tone="neutral" className="ml-2 align-middle">Coming soon</Badge>}
+                    </span>
                   </li>
                 ))}
               </ul>

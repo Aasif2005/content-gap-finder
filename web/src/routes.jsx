@@ -46,7 +46,7 @@ export const routes = [
     auth: 'public',
     element: <Home />,
   },
-  { path: '/login', indexable: true, title: 'Log in', description: 'Log in to Gapstronaut to run analyses, open your saved reports and manage your watches.', shell: 'bare', auth: 'public', element: <Login /> },
+  { path: '/login', indexable: true, title: 'Log in', description: 'Log in to Gapstronaut to run analyses and open your saved reports.', shell: 'bare', auth: 'public', element: <Login /> },
   { path: '/signup', indexable: true, title: 'Sign up', description: 'Create a free Gapstronaut account and find the videos your audience is still asking for. No card needed.', shell: 'bare', auth: 'public', element: <Signup /> },
   { path: '/reset-password', title: 'Reset your password', description: 'Get a link to choose a new password for your Gapstronaut account.', shell: 'bare', auth: 'public', element: <ResetPassword /> },
   { path: '/privacy', indexable: true, title: 'Privacy Policy', description: 'What Gapstronaut collects, how long it keeps it, and how to have it deleted.', shell: 'marketing', auth: 'public', element: <PrivacyPage /> },

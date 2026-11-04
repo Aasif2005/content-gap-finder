@@ -102,7 +102,7 @@ export default function Login() {
   return (
     <AuthLayout>
       <AuthHeading title="Welcome back">
-        Log in to run analyses, open your reports and manage your watches.
+        Log in to run analyses and open your saved reports.
       </AuthHeading>
 
       {!configured && <NotConfiguredAlert className="mt-6" />}
