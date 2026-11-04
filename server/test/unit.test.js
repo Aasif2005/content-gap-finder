@@ -36,7 +36,7 @@ import { limitsFor } from '../src/lib/limits.js';
 import { domainAcceptsMail } from '../src/lib/emailDomain.js';
 import { isAppPath, siteOrigin, sitemapXml, robotsTxt, renderIndex, SITEMAP_PATHS } from '../src/lib/site.js';
 import { mapLimit, serialized } from '../src/lib/concurrency.js';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { parseAvatarDataUrl, MAX_AVATAR_BYTES } from '../src/lib/avatar.js';
 import { squareCrop, checkFile, fitImage, clampOffset, initialView, zoomAt, zoomOf, cropRect, MAX_ZOOM } from '../../web/src/lib/avatarImage.js';
 import { setAvatar, getAvatar, clearAvatar } from '../src/lib/db.js';
@@ -3876,5 +3876,16 @@ test('after the app loads, each public route keeps the description it was served
   for (const [route, page] of Object.entries(SEO_PAGES)) {
     if (route === '/') continue; // home uses the default description from index.html
     assert.ok(src.includes(`description: '${page.description}'`), route);
+  }
+});
+
+test('the home page declares a favicon Google accepts (a multiple of 48px) and every icon file exists', () => {
+  const html = readFileSync(new URL('../../web/index.html', import.meta.url), 'utf8');
+  const icons = [...html.matchAll(/<link rel="(?:icon|apple-touch-icon)"[^>]*>/g)].map((m) => m[0]);
+  const sizes = icons.map((t) => t.match(/sizes="(\d+)x\1"/)?.[1]).filter(Boolean).map(Number);
+  assert.ok(sizes.some((n) => n >= 48 && n % 48 === 0), `icon sizes: ${sizes}`);
+  for (const t of icons) {
+    const href = t.match(/href="([^"]+)"/)[1];
+    assert.ok(existsSync(new URL(`../../web/public${href}`, import.meta.url)), href);
   }
 });
