@@ -156,7 +156,7 @@ Order topics by how strongly the data supports them. Return at most 8 topics,
 at most 3 suggested_angles each, and at most 4 avoid entries. Keep every string
 under 300 characters.`;
 
-  const { data, usage } = await chatJSON({ system: channelMode ? CLUSTER_SYSTEM_CHANNEL : CLUSTER_SYSTEM, user });
+  const { data, usage } = await chatJSON({ system: channelMode ? CLUSTER_SYSTEM_CHANNEL : CLUSTER_SYSTEM, user, thinking: config.deepseek.clusterThinking || null });
   // A malformed reply ("topics": {}) must not crash a run whose quota is spent.
   return { topics: arrayOf(data?.topics), avoid: arrayOf(data?.avoid), usage };
 }
@@ -371,7 +371,7 @@ Order gaps by strength of demand and objections by severity. Return at most 10
 gaps and at most 6 objections. Quality over quantity -- an empty list is better
 than a list of vague filler.`;
 
-  const { data, usage } = await chatJSON({ system: channelMode ? GAP_SYSTEM_CHANNEL : GAP_SYSTEM, user });
+  const { data, usage } = await chatJSON({ system: channelMode ? GAP_SYSTEM_CHANNEL : GAP_SYSTEM, user, thinking: config.deepseek.gapThinking || null });
   return { gaps: arrayOf(data?.gaps), objections: arrayOf(data?.objections), usage };
 }
 

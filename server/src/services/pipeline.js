@@ -13,6 +13,7 @@ import { annotateOutliers } from '../lib/outlier.js';
 import { throwIfCancelled } from '../lib/runContext.js';
 import { formulaHint } from '../lib/hookFormulas.js';
 import * as store from '../lib/store.js';
+import { mapLimit } from '../lib/concurrency.js';
 
 /** Trims a scored video down to what the UI actually renders. */
 const publicVideo = (v) => ({
@@ -82,12 +83,19 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   // the channel's title in channel mode.
   let subject = niche;
   const log = new RunLogger(runId, input);
+  // Wall time per stage (ms), stored with the run and in the audit log, to see where a run's time goes.
+  const startedAt = Date.now();
+  const stageMs = {};
+  const timed = async (name, fn) => {
+    const t0 = Date.now();
+    try { return await fn(); } finally { stageMs[name] = (stageMs[name] ?? 0) + Date.now() - t0; }
+  };
 
   try {
     return await runPhases();
   } catch (err) {
     log.logError(err);
-    await log.finish({ status: err?.code === 'CANCELLED' ? 'cancelled' : 'error' }).catch((e) => console.error('[pipeline] could not store the audit log:', e.message));
+    await log.finish({ status: err?.code === 'CANCELLED' ? 'cancelled' : 'error', stageMs }).catch((e) => console.error('[pipeline] could not store the audit log:', e.message));
     throw err;
   }
 
@@ -128,9 +136,9 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
     }
   } else {
     onProgress('searching', `Searching YouTube for "${niche}"${deepScan ? ' (deep scan)' : ''}`, 8);
-    const searched = await yt.searchVideos({
+    const searched = await timed('search', () => yt.searchVideos({
       niche, window, customAfter, contentType, regionCode, relevanceLanguage, deepScan,
-    });
+    }));
     hits = searched.hits;
     slices = searched.slices;
     if (!hits.length) {
@@ -143,7 +151,7 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
 
   // 2. Stats + channels, both batched at 50 ids per call.
   onProgress('stats', `Pulling stats for ${hits.length} videos`, 22);
-  let videos = await yt.getVideoDetails(hits.map((h) => h.videoId));
+  let videos = await timed('details', () => yt.getVideoDetails(hits.map((h) => h.videoId)));
 
   // Hits that videos.list did not return: deleted, private, or restricted since
   // the search. Without this they vanished between "found" and "scored".
@@ -171,7 +179,7 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   }
 
   onProgress('stats', 'Fetching channel sizes', 30);
-  const channelMap = await yt.getChannels(videos.map((v) => v.channelId));
+  const channelMap = await timed('details', () => yt.getChannels(videos.map((v) => v.channelId)));
 
   // regionCode/relevanceLanguage on search.list are YouTube's own ranking
   // hints, not filters -- verified empirically: relevanceLanguage=ta against
@@ -245,18 +253,20 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   // 1-2 videos per channel, which cannot give a median, so the top channels'
   // recent uploads are read as a baseline. Failure degrades to "not measured"
   // rather than failing a run that already has everything else it needs.
+  // Started here and awaited after the comments: the two reads are independent,
+  // so they run side by side (nothing before gap mining needs the outliers).
   let outlierSummary = null;
+  let baselinesDone = Promise.resolve();
   if (!channelMode && config.outlier.channels > 0 && ranked.length) {
     onProgress('stats', 'Measuring each channel against its own median', 33);
-    try {
-      const topChannels = [...new Set(ranked.map((v) => v.channelId))].slice(0, config.outlier.channels);
-      const baselines = await yt.getChannelBaselines(topChannels, { minAgeDays: config.outlier.minBaselineAgeDays });
-      outlierSummary = annotateOutliers(ranked, baselines);
-    } catch (err) {
-      if (err.code === 'CANCELLED') throw err; // stopped: end the run here, not at the next checkpoint
-      console.error('[pipeline] channel baselines failed:', err.message);
-      warnings.push('Channel-median outliers were not measured for this run.');
-    }
+    const topChannels = [...new Set(ranked.map((v) => v.channelId))].slice(0, config.outlier.channels);
+    baselinesDone = timed('baselines', () => yt.getChannelBaselines(topChannels, { minAgeDays: config.outlier.minBaselineAgeDays }))
+      .then((baselines) => { outlierSummary = annotateOutliers(ranked, baselines); })
+      .catch((err) => {
+        if (err.code === 'CANCELLED') throw err; // stopped: end the run here, not at the next checkpoint
+        console.error('[pipeline] channel baselines failed:', err.message);
+        warnings.push('Channel-median outliers were not measured for this run.');
+      });
   }
 
   // Mark videos that matched the niche only through tags/hashtags. The LLM makes
@@ -280,7 +290,6 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   }
 
   log.logSearch(hits, beforeFilter, ranked, warnings, slices);
-  if (!channelMode) log.logOutliers(outlierSummary, ranked);
 
   // 4. Comments for the top slice only. commentThreads.list is per-video, so
   // this is N round trips -- the cap is about latency as much as quota.
@@ -290,22 +299,47 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   let withComments = 0;
   const unreadable = [];
 
-  for (const [i, v] of commentTargets.entries()) {
-    onProgress('comments', `Reading comments (${i + 1}/${commentTargets.length})`, 32 + Math.round((i / commentTargets.length) * 20));
-    let list = [];
+  // 5 (started early). LLM pass A, clustering + avoid, needs only the ranked
+  // videos, so it runs while the comments are read. Its own progress line is held
+  // back until the comments are in, so the bar never jumps backwards.
+  const windowLabel = window === 'custom' ? `since ${customAfter.slice(0, 10)}` : `last ${window}`;
+  let commentsIn = false;
+  const quietProgress = (...args) => { if (commentsIn) onProgress(...args); else throwIfCancelled(); };
+  const clustered = timed('clustering', () => clusterTopics({
+    niche: subject, window: windowLabel, videos: ranked, channelMode, onProgress: quietProgress,
+  }));
+
+  // Read in parallel (config.youtube.concurrency), then recorded in rank order,
+  // so the report is the same as reading them one by one.
+  let read = 0;
+  const fetchedLists = timed('comments', () => mapLimit(commentTargets, config.youtube.concurrency, async (v) => {
     try {
-      list = await yt.getComments(v.videoId, config.youtube.commentsPerVideo);
+      return await yt.getComments(v.videoId, config.youtube.commentsPerVideo);
     } catch (err) {
       if (err.code === 'QUOTA_EXHAUSTED' || err.code === 'CANCELLED') throw err;
-      unreadable.push(v);
-      continue;
+      return null; // unreadable
+    } finally {
+      read++;
+      onProgress('comments', `Reading comments (${read}/${commentTargets.length})`, 32 + Math.round((read / commentTargets.length) * 20));
     }
+  }));
+  // Both settle before either error is thrown, so a failed read never leaves the other running unobserved.
+  const [listsResult, baselinesResult] = await Promise.allSettled([fetchedLists, baselinesDone]);
+  if (listsResult.status === 'rejected' || baselinesResult.status === 'rejected') {
+    clustered.catch(() => {}); // the run is ending; the clustering reply is not wanted
+    throw listsResult.reason ?? baselinesResult.reason;
+  }
+  commentsIn = true;
+  commentTargets.forEach((v, i) => {
+    const list = listsResult.value[i];
+    if (list === null) { unreadable.push(v); return; }
     if (list.length) {
       commentsByVideo[v.videoId] = list;
       ownerByVideo[v.videoId] = v.channelId;
       withComments++;
     }
-  }
+  });
+  if (!channelMode) log.logOutliers(outlierSummary, ranked);
   // Scored but never read: either beyond the top-N videos whose comments are
   // fetched (a per-video call each), or read and found empty.
   const unreadableIds = new Set(unreadable.map((v) => v.videoId));
@@ -322,11 +356,9 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   const totalFetched = Object.values(commentsByVideo).reduce((a, c) => a + c.length, 0);
   if (!withComments) warnings.push('No comments were available on any top video, so the gap list will be empty.');
 
-  // 5. LLM pass A: clustering + avoid.
-  const windowLabel = window === 'custom' ? `since ${customAfter.slice(0, 10)}` : `last ${window}`;
-  const { topics: rawTopics, avoid: rawAvoid, usage: clusterUsage } = await clusterTopics({
-    niche: subject, window: windowLabel, videos: ranked, channelMode, onProgress,
-  });
+  // 5. LLM pass A (started above, before the comments).
+  onProgress('clustering', `Clustering ${ranked.length} videos into topics`, 55);
+  const { topics: rawTopics, avoid: rawAvoid, usage: clusterUsage } = await clustered;
 
   const byId = new Map(ranked.map((v) => [v.videoId, v]));
   const resolve = (ids) => (Array.isArray(ids) ? ids : []).map((id) => byId.get(id)).filter(Boolean);
@@ -426,10 +458,10 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   }
 
   // 7. LLM pass B: gap mining, grounded back to real comments.
-  const { gaps: rawGaps, objections: rawObjections, usage: gapUsage } = await mineGaps({
+  const { gaps: rawGaps, objections: rawObjections, usage: gapUsage } = await timed('gaps', () => mineGaps({
     niche: subject, window: windowLabel, videos: ranked, comments: gapComments, topics, gapMode, channelMode, onProgress,
     formulaHint: outlierSummary ? formulaHint(outlierSummary.topFormulas) : '',
-  });
+  }));
   const gapsResolved = groundGaps(rawGaps, gapComments, { context: niche }).map((g) => ({
     ...g,
     coveringVideos: resolve(g.coveringVideoIds).map(publicVideo),
@@ -543,7 +575,8 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   log.logEvidence(evidence, shortfall);
 
   // The audit log is a diagnostic: failing to store it must never fail a run people paid quota for.
-  await log.finish({ status: 'done', ...relevanceSummary }).catch((e) => console.error('[pipeline] could not store the audit log:', e.message));
+  stageMs.total = Date.now() - startedAt;
+  await log.finish({ status: 'done', ...relevanceSummary, stageMs }).catch((e) => console.error('[pipeline] could not store the audit log:', e.message));
 
   onProgress('done', 'Complete', 100);
 
@@ -561,6 +594,7 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
       gapsFound: gaps.length,
       avoidFound: avoid.length,
       objectionsFound: objections.length,
+      stageMs,
       llmUsage: {
         clustering: clusterUsage,
         gaps: gapUsage,

@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { mapLimit } from '../lib/concurrency.js';
 import { spend } from '../lib/quota.js';
 import { languageQueryHint } from '../lib/language.js';
 import { searchPlan } from '../lib/searchPlan.js';
@@ -158,13 +159,14 @@ export async function searchVideos({ niche, window, customAfter, contentType, re
 /** videos.list, batched 50 ids per call at 1 unit each. */
 export async function getVideoDetails(videoIds) {
   const out = [];
-  for (const batch of chunk(videoIds, 50)) {
-    const data = await call('videos', {
-      part: 'snippet,statistics,contentDetails',
-      id: batch.join(','),
-      maxResults: 50,
-    }, 'videos');
+  // Batches are fetched in parallel and read back in order, so the output order is unchanged.
+  const pages = await mapLimit(chunk(videoIds, 50), config.youtube.concurrency, (batch) => call('videos', {
+    part: 'snippet,statistics,contentDetails',
+    id: batch.join(','),
+    maxResults: 50,
+  }, 'videos'));
 
+  for (const data of pages) {
     for (const v of data.items ?? []) {
       const durationSeconds = parseDuration(v.contentDetails?.duration);
       out.push({
@@ -413,19 +415,21 @@ export async function getChannelUploads({ uploadsPlaylistId, publishedAfter, max
 export async function getChannelBaselines(channelIds, { minAgeDays = 0 } = {}) {
   const cutoff = Date.now() - minAgeDays * 86_400_000;
   const idsByChannel = new Map();
-  for (const channelId of channelIds) {
-    if (!channelId?.startsWith('UC')) continue;
+  const valid = channelIds.filter((id) => id?.startsWith('UC'));
+  const lists = await mapLimit(valid, config.youtube.concurrency, async (channelId) => {
     try {
       const { hits } = await getChannelUploads({
         uploadsPlaylistId: `UU${channelId.slice(2)}`,
         publishedAfter: '1970-01-01T00:00:00Z',
         maxPages: 1,
       });
-      idsByChannel.set(channelId, hits.map((h) => h.videoId));
+      return hits.map((h) => h.videoId);
     } catch (err) {
       if (err.code === 'QUOTA_EXHAUSTED' || err.code === 'CANCELLED') throw err;
+      return null;
     }
-  }
+  });
+  valid.forEach((id, i) => { if (lists[i]) idsByChannel.set(id, lists[i]); });
 
   const details = await getVideoDetails([...idsByChannel.values()].flat());
   const byChannel = new Map();

@@ -248,11 +248,12 @@ export class RunLogger {
   }
 
   /** Stores the log and its index summary. Call exactly once. */
-  async finish({ status, topicRelevance, gapRelevance, avoidRelevance }) {
+  async finish({ status, topicRelevance, gapRelevance, avoidRelevance, stageMs }) {
     this.summary = {
       runId: this.runId,
       startedAt: new Date(this.startedAt).toISOString(),
       elapsedMs: Date.now() - this.startedAt,
+      stageMs,
       niche: this.input.niche,
       window: this.input.window,
       contentType: this.input.contentType,
@@ -270,6 +271,7 @@ export class RunLogger {
       `started    : ${new Date(this.startedAt).toISOString()}`,
       `elapsed    : ${(this.summary.elapsedMs / 1000).toFixed(1)}s`,
       `status     : ${status}`,
+      `stages     : ${stageMs ? Object.entries(stageMs).map(([k, v]) => `${k} ${(v / 1000).toFixed(1)}s`).join(', ') : '-'}`,
       '',
       '=== NICHE RELEVANCE SUMMARY ===',
       `topics: ${topicRelevance?.relevant ?? '-'}/${topicRelevance?.total ?? '-'} relevant (${topicRelevance?.rate ?? '-'}%)${flagNote(topicRelevance)}`,

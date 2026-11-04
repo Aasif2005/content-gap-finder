@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { col } from './mongo.js';
 import { searchPlan } from './searchPlan.js';
+import { serialized } from './concurrency.js';
 
 // The shared YouTube budget ledger is one document in MongoDB (collection quota).
 const LEDGER_ID = 'youtube';
@@ -75,8 +76,14 @@ const isSearch = (kind) => kind === 'search';
  * nothing and this retries on the fresh state. Two callers can therefore never
  * both spend the same remaining unit, and none is lost, even with several
  * server processes sharing the one database.
+ *
+ * Within this process the calls queue (`serialized`): a run reads comments and
+ * channel baselines in parallel, and a dozen racing writers would burn through
+ * the revision retries for nothing.
  */
-export async function spend(kind, times = 1) {
+export const spend = serialized(spendOnce);
+
+async function spendOnce(kind, times = 1) {
   for (let attempt = 0; attempt < 12; attempt++) {
     const doc = await readDoc();
     const base = doc && doc.day === quotaDay() ? doc : fresh();

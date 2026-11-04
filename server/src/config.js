@@ -24,6 +24,8 @@ export const config = {
     // Under the default 100, leaving headroom for calls made outside this app.
     searchDailyCalls: num(process.env.YOUTUBE_SEARCH_DAILY_CALLS, 95),
     maxCommentVideos: num(process.env.MAX_COMMENT_VIDEOS, 25),
+    // YouTube reads in flight at once per run (comments, channel baselines). Same quota, less waiting.
+    concurrency: num(process.env.YOUTUBE_CONCURRENCY, 6),
     commentsPerVideo: num(process.env.COMMENTS_PER_VIDEO, 50),
   },
 
@@ -58,6 +60,10 @@ export const config = {
     analysisModel: process.env.DEEPSEEK_MODEL_ANALYSIS || 'deepseek-flash',
     fastModel: process.env.DEEPSEEK_MODEL_FAST || 'deepseek-flash',
     timeoutMs: num(process.env.DEEPSEEK_TIMEOUT_MS, 120_000),
+    // Reasoning ("thinking") per analysis call: 'enabled', 'disabled', or '' for the
+    // model's default (thinks). Thinking is most of a run's time: ~85% of the tokens.
+    clusterThinking: (process.env.ANALYSIS_THINKING_CLUSTER ?? '').trim(),
+    gapThinking: (process.env.ANALYSIS_THINKING_GAPS ?? '').trim(),
   },
 
   // MongoDB Atlas holds everything the server remembers: accounts and daily

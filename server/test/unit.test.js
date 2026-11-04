@@ -35,6 +35,7 @@ import { publicMessage, errorResponse, GENERIC_ERROR, RUN_FAILED } from '../src/
 import { limitsFor } from '../src/lib/limits.js';
 import { domainAcceptsMail } from '../src/lib/emailDomain.js';
 import { isAppPath, siteOrigin, sitemapXml, robotsTxt, renderIndex, SITEMAP_PATHS } from '../src/lib/site.js';
+import { mapLimit, serialized } from '../src/lib/concurrency.js';
 import { readFileSync, readdirSync } from 'node:fs';
 import { parseAvatarDataUrl, MAX_AVATAR_BYTES } from '../src/lib/avatar.js';
 import { squareCrop, checkFile, fitImage, clampOffset, initialView, zoomAt, zoomOf, cropRect, MAX_ZOOM } from '../../web/src/lib/avatarImage.js';
@@ -3586,5 +3587,41 @@ describe('analysisKey', () => {
   });
   test('other settings still separate searches', () => {
     assert.notEqual(analysisKey({ ...base, niche: 'x y' }), analysisKey({ ...base, niche: 'x y', window: '30d' }));
+  });
+});
+
+describe('concurrency helpers', () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  test('mapLimit keeps input order and never exceeds the limit', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const out = await mapLimit([30, 5, 20, 1, 10, 15, 2], 3, async (ms, i) => {
+      inFlight++; peak = Math.max(peak, inFlight);
+      await sleep(ms);
+      inFlight--;
+      return i;
+    });
+    assert.deepEqual(out, [0, 1, 2, 3, 4, 5, 6]);
+    assert.equal(peak, 3);
+  });
+
+  test('mapLimit rejects on the first error and starts nothing after it', async () => {
+    const started = [];
+    await assert.rejects(
+      mapLimit([1, 2, 3, 4, 5, 6], 2, async (n) => { started.push(n); await sleep(5); if (n === 2) throw new Error('boom'); return n; }),
+      /boom/,
+    );
+    await sleep(30);
+    assert.ok(started.length <= 3, `started ${started}`);
+  });
+
+  test('serialized runs calls one at a time, in order, and survives a failure', async () => {
+    const log = [];
+    const f = serialized(async (n) => { log.push(`s${n}`); await sleep(5); if (n === 2) throw new Error('x'); log.push(`e${n}`); return n; });
+    const results = await Promise.allSettled([f(1), f(2), f(3)]);
+    assert.deepEqual(log, ['s1', 'e1', 's2', 's3', 'e3']);
+    assert.equal(results[1].status, 'rejected');
+    assert.equal(results[2].value, 3);
   });
 });
