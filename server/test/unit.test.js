@@ -3373,7 +3373,7 @@ describe('site address, sitemap and real 404s', () => {
     const routes = readFileSync(new URL('../../web/src/routes.jsx', import.meta.url), 'utf8');
     const paths = [...routes.matchAll(/path: '([^']+)'/g)].map((m) => m[1]).filter((p) => p !== '*');
     const vercel = JSON.parse(readFileSync(new URL('../../web/vercel.json', import.meta.url), 'utf8'));
-    const sources = vercel.rewrites.filter((r) => r.destination === '/index.html').map((r) => r.source.replace(/:id\([^)]*\)/, ':id'));
+    const sources = vercel.rewrites.filter((r) => r.destination === '/index.html' || r.destination.startsWith('/seo/')).map((r) => r.source.replace(/:id\([^)]*\)/, ':id'));
     assert.deepEqual([...sources].sort(), [...paths].sort());
     for (const src of sources) assert.equal(isAppPath(src.replace(':id', 'abc-123')), true, src);
   });
@@ -3789,4 +3789,50 @@ test('sendFirebaseEmail asks Firebase to send, without asking for the link', asy
   assert.equal(send.init.headers.Authorization, 'Bearer tok');
   appConfig.firebase.serviceAccount = '';
   appConfig.firebase.projectId = '';
+});
+
+// --- prerendered public pages (what a crawler with no JavaScript sees) -----------
+import { SEO_PAGES, renderSeoPage, snapshotText } from '../src/lib/seoPages.js';
+
+describe('prerendered public pages', () => {
+  const template = '<!doctype html><html><head>\n<title>Gapstronaut</title>\n<meta name="description" content="x" />\n<meta property="og:title" content="Gapstronaut" />\n<meta property="og:image" content="https://gapstronaut.com/og.png" />\n</head><body><div id="root"></div></body></html>';
+  const origin = 'https://gapstronaut.com';
+  const routesSrc = readFileSync(new URL('../../web/src/routes.jsx', import.meta.url), 'utf8');
+  const vercel = JSON.parse(readFileSync(new URL('../../web/vercel.json', import.meta.url), 'utf8'));
+
+  test('there is a page for every indexable route, and its rewrite points at its file', () => {
+    assert.deepEqual(Object.keys(SEO_PAGES).sort(), [...SITEMAP_PATHS].sort());
+    for (const [route, page] of Object.entries(SEO_PAGES)) {
+      const hit = vercel.rewrites.find((r) => r.source === route);
+      assert.equal(hit?.destination, `/seo/${page.file}.html`, route);
+    }
+  });
+
+  test('every page passes the crawl audit: title, one h1, h2s, canonical = og:url, links, words, full tags', () => {
+    for (const [route, page] of Object.entries(SEO_PAGES)) {
+      const html = renderSeoPage(template, origin, route);
+      const title = html.match(/<title>(.*?)<\/title>/)[1];
+      assert.ok(title.length >= 30 && title.length <= 60, `${route} title is ${title.length} chars`);
+      assert.equal((html.match(/<h1>/g) ?? []).length, 1, route);
+      assert.ok((html.match(/<h2>/g) ?? []).length >= 2, route);
+      const url = `${origin}${route}`;
+      assert.ok(html.includes(`<link rel="canonical" href="${url}" />`), route);
+      assert.ok(html.includes(`<meta property="og:url" content="${url}" />`), route);
+      for (const tag of ['og:title', 'og:description', 'og:image']) assert.ok(html.includes(`property="${tag}"`), `${route} ${tag}`);
+      for (const tag of ['twitter:title', 'twitter:description']) assert.ok(html.includes(`name="${tag}"`), `${route} ${tag}`);
+      assert.ok((html.match(/<a href="\//g) ?? []).length >= 5, `${route} internal links`);
+      assert.ok(snapshotText(page).split(' ').length >= 200, `${route} has ${snapshotText(page).split(' ').length} words`);
+      assert.ok(html.includes('<div id="root"><div class="seo-snap">'), route);
+      assert.equal((html.match(/<title>/g) ?? []).length, 1, route);
+    }
+  });
+
+  test('the browser sets the same title the page was served with', () => {
+    for (const page of Object.values(SEO_PAGES)) assert.ok(routesSrc.includes(`fullTitle: '${page.title}'`), page.title);
+  });
+
+  test('page text cannot inject markup', () => {
+    const html = renderSeoPage(template, origin, '/');
+    assert.ok(!html.includes('<script'));
+  });
 });

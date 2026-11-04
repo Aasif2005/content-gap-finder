@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { absoluteImages, robotsTxt, sitemapXml } from '../../server/src/lib/site.js';
+import { SEO_PAGES, renderSeoPage } from '../../server/src/lib/seoPages.js';
 
 const origin = (process.env.SITE_URL ?? '').trim().replace(/\/+$/, '');
 if (!origin) {
@@ -24,4 +25,11 @@ fs.writeFileSync(path.join(dist, 'index.html'), html);
 fs.writeFileSync(path.join(dist, '404.html'), html); // the app draws its own NotFound page
 fs.writeFileSync(path.join(dist, 'robots.txt'), robotsTxt(origin));
 fs.writeFileSync(path.join(dist, 'sitemap.xml'), sitemapXml(origin));
+// One HTML file per public page: its own tags and a plain-HTML snapshot for crawlers that
+// run no JavaScript. web/vercel.json rewrites each route to its file.
+fs.mkdirSync(path.join(dist, 'seo'), { recursive: true });
+for (const [route, page] of Object.entries(SEO_PAGES)) {
+  fs.writeFileSync(path.join(dist, 'seo', `${page.file}.html`), renderSeoPage(html, origin, route));
+}
+console.log(`[static-host] wrote ${Object.keys(SEO_PAGES).length} seo pages,`);
 console.log(`[static-host] wrote robots.txt, sitemap.xml and 404.html for ${origin}`);

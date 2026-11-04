@@ -23,7 +23,7 @@ const queryObject = (search) => {
 };
 
 export const SITE_NAME = 'Gapstronaut';
-const titleFor = (route) => (route?.title ? `${route.title} · ${SITE_NAME}` : SITE_NAME);
+const titleFor = (route) => (route?.fullTitle ? route.fullTitle : route?.title ? `${route.title} · ${SITE_NAME}` : SITE_NAME);
 const descriptionTag = () => document.querySelector('meta[name="description"]');
 const DEFAULT_DESCRIPTION = descriptionTag()?.content ?? '';
 

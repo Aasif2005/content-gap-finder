@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { renderSeoPage, seoPageFor } from './seoPages.js';
 
 /**
  * What search engines and link previews read: the public address, the sitemap,
@@ -56,6 +57,8 @@ export const absoluteImages = (html, origin) => html.replaceAll('content="/og.pn
 export function renderIndex(html, origin, path) {
   const withImage = absoluteImages(html, origin);
   if (!isAppPath(path)) return withImage;
+  // Public pages get their own title, tags and a plain-HTML snapshot (lib/seoPages.js).
+  if (seoPageFor(path)) return renderSeoPage(withImage, origin, trimSlashes(path));
   const url = `${origin}${trimSlashes(path)}`;
   return withImage.replace('</head>', `  <link rel="canonical" href="${url}" />\n    <meta property="og:url" content="${url}" />\n  </head>`);
 }
