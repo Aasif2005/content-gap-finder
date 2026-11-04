@@ -17,7 +17,12 @@ export default function Login() {
   const { query } = useRoute();
   const next = query.next;
 
-  const [email, setEmail] = useState('');
+  // Arriving from "Password updated": say so and have the address waiting.
+  const justReset = query.reset === '1';
+  const [email, setEmail] = useState(() => {
+    if (!justReset) return '';
+    try { return sessionStorage.getItem('gs:reset-email') ?? ''; } catch { return ''; }
+  });
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
   const [notice, setNotice] = useState(null); // { tone, message }: an error that belongs to no one field
@@ -106,6 +111,8 @@ export default function Login() {
       </AuthHeading>
 
       {!configured && <NotConfiguredAlert className="mt-6" />}
+
+      {justReset && !notice && <Alert tone="good" className="mt-6">Password updated. Log in with your new password.</Alert>}
 
       {notice && (
         <div ref={noticeRef} tabIndex={-1} className="mt-6 focus:outline-none">

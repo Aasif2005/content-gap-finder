@@ -17,6 +17,9 @@ import { parseAvatarDataUrl } from '../lib/avatar.js';
 import { getUser, setAvatar, clearAvatar, getAvatar, upsertUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../lib/db.js';
 import { limitsFor } from '../lib/limits.js';
 import { domainAcceptsMail } from '../lib/emailDomain.js';
+import { sendMail, mailConfigured } from '../lib/mailer.js';
+import { createActionLink, actionLinksConfigured } from '../lib/actionLink.js';
+import { resetPasswordEmail, verifyEmailEmail } from '../lib/emailTemplates.js';
 
 export const router = express.Router();
 
@@ -263,6 +266,45 @@ const emailCheckLimit = createRateLimit({ perHour: 60, noun: 'email checks', key
 router.post('/email-check', emailCheckLimit, wrap(async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   res.json({ ok: Boolean(email) && (await domainAcceptsMail(email.split('@').pop())) });
+}));
+
+// --- account emails (our own design, our own sender) -------------------------
+
+const SUPPORT = () => config.site.contactEmail || config.mail.replyTo;
+const siteOrigin = (req) => (config.site.url || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+const mailReady = () => mailConfigured() && actionLinksConfigured() && config.firebase.projectId;
+const notReady = (res) => res.status(503).json({ error: 'Email is not set up on this server.', code: 'MAIL_NOT_CONFIGURED' });
+// Reset asks come from logged-out people, so: per address and per email, so one inbox can't be flooded.
+const resetIpLimit = createRateLimit({ perHour: 10, noun: 'reset requests', keyFn: ipKey });
+const resetEmailLimit = createRateLimit({ perHour: 3, noun: 'reset requests', keyFn: (req) => normalizeEmail(req.body?.email) ?? ipKey(req) });
+const verifyLimit = createRateLimit({ perHour: 6, noun: 'verification emails' });
+
+/** Public: emails a password-reset link. Says the same thing for an address with no account. */
+router.post('/auth/password-reset', resetIpLimit, resetEmailLimit, wrap(async (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  if (!email) throw bad('Invalid email address.');
+  if (!mailReady()) return notReady(res);
+  const origin = siteOrigin(req);
+  // Answer first and do the work after, so a known address is not slower than an unknown one.
+  res.json({ ok: true });
+  try {
+    const link = await createActionLink('PASSWORD_RESET', email, origin);
+    if (link) await sendMail({ to: email, ...resetPasswordEmail({ link, email, siteUrl: origin, support: SUPPORT() }) });
+  } catch (err) {
+    console.error('[mail] password reset failed:', err.message);
+  }
+}));
+
+/** Signed in, password account, address not yet verified: emails the confirmation link. */
+router.post('/auth/verification', requireUser, verifyLimit, wrap(async (req, res) => {
+  const { email, emailVerified, provider } = req.user;
+  if (!email || emailVerified || provider !== 'password') return res.json({ ok: true, alreadyVerified: true });
+  if (!mailReady()) return notReady(res);
+  const origin = siteOrigin(req);
+  const link = await createActionLink('VERIFY_EMAIL', email, origin);
+  if (!link) throw bad('Could not create the link. Try again.');
+  await sendMail({ to: email, ...verifyEmailEmail({ link, email, siteUrl: origin, support: SUPPORT() }) });
+  res.json({ ok: true });
 }));
 
 /** Public: saves an email for a paid plan that is not on sale yet. `company` is a honeypot for bots. */

@@ -115,6 +115,11 @@ export const checkEmail = (email) =>
   within(request('/api/email-check', { method: 'POST', body: { email } }), 5_000, 'checking an email')
     .then((r) => r.ok !== false, () => true);
 
+/** Emails a password-reset link from our own server. Same answer whether or not the address has an account. */
+export const requestPasswordReset = (email) => request('/api/auth/password-reset', { method: 'POST', body: { email }, timeoutMs: 20_000 });
+/** Emails the signed-in person a confirmation link. */
+export const requestVerificationEmail = () => request('/api/auth/verification', { method: 'POST', timeoutMs: 30_000 });
+
 /** Saves an email for a paid plan that is not on sale yet (public, no sign-in needed). */
 export const joinWaitlist = (input) => request('/api/waitlist', { method: 'POST', body: input });
 

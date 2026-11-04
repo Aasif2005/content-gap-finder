@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   EmailAuthProvider,
+  applyActionCode,
+  confirmPasswordReset,
+  verifyPasswordResetCode,
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
   deleteUser,
@@ -17,7 +20,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { auth, firebaseConfigured } from './firebase.js';
-import { acceptConsent, deleteMe, setTokenGetter } from './api.js';
+import { acceptConsent, deleteMe, requestPasswordReset, requestVerificationEmail, setTokenGetter } from './api.js';
 import { authError, isOffline, notConfiguredError, offlineError } from './authErrors.js';
 
 /**
@@ -46,13 +49,20 @@ const toUser = (fb) => fb && ({
   createdAt: fb.metadata?.creationTime ? new Date(fb.metadata.creationTime).toISOString() : null,
 });
 
-// Where Firebase's "email verified" page leads back to. A domain missing from
-// Firebase's authorized list makes the send fail, and a plain link beats no email.
-const sendVerification = (fb) =>
-  sendEmailVerification(fb, { url: `${window.location.origin}/dashboard` }).catch((err) => {
+// Our own server sends the email (own design, own sender). Where it is not set up, or
+// cannot be reached, Firebase's built-in email is the fallback: a plain link beats no email.
+const sendVerification = async (fb) => {
+  try {
+    await requestVerificationEmail();
+    return;
+  } catch (err) {
+    if (err?.code === 'RATE_LIMITED') throw err;
+  }
+  await sendEmailVerification(fb, { url: `${window.location.origin}/dashboard` }).catch((err) => {
     if (err?.code === 'auth/unauthorized-continue-uri') return sendEmailVerification(fb);
     throw err;
   });
+};
 
 // A tab opened after verifying holds a token from before it, and the server trusts the token.
 const refreshStaleToken = (fb) =>
@@ -133,10 +143,30 @@ export function AuthProvider({ children }) {
 
   const sendReset = useCallback((email) => guarded(async (a) => {
     try {
+      await requestPasswordReset(email);
+      return;
+    } catch (err) {
+      if (err?.code === 'RATE_LIMITED' || err?.code === 'VALIDATION') throw err;
+      // Our mail is not set up or not reachable: fall back to Firebase's own email.
+    }
+    try {
       await sendPasswordResetEmail(a, email);
     } catch (err) {
       // Say "sent" for an unknown address too, so the form can't be used to probe for accounts.
       if (err?.code !== 'auth/user-not-found') throw err;
+    }
+  }), []);
+
+  /** The email a reset link is for, or throws LINK_EXPIRED. */
+  const verifyResetCode = useCallback((code) => guarded((a) => verifyPasswordResetCode(a, code)), []);
+  const confirmReset = useCallback((code, password) => guarded((a) => confirmPasswordReset(a, code, password)), []);
+  /** Applies an email-verification link, then refreshes whoever is signed in here. */
+  const applyVerification = useCallback((code) => guarded(async (a) => {
+    await applyActionCode(a, code);
+    if (a.currentUser) {
+      await a.currentUser.reload();
+      await a.currentUser.getIdToken(true);
+      setUser(toUser(a.currentUser));
     }
   }), []);
 
@@ -223,6 +253,9 @@ export function AuthProvider({ children }) {
     signUpWithEmail,
     signInWithEmail,
     sendReset,
+    verifyResetCode,
+    confirmReset,
+    applyVerification,
     signOutUser,
     resendVerification,
     deleteAccount,
@@ -230,7 +263,7 @@ export function AuthProvider({ children }) {
     reloadUser,
     checkVerified,
     discardNewAccount,
-  }), [user, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, sendReset, signOutUser, resendVerification, deleteAccount, getIdToken, reloadUser, checkVerified, discardNewAccount]);
+  }), [user, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, sendReset, verifyResetCode, confirmReset, applyVerification, signOutUser, resendVerification, deleteAccount, getIdToken, reloadUser, checkVerified, discardNewAccount]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

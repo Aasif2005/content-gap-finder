@@ -3,6 +3,7 @@ import Home from './pages/Home.jsx';
 import Login from './pages/Login.jsx';
 import Signup from './pages/Signup.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
+import AuthAction from './pages/AuthAction.jsx';
 import NotFound from './pages/NotFound.jsx';
 
 // Loaded on arrival, so a first visit to the homepage does not download the whole app.
@@ -49,6 +50,7 @@ export const routes = [
   { path: '/login', indexable: true, title: 'Log in', description: 'Log in to Gapstronaut to run analyses and open your saved reports.', shell: 'bare', auth: 'public', element: <Login /> },
   { path: '/signup', indexable: true, title: 'Sign up', description: 'Create a free Gapstronaut account and find the videos your audience is still asking for. No card needed.', shell: 'bare', auth: 'public', element: <Signup /> },
   { path: '/reset-password', title: 'Reset your password', description: 'Get a link to choose a new password for your Gapstronaut account.', shell: 'bare', auth: 'public', element: <ResetPassword /> },
+  { path: '/auth/action', title: 'Account link', shell: 'bare', auth: 'public', element: <AuthAction /> },
   { path: '/privacy', indexable: true, title: 'Privacy Policy', description: 'What Gapstronaut collects, how long it keeps it, and how to have it deleted.', shell: 'marketing', auth: 'public', element: <PrivacyPage /> },
   { path: '/terms', indexable: true, title: 'Terms of Service', description: 'The terms for using Gapstronaut, including the YouTube Terms of Service they bind you to.', shell: 'marketing', auth: 'public', element: <TermsPage /> },
   { path: '/dashboard', title: 'Dashboard', shell: 'app', auth: 'required', element: <Dashboard /> },

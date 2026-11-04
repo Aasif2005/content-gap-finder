@@ -9,7 +9,7 @@ import { config } from '../config.js';
 
 // Every path the app's router knows (web/src/routes.jsx). A test keeps these in step.
 const APP_PATHS = [
-  /^\/$/, /^\/login$/, /^\/signup$/, /^\/reset-password$/, /^\/privacy$/, /^\/terms$/,
+  /^\/$/, /^\/login$/, /^\/signup$/, /^\/reset-password$/, /^\/auth\/action$/, /^\/privacy$/, /^\/terms$/,
   /^\/dashboard$/, /^\/explore$/, /^\/channel$/, /^\/profile$/,
   /^\/r\/[a-zA-Z0-9_-]+$/, /^\/channel\/r\/[a-zA-Z0-9_-]+$/,
 ];

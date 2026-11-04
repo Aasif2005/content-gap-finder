@@ -8,6 +8,9 @@ node_modules/
 .env.local
 .env.*.local
 *.key
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+service-account*.json
 
 # build output
 dist/

@@ -27,6 +27,8 @@ const TABLE = {
   'auth/user-disabled': ['ACCOUNT_DISABLED', 'This account has been disabled. Contact us if you think that is a mistake.'],
   'auth/requires-recent-login': ['REQUIRES_RECENT_LOGIN', 'For your security, log in again and then repeat this.'],
   'auth/account-exists-with-different-credential': ['EMAIL_IN_USE', 'That email is already used by another sign-in method. Log in the way you did before.'],
+  'auth/expired-action-code': ['LINK_EXPIRED', 'This link has expired or was already used.'],
+  'auth/invalid-action-code': ['LINK_EXPIRED', 'This link has expired or was already used.'],
   'auth/unauthorized-domain': ['NOT_CONFIGURED', 'Sign-in is not enabled for this address yet.'],
   'auth/operation-not-allowed': ['NOT_CONFIGURED', 'This sign-in method is not turned on yet.'],
 };

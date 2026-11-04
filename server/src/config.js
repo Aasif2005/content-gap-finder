@@ -97,7 +97,24 @@ export const config = {
   // tokens, which needs the project id and nothing secret. Unset = accounts are
   // "not configured": everyone is logged out and protected routes answer 503, so
   // the server still starts for local work without a Firebase project.
-  firebase: { projectId: (process.env.FIREBASE_PROJECT_ID ?? '').trim() },
+  // `serviceAccount` (the key's JSON, raw or base64) is the one secret: with it the server
+  // mints password-reset and verification links itself (lib/actionLink.js).
+  firebase: {
+    projectId: (process.env.FIREBASE_PROJECT_ID ?? '').trim(),
+    serviceAccount: (process.env.FIREBASE_SERVICE_ACCOUNT ?? '').trim(),
+  },
+
+  // Gapstronaut's own account emails, over SMTP (lib/mailer.js). Spacemail: the mailbox
+  // signs in, an alias (noreply@) is what people see. Unset = the web app falls back to
+  // Firebase's built-in emails.
+  mail: {
+    host: (process.env.SMTP_HOST ?? '').trim(),
+    port: num(process.env.SMTP_PORT, 465),
+    user: (process.env.SMTP_USER ?? '').trim(),
+    pass: process.env.SMTP_PASS ?? '',
+    from: (process.env.MAIL_FROM ?? '').trim() || 'Gapstronaut <noreply@gapstronaut.com>',
+    replyTo: (process.env.MAIL_REPLY_TO ?? '').trim() || 'mission@gapstronaut.com',
+  },
 
   // Per-account allowances. Per-IP limits alone are trivially dodged and say
   // nothing about who is spending the YouTube quota; these are what an account

@@ -3711,3 +3711,34 @@ describe('streamed LLM replies', () => {
     assert.equal(completedTopLevelArray('{"avoid":[]}', 'topics'), null);
   });
 });
+
+// --- account emails -----------------------------------------------------------
+import { resetPasswordEmail, verifyEmailEmail } from '../src/lib/emailTemplates.js';
+import { ourActionLink, parseServiceAccount } from '../src/lib/actionLink.js';
+
+test('reset email: our link, escaped address, plain-text part, no firebaseapp URL', () => {
+  const link = 'https://gapstronaut.com/auth/action?mode=resetPassword&oobCode=abc';
+  const m = resetPasswordEmail({ link, email: 'a<b>@x.com', siteUrl: 'https://gapstronaut.com', support: 'mission@gapstronaut.com' });
+  assert.match(m.subject, /Reset your Gapstronaut password/);
+  assert.ok(m.html.includes('mode=resetPassword&amp;oobCode=abc'));
+  assert.ok(m.html.includes('https://gapstronaut.com/brand/email-logo.png'));
+  assert.ok(!m.html.includes('a<b>'));
+  assert.ok(!m.html.includes('firebaseapp.com'));
+  assert.ok(m.text.includes(link));
+  assert.ok(verifyEmailEmail({ link, email: 'a@x.com', siteUrl: 'https://gapstronaut.com', support: 's@x.com' }).html.includes('Confirm my email'));
+});
+
+test('ourActionLink keeps only mode and code, on our origin', () => {
+  const fb = 'https://gapstronaut.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=XYZ&apiKey=SECRET&continueUrl=x&lang=en';
+  assert.equal(ourActionLink(fb, 'https://gapstronaut.com/'), 'https://gapstronaut.com/auth/action?mode=resetPassword&oobCode=XYZ');
+  assert.equal(ourActionLink('not a url', 'https://gapstronaut.com'), null);
+  assert.equal(ourActionLink('https://x.com/?mode=a', 'https://gapstronaut.com'), null);
+});
+
+test('parseServiceAccount accepts raw or base64 JSON and rejects junk', () => {
+  const key = { client_email: 'a@b.iam.gserviceaccount.com', private_key: 'k' };
+  assert.deepEqual(parseServiceAccount(JSON.stringify(key)), key);
+  assert.deepEqual(parseServiceAccount(Buffer.from(JSON.stringify(key)).toString('base64')), key);
+  assert.equal(parseServiceAccount('nope'), null);
+  assert.equal(parseServiceAccount(''), null);
+});
