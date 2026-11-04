@@ -3716,14 +3716,17 @@ describe('streamed LLM replies', () => {
 import { resetPasswordEmail, verifyEmailEmail } from '../src/lib/emailTemplates.js';
 import { ourActionLink, parseServiceAccount } from '../src/lib/actionLink.js';
 
-test('reset email: our link, escaped address, plain-text part, no firebaseapp URL', () => {
+test('reset email: our link, escaped address, plain-text part, no images, palette respected', () => {
   const link = 'https://gapstronaut.com/auth/action?mode=resetPassword&oobCode=abc';
   const m = resetPasswordEmail({ link, email: 'a<b>@x.com', siteUrl: 'https://gapstronaut.com', support: 'mission@gapstronaut.com' });
   assert.match(m.subject, /Reset your Gapstronaut password/);
   assert.ok(m.html.includes('mode=resetPassword&amp;oobCode=abc'));
-  assert.ok(m.html.includes('https://gapstronaut.com/brand/email-logo.png'));
+  assert.ok(m.html.includes('Choose a new password'));
+  assert.ok(!m.html.includes('<img'));
   assert.ok(!m.html.includes('a<b>'));
   assert.ok(!m.html.includes('firebaseapp.com'));
+  assert.ok(m.html.includes('prefers-color-scheme: dark'));
+  assert.ok(!/F3DFAE/i.test(m.html), 'amber is reserved for viewer evidence');
   assert.ok(m.text.includes(link));
   assert.ok(verifyEmailEmail({ link, email: 'a@x.com', siteUrl: 'https://gapstronaut.com', support: 's@x.com' }).html.includes('Confirm my email'));
 });
