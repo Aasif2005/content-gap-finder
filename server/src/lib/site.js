@@ -15,7 +15,7 @@ const APP_PATHS = [
 ];
 
 // Worth a search result. Everything else is an account page or someone's report.
-const SITEMAP_PATHS = ['/', '/privacy', '/terms', '/login', '/signup'];
+export const SITEMAP_PATHS = ['/', '/privacy', '/terms', '/login', '/signup'];
 
 const trimSlashes = (path) => (path.length > 1 ? path.replace(/\/+$/, '') : path);
 

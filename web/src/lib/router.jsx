@@ -27,6 +27,19 @@ const titleFor = (route) => (route?.title ? `${route.title} · ${SITE_NAME}` : S
 const descriptionTag = () => document.querySelector('meta[name="description"]');
 const DEFAULT_DESCRIPTION = descriptionTag()?.content ?? '';
 
+const SITE_ORIGIN = __SITE_URL__ || window.location.origin;
+
+// Canonical link and og:url follow the route: present on indexable pages only, path without query.
+function syncCanonical(url) {
+  let link = document.querySelector('link[rel="canonical"]');
+  let og = document.querySelector('meta[property="og:url"]');
+  if (!url) { link?.remove(); og?.remove(); return; }
+  if (!link) { link = document.createElement('link'); link.rel = 'canonical'; document.head.appendChild(link); }
+  if (!og) { og = document.createElement('meta'); og.setAttribute('property', 'og:url'); document.head.appendChild(og); }
+  link.href = url;
+  og.setAttribute('content', url);
+}
+
 export function RouterProvider({ routes, children }) {
   const [loc, setLoc] = useState(readLocation);
 
@@ -54,6 +67,10 @@ export function RouterProvider({ routes, children }) {
     document.title = titleFor(value.route);
     descriptionTag()?.setAttribute('content', value.route?.description ?? DEFAULT_DESCRIPTION);
   }, [value.route]);
+
+  useEffect(() => {
+    syncCanonical(value.route?.indexable ? `${SITE_ORIGIN}${value.path}` : null);
+  }, [value.route, value.path]);
 
   return <RouteContext.Provider value={value}>{children}</RouteContext.Provider>;
 }

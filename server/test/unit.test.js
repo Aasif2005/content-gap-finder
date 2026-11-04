@@ -34,7 +34,7 @@ import { clampLimit, validInterval, validate } from '../src/routes/api.js';
 import { publicMessage, errorResponse, GENERIC_ERROR, RUN_FAILED } from '../src/lib/publicError.js';
 import { limitsFor } from '../src/lib/limits.js';
 import { domainAcceptsMail } from '../src/lib/emailDomain.js';
-import { isAppPath, siteOrigin, sitemapXml, robotsTxt, renderIndex } from '../src/lib/site.js';
+import { isAppPath, siteOrigin, sitemapXml, robotsTxt, renderIndex, SITEMAP_PATHS } from '../src/lib/site.js';
 import { readFileSync, readdirSync } from 'node:fs';
 import { parseAvatarDataUrl, MAX_AVATAR_BYTES } from '../src/lib/avatar.js';
 import { squareCrop, checkFile, fitImage, clampOffset, initialView, zoomAt, zoomOf, cropRect, MAX_ZOOM } from '../../web/src/lib/avatarImage.js';
@@ -3375,6 +3375,12 @@ describe('site address, sitemap and real 404s', () => {
     const sources = vercel.rewrites.filter((r) => r.destination === '/index.html').map((r) => r.source.replace(/:id\([^)]*\)/, ':id'));
     assert.deepEqual([...sources].sort(), [...paths].sort());
     for (const src of sources) assert.equal(isAppPath(src.replace(':id', 'abc-123')), true, src);
+  });
+
+  test('the routes marked indexable are exactly the sitemap paths (they get canonical + og:url)', () => {
+    const source = readFileSync(new URL('../../web/src/routes.jsx', import.meta.url), 'utf8');
+    const indexable = [...source.matchAll(/path: '([^']+)',[^\n]*?indexable: true|path: '([^']+)',\s*title: null,\s*indexable: true/g)].map((m) => m[1] ?? m[2]);
+    assert.deepEqual([...indexable].sort(), [...SITEMAP_PATHS].sort());
   });
 
   test('the public address comes from SITE_URL, else from the request', () => {

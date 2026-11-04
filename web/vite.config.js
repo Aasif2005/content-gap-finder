@@ -10,6 +10,9 @@ export default defineConfig({
   // NODE_ENV=development for the server, which Vite would honour and ship a
   // development React; `npm run build` pins NODE_ENV=production to prevent it.
   envDir: '..',
+  // The public address (https, preferred host) for canonical links. Vercel sets SITE_URL at build time;
+  // without it the page falls back to the address it is served from.
+  define: { __SITE_URL__: JSON.stringify((process.env.SITE_URL ?? '').trim().replace(/\/+$/, '')) },
   build: {
     rollupOptions: {
       // Firebase Auth is most of the bundle and changes rarely; its own chunk

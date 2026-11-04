@@ -20,6 +20,8 @@ const TermsPage = lazy(() => import('./pages/Legal.jsx').then((m) => ({ default:
  *  - `auth`: 'required' sends a logged-out visitor to /login?next=...
  *  - `title`: the tab title is `title · Gapstronaut`; no title is just `Gapstronaut`.
  *  - `description`: the page's search-result text; without one, the site's default in index.html.
+ *  - `indexable`: a page worth a search result. It gets a canonical link and og:url;
+ *    every other route has them removed. A test keeps this equal to the sitemap.
  *  - `shellProps`: passed to the shell (MarketingShell takes `theme` and `anchors`).
  *  - `element`: a React element, or a function `({ params, query, path }) => element`
  *    for routes that read their params.
@@ -31,6 +33,7 @@ export const routes = [
   {
     path: '/',
     title: null,
+    indexable: true,
     shell: 'marketing',
     shellProps: {
       anchors: [
@@ -43,11 +46,11 @@ export const routes = [
     auth: 'public',
     element: <Home />,
   },
-  { path: '/login', title: 'Log in', description: 'Log in to Gapstronaut to run analyses, open your saved reports and manage your watches.', shell: 'bare', auth: 'public', element: <Login /> },
-  { path: '/signup', title: 'Sign up', description: 'Create a free Gapstronaut account and find the videos your audience is still asking for. No card needed.', shell: 'bare', auth: 'public', element: <Signup /> },
+  { path: '/login', indexable: true, title: 'Log in', description: 'Log in to Gapstronaut to run analyses, open your saved reports and manage your watches.', shell: 'bare', auth: 'public', element: <Login /> },
+  { path: '/signup', indexable: true, title: 'Sign up', description: 'Create a free Gapstronaut account and find the videos your audience is still asking for. No card needed.', shell: 'bare', auth: 'public', element: <Signup /> },
   { path: '/reset-password', title: 'Reset your password', description: 'Get a link to choose a new password for your Gapstronaut account.', shell: 'bare', auth: 'public', element: <ResetPassword /> },
-  { path: '/privacy', title: 'Privacy Policy', description: 'What Gapstronaut collects, how long it keeps it, and how to have it deleted.', shell: 'marketing', auth: 'public', element: <PrivacyPage /> },
-  { path: '/terms', title: 'Terms of Service', description: 'The terms for using Gapstronaut, including the YouTube Terms of Service they bind you to.', shell: 'marketing', auth: 'public', element: <TermsPage /> },
+  { path: '/privacy', indexable: true, title: 'Privacy Policy', description: 'What Gapstronaut collects, how long it keeps it, and how to have it deleted.', shell: 'marketing', auth: 'public', element: <PrivacyPage /> },
+  { path: '/terms', indexable: true, title: 'Terms of Service', description: 'The terms for using Gapstronaut, including the YouTube Terms of Service they bind you to.', shell: 'marketing', auth: 'public', element: <TermsPage /> },
   { path: '/dashboard', title: 'Dashboard', shell: 'app', auth: 'required', element: <Dashboard /> },
   { path: '/explore', title: 'Explore a niche', shell: 'app', auth: 'required', element: <Explorer key="niche" mode="niche" /> },
   { path: '/channel', title: 'Analyze a channel', shell: 'app', auth: 'required', element: <Explorer key="channel" mode="channel" /> },
