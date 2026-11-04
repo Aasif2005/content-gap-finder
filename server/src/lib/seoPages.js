@@ -30,7 +30,7 @@ const footer = [
 /** Keyed by path. `sections` are { h2, p[] }; `ctas` are extra in-page links. */
 export const SEO_PAGES = {
   '/': {
-    file: 'home',
+    file: null, // served as index.html itself (see web/scripts/static-host.mjs)
     title: 'Gapstronaut: Find YouTube Content Gaps From Comments',
     description: 'Gapstronaut reads the comments under a niche’s YouTube videos and shows the questions nobody has answered, with every comment linked to its video.',
     ogDescription: 'Find the video your audience is still asking for. Gapstronaut reads the comments under a niche’s YouTube videos and shows the questions nobody has answered.',

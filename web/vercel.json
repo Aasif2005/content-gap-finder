@@ -7,19 +7,19 @@
   "trailingSlash": false,
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://api-production-16c8.up.railway.app/api/:path*" },
-    { "source": "/", "destination": "/seo/home.html" },
+    { "source": "/", "destination": "/index.html" },
     { "source": "/login", "destination": "/seo/login.html" },
     { "source": "/signup", "destination": "/seo/signup.html" },
-    { "source": "/reset-password", "destination": "/index.html" },
-    { "source": "/auth/action", "destination": "/index.html" },
+    { "source": "/reset-password", "destination": "/app.html" },
+    { "source": "/auth/action", "destination": "/app.html" },
     { "source": "/privacy", "destination": "/seo/privacy.html" },
     { "source": "/terms", "destination": "/seo/terms.html" },
-    { "source": "/dashboard", "destination": "/index.html" },
-    { "source": "/explore", "destination": "/index.html" },
-    { "source": "/channel", "destination": "/index.html" },
-    { "source": "/profile", "destination": "/index.html" },
-    { "source": "/r/:id([a-zA-Z0-9_-]+)", "destination": "/index.html" },
-    { "source": "/channel/r/:id([a-zA-Z0-9_-]+)", "destination": "/index.html" }
+    { "source": "/dashboard", "destination": "/app.html" },
+    { "source": "/explore", "destination": "/app.html" },
+    { "source": "/channel", "destination": "/app.html" },
+    { "source": "/profile", "destination": "/app.html" },
+    { "source": "/r/:id([a-zA-Z0-9_-]+)", "destination": "/app.html" },
+    { "source": "/channel/r/:id([a-zA-Z0-9_-]+)", "destination": "/app.html" }
   ],
   "headers": [
     {

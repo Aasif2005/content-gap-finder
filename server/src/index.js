@@ -46,7 +46,9 @@ if (fs.existsSync(webDist)) {
   // Vite puts a content hash in every file name under /assets, so they never change.
   app.use('/assets', express.static(path.join(webDist, 'assets'), { immutable: true, maxAge: '1y', fallthrough: false }));
   app.use(express.static(webDist, { index: false }));
-  const indexHtml = fs.readFileSync(path.join(webDist, 'index.html'), 'utf8');
+  // A SITE_URL build turns index.html into the home page and keeps the plain shell in app.html.
+  const shell = fs.existsSync(path.join(webDist, 'app.html')) ? 'app.html' : 'index.html';
+  const indexHtml = fs.readFileSync(path.join(webDist, shell), 'utf8');
   // The app draws its own 404 page, but search engines read the status: an unknown address must say 404.
   app.get(/^(?!\/api).*/, (req, res) => {
     res.status(isAppPath(req.path) ? 200 : 404).set('Cache-Control', 'no-cache').type('html').send(renderIndex(indexHtml, siteOrigin(req), req.path));

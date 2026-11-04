@@ -3373,7 +3373,7 @@ describe('site address, sitemap and real 404s', () => {
     const routes = readFileSync(new URL('../../web/src/routes.jsx', import.meta.url), 'utf8');
     const paths = [...routes.matchAll(/path: '([^']+)'/g)].map((m) => m[1]).filter((p) => p !== '*');
     const vercel = JSON.parse(readFileSync(new URL('../../web/vercel.json', import.meta.url), 'utf8'));
-    const sources = vercel.rewrites.filter((r) => r.destination === '/index.html' || r.destination.startsWith('/seo/')).map((r) => r.source.replace(/:id\([^)]*\)/, ':id'));
+    const sources = vercel.rewrites.filter((r) => ['/index.html', '/app.html'].includes(r.destination) || r.destination.startsWith('/seo/')).map((r) => r.source.replace(/:id\([^)]*\)/, ':id'));
     assert.deepEqual([...sources].sort(), [...paths].sort());
     for (const src of sources) assert.equal(isAppPath(src.replace(':id', 'abc-123')), true, src);
   });
@@ -3804,8 +3804,16 @@ describe('prerendered public pages', () => {
     assert.deepEqual(Object.keys(SEO_PAGES).sort(), [...SITEMAP_PATHS].sort());
     for (const [route, page] of Object.entries(SEO_PAGES)) {
       const hit = vercel.rewrites.find((r) => r.source === route);
-      assert.equal(hit?.destination, `/seo/${page.file}.html`, route);
+      assert.equal(hit?.destination, page.file ? `/seo/${page.file}.html` : '/index.html', route);
     }
+  });
+
+  test('only the homepage is served index.html (it holds the home snapshot); private routes get the plain shell', () => {
+    for (const r of vercel.rewrites.filter((x) => x.destination === '/index.html')) assert.equal(r.source, '/');
+    for (const p of ['/dashboard', '/explore', '/profile', '/reset-password', '/auth/action']) {
+      assert.equal(vercel.rewrites.find((r) => r.source === p)?.destination, '/app.html', p);
+    }
+    assert.equal(SEO_PAGES['/'].file, null);
   });
 
   test('every page passes the crawl audit: title, one h1, h2s, canonical = og:url, links, words, full tags', () => {

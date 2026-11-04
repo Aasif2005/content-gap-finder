@@ -14,22 +14,27 @@ import { absoluteImages, robotsTxt, sitemapXml } from '../../server/src/lib/site
 import { SEO_PAGES, renderSeoPage } from '../../server/src/lib/seoPages.js';
 
 const origin = (process.env.SITE_URL ?? '').trim().replace(/\/+$/, '');
+const dist = path.resolve(fileURLToPath(new URL('../dist', import.meta.url)));
 if (!origin) {
-  console.log('[static-host] SITE_URL not set: skipped (the Express server handles these).');
+  // web/vercel.json sends private routes to /app.html, so it must exist on every build.
+  fs.copyFileSync(path.join(dist, 'index.html'), path.join(dist, 'app.html'));
+  console.log('[static-host] SITE_URL not set: wrote app.html only (the Express server handles the rest).');
   process.exit(0);
 }
 
-const dist = path.resolve(fileURLToPath(new URL('../dist', import.meta.url)));
 const html = absoluteImages(fs.readFileSync(path.join(dist, 'index.html'), 'utf8'), origin);
-fs.writeFileSync(path.join(dist, 'index.html'), html);
+// The plain app shell: every private route (dashboard, reports...) and the 404 page get it.
+fs.writeFileSync(path.join(dist, 'app.html'), html);
 fs.writeFileSync(path.join(dist, '404.html'), html); // the app draws its own NotFound page
 fs.writeFileSync(path.join(dist, 'robots.txt'), robotsTxt(origin));
 fs.writeFileSync(path.join(dist, 'sitemap.xml'), sitemapXml(origin));
-// One HTML file per public page: its own tags and a plain-HTML snapshot for crawlers that
-// run no JavaScript. web/vercel.json rewrites each route to its file.
+// Public pages: their own tags and a plain-HTML snapshot for crawlers that run no JavaScript.
+// The homepage IS index.html: Vercel serves a real file before any rewrite, so `/` would
+// never reach a rewrite. The others live in /seo/ and web/vercel.json rewrites to them.
 fs.mkdirSync(path.join(dist, 'seo'), { recursive: true });
 for (const [route, page] of Object.entries(SEO_PAGES)) {
-  fs.writeFileSync(path.join(dist, 'seo', `${page.file}.html`), renderSeoPage(html, origin, route));
+  const file = page.file ? path.join(dist, 'seo', `${page.file}.html`) : path.join(dist, 'index.html');
+  fs.writeFileSync(file, renderSeoPage(html, origin, route));
 }
-console.log(`[static-host] wrote ${Object.keys(SEO_PAGES).length} seo pages,`);
+console.log(`[static-host] wrote app.html, index.html (home) and ${Object.keys(SEO_PAGES).length - 1} seo pages,`);
 console.log(`[static-host] wrote robots.txt, sitemap.xml and 404.html for ${origin}`);
