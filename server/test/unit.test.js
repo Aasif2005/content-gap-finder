@@ -3742,3 +3742,48 @@ test('parseServiceAccount accepts raw or base64 JSON and rejects junk', () => {
   assert.equal(parseServiceAccount('nope'), null);
   assert.equal(parseServiceAccount(''), null);
 });
+
+import { sendViaResend, mailConfigured } from '../src/lib/mailer.js';
+import { sendFirebaseEmail } from '../src/lib/actionLink.js';
+import { config as appConfig } from '../src/config.js';
+
+test('mailConfigured: a Resend key alone is enough; SMTP needs host, user and password', () => {
+  assert.equal(mailConfigured({ resendKey: 're_x' }), true);
+  assert.equal(mailConfigured({ host: 'h', user: 'u', pass: '' }), false);
+  assert.equal(mailConfigured({ host: 'h', user: 'u', pass: 'p' }), true);
+});
+
+test('sendViaResend posts the message over HTTPS and reports Resend errors', async () => {
+  appConfig.mail.resendKey = 're_test';
+  let seen;
+  await sendViaResend({ to: 'a@x.com', subject: 'S', html: '<p>h</p>', text: 't' }, async (url, init) => { seen = { url, init }; return { ok: true }; });
+  assert.equal(seen.url, 'https://api.resend.com/emails');
+  assert.equal(seen.init.headers.Authorization, 'Bearer re_test');
+  const body = JSON.parse(seen.init.body);
+  assert.deepEqual(body.to, ['a@x.com']);
+  assert.match(body.from, /noreply@gapstronaut\.com/);
+  await assert.rejects(
+    sendViaResend({ to: 'a@x.com', subject: 'S', html: 'h', text: 't' }, async () => ({ ok: false, status: 403, json: async () => ({ message: 'domain not verified' }) })),
+    /403.*domain not verified/,
+  );
+  appConfig.mail.resendKey = '';
+});
+
+test('sendFirebaseEmail asks Firebase to send, without asking for the link', async () => {
+  const { generateKeyPairSync } = await import('node:crypto');
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  appConfig.firebase.serviceAccount = JSON.stringify({ client_email: 'sa@p.iam.gserviceaccount.com', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) });
+  appConfig.firebase.projectId = 'proj';
+  const calls = [];
+  const fakeFetch = async (url, init) => {
+    calls.push({ url, init });
+    return url.includes('oauth2') ? { ok: true, json: async () => ({ access_token: 'tok', expires_in: 3600 }) } : { ok: true, json: async () => ({}) };
+  };
+  assert.equal(await sendFirebaseEmail('PASSWORD_RESET', 'a@x.com', fakeFetch), true);
+  const send = calls.find((c) => c.url.includes('sendOobCode'));
+  assert.ok(send.url.includes('/projects/proj/'));
+  assert.deepEqual(JSON.parse(send.init.body), { requestType: 'PASSWORD_RESET', email: 'a@x.com' });
+  assert.equal(send.init.headers.Authorization, 'Bearer tok');
+  appConfig.firebase.serviceAccount = '';
+  appConfig.firebase.projectId = '';
+});

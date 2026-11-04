@@ -89,3 +89,21 @@ export async function createActionLink(kind, email, origin, fetchFn = fetch) {
   }
   return ourActionLink(body.oobLink, origin);
 }
+
+/**
+ * The safety net: asks Firebase to send its own (plain) email for `kind`. Used when our
+ * own send fails, so a person is never left with no email at all. Resolves quietly for
+ * an address with no account.
+ */
+export async function sendFirebaseEmail(kind, email, fetchFn = fetch) {
+  const token = await accessToken(fetchFn);
+  const res = await fetchFn(`https://identitytoolkit.googleapis.com/v1/projects/${config.firebase.projectId}/accounts:sendOobCode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ requestType: kind, email }),
+  });
+  if (res.ok) return true;
+  const msg = String((await res.json().catch(() => ({})))?.error?.message ?? '');
+  if (msg.startsWith('EMAIL_NOT_FOUND') || msg.startsWith('USER_NOT_FOUND')) return false;
+  throw new Error(`Firebase email failed (${res.status}) ${msg}`.trim());
+}

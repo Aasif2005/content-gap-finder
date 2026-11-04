@@ -18,7 +18,7 @@ import { getUser, setAvatar, clearAvatar, getAvatar, upsertUser, acceptTerms, li
 import { limitsFor } from '../lib/limits.js';
 import { domainAcceptsMail } from '../lib/emailDomain.js';
 import { sendMail, mailConfigured } from '../lib/mailer.js';
-import { createActionLink, actionLinksConfigured } from '../lib/actionLink.js';
+import { createActionLink, sendFirebaseEmail, actionLinksConfigured } from '../lib/actionLink.js';
 import { resetPasswordEmail, verifyEmailEmail } from '../lib/emailTemplates.js';
 
 export const router = express.Router();
@@ -291,7 +291,8 @@ router.post('/auth/password-reset', resetIpLimit, resetEmailLimit, wrap(async (r
     const link = await createActionLink('PASSWORD_RESET', email, origin);
     if (link) await sendMail({ to: email, ...resetPasswordEmail({ link, email, siteUrl: origin, support: SUPPORT() }) });
   } catch (err) {
-    console.error('[mail] password reset failed:', err.message);
+    console.error('[mail] password reset failed, using Firebase email:', err.message);
+    await sendFirebaseEmail('PASSWORD_RESET', email).catch((e) => console.error('[mail] Firebase fallback failed:', e.message));
   }
 }));
 
@@ -301,9 +302,14 @@ router.post('/auth/verification', requireUser, verifyLimit, wrap(async (req, res
   if (!email || emailVerified || provider !== 'password') return res.json({ ok: true, alreadyVerified: true });
   if (!mailReady()) return notReady(res);
   const origin = siteOrigin(req);
-  const link = await createActionLink('VERIFY_EMAIL', email, origin);
-  if (!link) throw bad('Could not create the link. Try again.');
-  await sendMail({ to: email, ...verifyEmailEmail({ link, email, siteUrl: origin, support: SUPPORT() }) });
+  try {
+    const link = await createActionLink('VERIFY_EMAIL', email, origin);
+    if (!link) throw new Error('no link');
+    await sendMail({ to: email, ...verifyEmailEmail({ link, email, siteUrl: origin, support: SUPPORT() }) });
+  } catch (err) {
+    console.error('[mail] verification failed, using Firebase email:', err.message);
+    await sendFirebaseEmail('VERIFY_EMAIL', email);
+  }
   res.json({ ok: true });
 }));
 

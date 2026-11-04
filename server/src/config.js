@@ -108,6 +108,8 @@ export const config = {
   // signs in, an alias (noreply@) is what people see. Unset = the web app falls back to
   // Firebase's built-in emails.
   mail: {
+    // Resend over HTTPS. Railway blocks outbound SMTP on Trial/Hobby plans, so this is the route that works there.
+    resendKey: (process.env.RESEND_API_KEY ?? '').trim(),
     host: (process.env.SMTP_HOST ?? '').trim(),
     port: num(process.env.SMTP_PORT, 465),
     user: (process.env.SMTP_USER ?? '').trim(),
