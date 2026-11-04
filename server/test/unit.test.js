@@ -3836,3 +3836,14 @@ describe('prerendered public pages', () => {
     assert.ok(!html.includes('<script'));
   });
 });
+
+test('Vercel sends a safe Referrer-Policy and a Content-Security-Policy that keeps sign-in working', () => {
+  const vercel = JSON.parse(readFileSync(new URL('../../web/vercel.json', import.meta.url), 'utf8'));
+  const h = Object.fromEntries(vercel.headers[0].headers.map((x) => [x.key, x.value]));
+  assert.equal(h['Referrer-Policy'], 'strict-origin-when-cross-origin');
+  const csp = h['Content-Security-Policy'];
+  for (const must of ["default-src 'self'", "object-src 'none'", "frame-ancestors 'none'", 'https://apis.google.com', 'https://*.firebaseapp.com', 'https://accounts.google.com', 'https://*.googleapis.com', 'https://www.googletagmanager.com']) {
+    assert.ok(csp.includes(must), must);
+  }
+  assert.ok(!/script-src[^;]*'unsafe-(inline|eval)'/.test(csp), 'no inline or eval scripts');
+});
