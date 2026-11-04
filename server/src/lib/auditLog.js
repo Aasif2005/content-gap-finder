@@ -248,12 +248,15 @@ export class RunLogger {
   }
 
   /** Stores the log and its index summary. Call exactly once. */
-  async finish({ status, topicRelevance, gapRelevance, avoidRelevance, stageMs }) {
+  async finish({ status, topicRelevance, gapRelevance, avoidRelevance, stageMs, llmTokens }) {
     this.summary = {
       runId: this.runId,
       startedAt: new Date(this.startedAt).toISOString(),
       elapsedMs: Date.now() - this.startedAt,
       stageMs,
+      // Output tokens per LLM call. Run time is mostly these being written, so a slow
+      // run with a high count was the model thinking longer, not a slower service.
+      llmTokens,
       niche: this.input.niche,
       window: this.input.window,
       contentType: this.input.contentType,
@@ -272,6 +275,7 @@ export class RunLogger {
       `elapsed    : ${(this.summary.elapsedMs / 1000).toFixed(1)}s`,
       `status     : ${status}`,
       `stages     : ${stageMs ? Object.entries(stageMs).map(([k, v]) => `${k} ${(v / 1000).toFixed(1)}s`).join(', ') : '-'}`,
+      `llm tokens : ${llmTokens ? Object.entries(llmTokens).map(([k, t]) => `${k} ${t.output} out (${t.reasoning} reasoning)`).join(', ') : '-'}`,
       '',
       '=== NICHE RELEVANCE SUMMARY ===',
       `topics: ${topicRelevance?.relevant ?? '-'}/${topicRelevance?.total ?? '-'} relevant (${topicRelevance?.rate ?? '-'}%)${flagNote(topicRelevance)}`,

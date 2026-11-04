@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { parseDuration, windowToPublishedAfter } from '../src/services/youtube.js';
-import { parseCommentIndex, selectComments, groundGaps, groundObjections, truncate } from '../src/services/analyze.js';
+import { parseCommentIndex, selectComments, groundGaps, groundObjections, truncate, splitComments, mergeChunkResults } from '../src/services/analyze.js';
 import { checkTopicRelevance, checkGapRelevance, summarizeRelevance, checkTagHijack, stripHashtags, untrustedVideoIds, nicheKeywords, nicheVideoIdSet } from '../src/lib/relevance.js';
 import { avoidVerdict } from '../src/lib/avoid.js';
 import { commentErrorKind, youtubeErrorCode } from '../src/services/youtube.js';
@@ -26,7 +26,7 @@ import { gapTokens, gapSimilarity, classifyRecurrence } from '../src/lib/recurre
 // Reaching across the workspace on purpose: these are pure serializers with no
 // DOM dependency at module scope, and CSV quoting is exactly the kind of thing
 // that silently corrupts an export until someone opens it in a spreadsheet.
-import { requestBody } from '../src/services/deepseek.js';
+import { requestBody, readStream, completedTopLevelArray } from '../src/services/deepseek.js';
 import { config, num } from '../src/config.js';
 import { createRateLimit } from '../src/lib/rateLimit.js';
 import { corsOriginAllowed, makeSecurityHeaders, httpsRedirectFor } from '../src/lib/security.js';
@@ -3623,5 +3623,91 @@ describe('concurrency helpers', () => {
     assert.deepEqual(log, ['s1', 'e1', 's2', 's3', 'e3']);
     assert.equal(results[1].status, 'rejected');
     assert.equal(results[2].value, 3);
+  });
+});
+
+
+describe('chunked gap mining', () => {
+  test('splitComments deals round-robin so every group sees every video', () => {
+    const cs = Array.from({ length: 7 }, (_, i) => ({ index: i, videoId: `v${i % 3}` }));
+    const groups = splitComments(cs, 3);
+    assert.deepEqual(groups.map((g) => g.map((c) => c.index)), [[0, 3, 6], [1, 4], [2, 5]]);
+    assert.equal(groups.flat().length, 7);
+  });
+
+  test('the same gap found in two chunks becomes one gap with the evidence pooled', () => {
+    const merged = mergeChunkResults([
+      { gaps: [{ question: 'Why did the coalition government collapse so suddenly?', evidence_comment_indexes: [1, 2], coverage: 'none', demand_strength: 'medium', covering_video_ids: ['a'], sensitive: false, title_options: ['x'] }], objections: [] },
+      { gaps: [{ question: 'Why did the coalition government collapse suddenly', evidence_comment_indexes: [5, 2, 9], coverage: 'weak', demand_strength: 'high', covering_video_ids: ['b'], sensitive: true, title_options: ['y'] }, { question: 'How do postal ballots get counted?', evidence_comment_indexes: [7, 8] }], objections: [] },
+    ]);
+    assert.equal(merged.gaps.length, 2);
+    const g = merged.gaps[0];
+    assert.deepEqual([...g.evidence_comment_indexes].sort((a, b) => a - b), [1, 2, 5, 9]);
+    assert.equal(g.coverage, 'weak');
+    assert.equal(g.demand_strength, 'high');
+    assert.equal(g.sensitive, true);
+    assert.deepEqual([...g.covering_video_ids].sort(), ['a', 'b']);
+    assert.deepEqual(g.title_options, ['y']); // wording of the copy with more evidence
+  });
+
+  test('two gaps with one cited comment each pass the two-comment bar once merged, not before', () => {
+    const one = (idx) => ({ gaps: [{ question: 'Is the new tax slab good for salaried people?', evidence_comment_indexes: [idx] }], objections: [] });
+    const comments = [{ index: 3, videoId: 'a', text: 't', likes: 1, replyCount: 0 }, { index: 4, videoId: 'b', text: 't', likes: 1, replyCount: 0 }];
+    assert.equal(groundGaps(one(3).gaps, comments).length, 0);
+    assert.equal(groundGaps(mergeChunkResults([one(3), one(4)]).gaps, comments).length, 1);
+  });
+
+  test('unrelated gaps and objections are not merged', () => {
+    const merged = mergeChunkResults([
+      { gaps: [{ question: 'Why is fuel so expensive?', evidence_comment_indexes: [1, 2] }], objections: [{ label: 'Too long intro', detail: 'ten minutes of recap', evidence_comment_indexes: [1] }] },
+      { gaps: [{ question: 'What happened to the farmers protest?', evidence_comment_indexes: [3, 4] }], objections: [{ label: 'Audio is quiet', detail: 'hard to hear', evidence_comment_indexes: [2] }] },
+    ]);
+    assert.equal(merged.gaps.length, 2);
+    assert.equal(merged.objections.length, 2);
+  });
+});
+
+describe('streamed LLM replies', () => {
+  test('requestBody asks for a stream with usage only when streaming', () => {
+    const base = { model: 'm', system: 's', user: 'u json', maxTokens: 10, temperature: 0 };
+    assert.equal(requestBody(base).stream, undefined);
+    const s = requestBody({ ...base, stream: true });
+    assert.equal(s.stream, true);
+    assert.deepEqual(s.stream_options, { include_usage: true });
+  });
+
+  test('readStream rebuilds content, finish_reason and usage across split chunks', async () => {
+    const lines = [
+      'data: {"model":"deepseek-flash","choices":[{"delta":{"reasoning_content":"thinking"}}]}\n',
+      'data: {"choices":[{"delta":{"content":"{\\"a\\":"}}]}\n',
+      'data: {"choices":[{"delta":{"content":"1}"},"finish_reason":"stop"}]}\n',
+      'data: {"choices":[],"usage":{"completion_tokens":5}}\n',
+      'data: [DONE]\n',
+    ].join('');
+    // Split mid-line to prove buffering works.
+    const enc = new TextEncoder();
+    const body = [enc.encode(lines.slice(0, 37)), enc.encode(lines.slice(37, 140)), enc.encode(lines.slice(140))];
+    const seen = [];
+    const data = await readStream(body, (d) => seen.push(d));
+    assert.equal(data.choices[0].message.content, '{"a":1}');
+    assert.equal(data.choices[0].finish_reason, 'stop');
+    assert.deepEqual(data.usage, { completion_tokens: 5 });
+    assert.equal(data.model, 'deepseek-flash');
+    assert.equal(seen[0].reasoningChars, 'thinking'.length);
+    assert.equal(seen.at(-1).content, '{"a":1}');
+  });
+
+  test('completedTopLevelArray waits for the array to close', () => {
+    const full = '{"topics":[{"label":"A ] tricky \\" one","video_ids":["x"]},{"label":"B","video_ids":[]}],"avoid":[{"label":"C"}]}';
+    assert.equal(completedTopLevelArray(full.slice(0, 30), 'topics'), null);
+    const cut = full.indexOf(',"avoid"');
+    assert.deepEqual(completedTopLevelArray(full.slice(0, cut), 'topics'), JSON.parse(full).topics);
+    assert.deepEqual(completedTopLevelArray(full, 'topics'), JSON.parse(full).topics);
+  });
+
+  test('completedTopLevelArray ignores the key nested or inside strings', () => {
+    assert.equal(completedTopLevelArray('{"x":{"topics":[1]},"y":"\\"topics\\"', 'topics'), null);
+    assert.deepEqual(completedTopLevelArray('```json\n{"avoid":[],"topics":[2]', 'topics'), [2]);
+    assert.equal(completedTopLevelArray('{"avoid":[]}', 'topics'), null);
   });
 });

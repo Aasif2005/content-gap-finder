@@ -1,6 +1,6 @@
 import * as yt from './youtube.js';
 import { scoreVideos, scoreTopic } from '../lib/heat.js';
-import { clusterTopics, mineGaps, selectComments, groundGaps, groundObjections, heatTier } from './analyze.js';
+import { clusterTopics, mineGaps, selectComments, groundGaps, groundObjections, heatTier, arrayOf } from './analyze.js';
 import { config } from '../config.js';
 import { RunLogger } from '../lib/auditLog.js';
 import { avoidVerdict, AVOID_ORDER } from '../lib/avoid.js';
@@ -10,7 +10,7 @@ import { ExclusionLedger } from '../lib/exclusions.js';
 import { assessEvidence, assessTopic, explainShortfall, thinPoolFrom } from '../lib/confidence.js';
 import { classifyRecurrence } from '../lib/recurrence.js';
 import { annotateOutliers } from '../lib/outlier.js';
-import { throwIfCancelled } from '../lib/runContext.js';
+import { throwIfCancelled, currentRun, withRun } from '../lib/runContext.js';
 import { formulaHint } from '../lib/hookFormulas.js';
 import * as store from '../lib/store.js';
 import { mapLimit } from '../lib/concurrency.js';
@@ -305,9 +305,59 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   const windowLabel = window === 'custom' ? `since ${customAfter.slice(0, 10)}` : `last ${window}`;
   let commentsIn = false;
   const quietProgress = (...args) => { if (commentsIn) onProgress(...args); else throwIfCancelled(); };
+
+  const byId = new Map(ranked.map((v) => [v.videoId, v]));
+  const resolve = (ids) => (Array.isArray(ids) ? ids : []).map((id) => byId.get(id)).filter(Boolean);
+  const gapFormulaHint = outlierSummary ? formulaHint(outlierSummary.topFormulas) : '';
+
+  // Live "the model is thinking" progress for the two long LLM waits. ~4 characters a token.
+  let atGaps = false;
+  const thinkingLabel = (chars) => (chars ? ` · thinking ≈${Math.max(1, Math.round(chars / 4000))}k tokens` : '');
+  let lastClusterK = -1;
+  const onClusterThinking = (chars) => {
+    const k = Math.round(chars / 4000);
+    if (!commentsIn || atGaps || k === lastClusterK) return;
+    lastClusterK = k;
+    onProgress('clustering', `Clustering ${ranked.length} videos into topics${thinkingLabel(chars)}`, 55);
+  };
+
+  // Speculative gap mining. Gap mining needs clustering's topics, the comments, and
+  // the avoid list (only to decide which tag-only videos' comments to leave out). The
+  // topics arrive first in the streamed reply, so mining starts then, on the inputs
+  // the sequential path would build if the avoid list vouched for nothing extra.
+  // Once the avoid list is in, the real inputs are built and compared: the early
+  // answer is used only if its prompt inputs are identical, otherwise it is
+  // stopped and mining runs as before. Either way the gaps come from the same prompt.
+  let earlyTopicsRaw = null;
+  let speculative = null; // { key, promise, controller, startedAt }
+  const trySpeculate = () => {
+    if (speculative || !earlyTopicsRaw || !commentsIn || !withComments || config.deepseek.earlyGaps) return;
+    const inputs = gapInputs(buildTopics(earlyTopicsRaw), []);
+    const controller = new AbortController();
+    const run = currentRun();
+    const signal = run?.signal ? AbortSignal.any([run.signal, controller.signal]) : controller.signal;
+    const startedAt = Date.now();
+    const promise = withRun({ ...(run ?? {}), signal }, () => mineGaps({
+      niche: subject, window: windowLabel, videos: ranked, comments: inputs.gapComments, topics: inputs.topics,
+      gapMode, channelMode, formulaHint: gapFormulaHint,
+      onProgress: () => {}, onThinking: (chars) => onGapThinking(inputs.gapComments.length, chars),
+    }));
+    promise.catch(() => {}); // observed where it is used; a discarded guess must not surface as unhandled
+    speculative = { key: inputs.key, promise, controller, startedAt };
+  };
+
   const clustered = timed('clustering', () => clusterTopics({
     niche: subject, window: windowLabel, videos: ranked, channelMode, onProgress: quietProgress,
+    onThinking: onClusterThinking,
+    onTopics: (raw) => { earlyTopicsRaw = raw; trySpeculate(); },
   }));
+  let lastGapK = -1;
+  function onGapThinking(count, chars) {
+    const k = Math.round(chars / 4000);
+    if (!atGaps || k === lastGapK) return;
+    lastGapK = k;
+    onProgress('gaps', `Mining ${count} comments for unmet demand${thinkingLabel(chars)}`, 78);
+  }
 
   // Read in parallel (config.youtube.concurrency), then recorded in rank order,
   // so the report is the same as reading them one by one.
@@ -356,28 +406,68 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   const totalFetched = Object.values(commentsByVideo).reduce((a, c) => a + c.length, 0);
   if (!withComments) warnings.push('No comments were available on any top video, so the gap list will be empty.');
 
+  // Early gap mining (ANALYSIS_EARLY_GAPS): the comments are in, so mining starts now, alongside
+  // clustering, instead of after it. Its prompt then has no topic list (the video titles are still
+  // there), and the off-topic-video filter below is applied to its answer instead of to its input.
+  let earlyGaps = null;
+  let earlyComments = null;
+  if (config.deepseek.earlyGaps && withComments) {
+    earlyComments = selectComments(commentsByVideo, { ownerByVideo });
+    earlyGaps = timed('gaps', () => mineGaps({
+      niche: subject, window: windowLabel, videos: ranked, comments: earlyComments, topics: [], gapMode, channelMode,
+      onProgress: () => {}, formulaHint: outlierSummary ? formulaHint(outlierSummary.topFormulas) : '',
+    }));
+    earlyGaps.catch(() => {}); // observed where it is awaited; this only stops an unhandled rejection if the run ends first
+  }
+  trySpeculate(); // if clustering's topics came in before the comments did
+
   // 5. LLM pass A (started above, before the comments).
   onProgress('clustering', `Clustering ${ranked.length} videos into topics`, 55);
   const { topics: rawTopics, avoid: rawAvoid, usage: clusterUsage } = await clustered;
+  const clusteringDoneAt = Date.now();
 
-  const byId = new Map(ranked.map((v) => [v.videoId, v]));
-  const resolve = (ids) => (Array.isArray(ids) ? ids : []).map((id) => byId.get(id)).filter(Boolean);
+  function buildTopics(raw) {
+    return arrayOf(raw)
+      .map((t) => {
+        const members = resolve(t?.video_ids);
+        if (!members.length) return null; // drop hallucinated clusters outright
+        return {
+          label: t.label,
+          summary: t.summary ?? '',
+          whyHot: t.why_hot ?? '',
+          suggestedAngles: t.suggested_angles ?? [],
+          videos: members.map(publicVideo),
+          ...scoreTopic(members),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.heatScore - a.heatScore);
+  }
 
-  const topics = rawTopics
-    .map((t) => {
-      const members = resolve(t.video_ids);
-      if (!members.length) return null; // drop hallucinated clusters outright
-      return {
-        label: t.label,
-        summary: t.summary ?? '',
-        whyHot: t.why_hot ?? '',
-        suggestedAngles: t.suggested_angles ?? [],
-        videos: members.map(publicVideo),
-        ...scoreTopic(members),
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.heatScore - a.heatScore);
+  // Everything gap mining's prompt is built from, plus a key that is equal exactly
+  // when two prompts would be equal (videos, niche and settings are fixed per run).
+  function gapInputs(topicList, avoidList) {
+    // Drop comments from tag-hijacked videos that clustering never vouched for,
+    // before gap mining ever sees them. Real bug this fixes: a "SOORI AS HERO
+    // #thalapathyvijay" Short (a different actor, tag-stuffed) was correctly kept
+    // out of every topic, but comment-fetching runs by heat score alone -- upstream
+    // of any relevance check -- so its comments still reached gap mining and
+    // became a "gap" about a completely unrelated film rivalry.
+    const confirmedRelevantVideoIds = new Set([
+      ...topicList.flatMap((t) => t.videos.map((v) => v.videoId)),
+      ...avoidList.flatMap((a) => a.videos.map((v) => v.videoId)),
+    ]);
+    const untrusted = channelMode ? new Set() : untrustedVideoIds(ranked, confirmedRelevantVideoIds);
+    // Untrusted videos are removed BEFORE the comment cap is applied, so their
+    // comments cannot use up slots that trusted videos' comments would have had.
+    const trustedByVideo = Object.fromEntries(Object.entries(commentsByVideo).filter(([id]) => !untrusted.has(id)));
+    // Early mode: the comments the model already read, minus those from videos clustering did not vouch for.
+    const gapComments = earlyComments ? earlyComments.filter((c) => !untrusted.has(c.videoId)) : selectComments(trustedByVideo, { ownerByVideo });
+    const key = JSON.stringify([topicList.map((t) => [t.label, t.summary]), gapComments]);
+    return { topics: topicList, confirmedRelevantVideoIds, untrusted, gapComments, key };
+  }
+
+  const topics = buildTopics(rawTopics);
 
   // Keyword-overlap check on what the model actually returned -- catches drift
   // that a fabrication check can't, since these topics are all grounded in real
@@ -434,21 +524,7 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   log.logAvoid(avoid, avoidRelevance);
   avoid.forEach((a, i) => { a.nicheRelevant = avoidRelevance[i].relevant; });
 
-  // Drop comments from tag-hijacked videos that clustering never vouched for,
-  // before gap mining ever sees them. Real bug this fixes: a "SOORI AS HERO
-  // #thalapathyvijay" Short (a different actor, tag-stuffed) was correctly kept
-  // out of every topic, but comment-fetching runs by heat score alone -- upstream
-  // of any relevance check -- so its comments still reached gap mining and
-  // became a "gap" about a completely unrelated film rivalry.
-  const confirmedRelevantVideoIds = new Set([
-    ...topics.flatMap((t) => t.videos.map((v) => v.videoId)),
-    ...avoid.flatMap((a) => a.videos.map((v) => v.videoId)),
-  ]);
-  const untrusted = channelMode ? new Set() : untrustedVideoIds(ranked, confirmedRelevantVideoIds);
-  // Untrusted videos are removed BEFORE the comment cap is applied, so their
-  // comments cannot use up slots that trusted videos' comments would have had.
-  const trustedByVideo = Object.fromEntries(Object.entries(commentsByVideo).filter(([id]) => !untrusted.has(id)));
-  const gapComments = selectComments(trustedByVideo, { ownerByVideo });
+  const { confirmedRelevantVideoIds, untrusted, gapComments, key: gapKey } = gapInputs(topics, avoid);
   for (const id of untrusted) if (commentsByVideo[id]) ledger.add(byId.get(id), 'untrusted-tag-only');
   const droppedComments = [...untrusted].reduce((n, id) => n + (commentsByVideo[id]?.length ?? 0), 0);
   if (droppedComments) {
@@ -458,11 +534,27 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   }
 
   // 7. LLM pass B: gap mining, grounded back to real comments.
-  const { gaps: rawGaps, objections: rawObjections, usage: gapUsage } = await timed('gaps', () => mineGaps({
-    niche: subject, window: windowLabel, videos: ranked, comments: gapComments, topics, gapMode, channelMode, onProgress,
-    formulaHint: outlierSummary ? formulaHint(outlierSummary.topFormulas) : '',
-  }));
-  const gapsResolved = groundGaps(rawGaps, gapComments, { context: niche }).map((g) => ({
+  atGaps = true;
+  onProgress('gaps', `Mining ${gapComments.length} comments for unmet demand`, 78);
+  // The speculative call is used only when its prompt inputs equal these exactly.
+  const useSpeculative = speculative && speculative.key === gapKey;
+  // gapsHeadStart: how long the gap call had already been running when clustering finished
+  // (0 = not started early, or started on inputs that turned out different and discarded).
+  if (speculative && !useSpeculative) {
+    speculative.controller.abort(); // stop paying for an answer to a different prompt
+    console.warn('[pipeline] early gap mining discarded: the avoid list changed its inputs; mining again');
+  }
+  if (!earlyGaps) stageMs.gapsHeadStart = useSpeculative ? Math.max(0, clusteringDoneAt - speculative.startedAt) : 0;
+  const { gaps: rawGaps, objections: rawObjections, usage: gapUsage } = earlyGaps
+    ? await earlyGaps
+    : await timed('gaps', () => (useSpeculative ? speculative.promise : mineGaps({
+        niche: subject, window: windowLabel, videos: ranked, comments: gapComments, topics, gapMode, channelMode,
+        onProgress: (...args) => { if (args[0] !== 'gaps') onProgress(...args); },
+        onThinking: (chars) => onGapThinking(gapComments.length, chars),
+        formulaHint: gapFormulaHint,
+      })));
+  // Ten is the most a report holds; with merged chunks there can be more candidates than that.
+  const gapsResolved = groundGaps(rawGaps, gapComments, { context: niche }).slice(0, 10).map((g) => ({
     ...g,
     coveringVideos: resolve(g.coveringVideoIds).map(publicVideo),
   }));
@@ -475,7 +567,7 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   // requests for new ones. Same comments, same LLM call, same citation
   // grounding -- a distinct and directly actionable output for almost no extra
   // cost, since the comment payload was already in the prompt.
-  const objections = groundObjections(rawObjections, gapComments);
+  const objections = groundObjections(rawObjections, gapComments).slice(0, 6);
   log.logObjections(objections);
 
   // Attach the verdict to each gap so the UI can warn on anything that still
@@ -576,7 +668,9 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
 
   // The audit log is a diagnostic: failing to store it must never fail a run people paid quota for.
   stageMs.total = Date.now() - startedAt;
-  await log.finish({ status: 'done', ...relevanceSummary, stageMs }).catch((e) => console.error('[pipeline] could not store the audit log:', e.message));
+  const tokensOf = (u) => ({ output: u?.completion_tokens ?? 0, reasoning: u?.completion_tokens_details?.reasoning_tokens ?? 0 });
+  const llmTokens = { clustering: tokensOf(clusterUsage), gaps: tokensOf(gapUsage) };
+  await log.finish({ status: 'done', ...relevanceSummary, stageMs, llmTokens }).catch((e) => console.error('[pipeline] could not store the audit log:', e.message));
 
   onProgress('done', 'Complete', 100);
 

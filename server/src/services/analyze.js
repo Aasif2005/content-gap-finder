@@ -1,7 +1,8 @@
-import { chatJSON } from './deepseek.js';
+import { chatJSON, completedTopLevelArray } from './deepseek.js';
 import { rankTitleOptions } from '../lib/titleLint.js';
 import { assessSensitivity } from '../lib/sensitive.js';
 import { config } from '../config.js';
+import { gapSimilarity } from '../lib/recurrence.js';
 
 // Real bug this fixes: a plain .slice(0, n) cuts by UTF-16 code unit, not by
 // character -- an emoji (a surrogate pair, 2 code units) landing exactly on
@@ -117,7 +118,7 @@ Rules:
   independently confirmed by our own engagement stats as high-reach but
   low-response. Quote the counter-evidence. If nothing qualifies, return [].`;
 
-export async function clusterTopics({ niche, window, videos, channelMode = false, onProgress }) {
+export async function clusterTopics({ niche, window, videos, channelMode = false, onProgress, onTopics, onThinking }) {
   onProgress?.('clustering', `Clustering ${videos.length} videos into topics`, 55);
 
   const heading = channelMode
@@ -156,7 +157,21 @@ Order topics by how strongly the data supports them. Return at most 8 topics,
 at most 3 suggested_angles each, and at most 4 avoid entries. Keep every string
 under 300 characters.`;
 
-  const { data, usage } = await chatJSON({ system: channelMode ? CLUSTER_SYSTEM_CHANNEL : CLUSTER_SYSTEM, user, thinking: config.deepseek.clusterThinking || null });
+  // Streamed so the topic list can be acted on (onTopics) while the model is still
+  // writing the avoid list, and so progress can show it thinking. Same prompt, same reply.
+  let topicsSent = false;
+  const onDelta = ({ content, reasoningChars, attempt }) => {
+    onThinking?.(reasoningChars);
+    if (!onTopics || topicsSent || attempt > 1) return; // a retry's topics are never sent early
+    const early = completedTopLevelArray(content, 'topics');
+    if (early) { topicsSent = true; onTopics(early); }
+  };
+  // 32k: a ceiling, not a target. 16k was close enough that a talkative niche could
+  // hit it and rerun the whole call (deepseek.js doubles the budget on truncation).
+  const { data, usage } = await chatJSON({
+    system: channelMode ? CLUSTER_SYSTEM_CHANNEL : CLUSTER_SYSTEM, user, maxTokens: 32000,
+    thinking: config.deepseek.clusterThinking || null, onDelta,
+  });
   // A malformed reply ("topics": {}) must not crash a run whose quota is spent.
   return { topics: arrayOf(data?.topics), avoid: arrayOf(data?.avoid), usage };
 }
@@ -307,8 +322,83 @@ Rules:
 - "fix" on an objection must be a concrete thing to do differently, drawn only
   from what the cited comments complain about.`;
 
-export async function mineGaps({ niche, window, videos, comments, topics, gapMode, channelMode = false, formulaHint = '', onProgress }) {
+/** Deals comments out to `n` groups in turn, so every group sees a mix of all the videos. */
+export function splitComments(comments, n) {
+  const groups = Array.from({ length: n }, () => []);
+  comments.forEach((c, i) => groups[i % n].push(c));
+  return groups;
+}
+
+const STRENGTH_ORDER = { low: 0, medium: 1, high: 2 };
+const indexesOf = (x) => (Array.isArray(x?.evidence_comment_indexes) ? x.evidence_comment_indexes.map(parseCommentIndex).filter((i) => i !== null) : []);
+
+/**
+ * One list out of several chunk answers. The same demand voiced in comments that
+ * landed in different chunks comes back as separate, thinner gaps; those are
+ * joined (same fuzzy match recurrence uses) and their cited comments pooled, so
+ * the "two real comments" bar is applied to the whole evidence, not to a slice.
+ * The merged gap keeps the wording of whichever copy had more evidence.
+ */
+export function mergeChunkResults(results) {
+  const gaps = [];
+  for (const g of results.flatMap((r) => r.gaps ?? [])) {
+    const own = indexesOf(g);
+    const hit = gaps.find((m) => {
+      const { score, shared } = gapSimilarity(m.question, g.question);
+      return shared >= config.recurrence.minSharedTokens && score >= config.recurrence.minSimilarity;
+    });
+    if (!hit) { gaps.push({ ...g, evidence_comment_indexes: [...new Set(own)] }); continue; }
+    const pooled = [...new Set([...indexesOf(hit), ...own])];
+    const stronger = own.length > indexesOf(hit).length ? g : hit;
+    Object.assign(hit, stronger, {
+      evidence_comment_indexes: pooled,
+      covering_video_ids: [...new Set([...(hit.covering_video_ids ?? []), ...(g.covering_video_ids ?? [])])],
+      coverage: hit.coverage === 'weak' || g.coverage === 'weak' ? 'weak' : (hit.coverage ?? g.coverage),
+      demand_strength: (STRENGTH_ORDER[hit.demand_strength] ?? 1) >= (STRENGTH_ORDER[g.demand_strength] ?? 1) ? hit.demand_strength : g.demand_strength,
+      sensitive: Boolean(hit.sensitive || g.sensitive),
+    });
+  }
+
+  const objections = [];
+  for (const o of results.flatMap((r) => r.objections ?? [])) {
+    const own = indexesOf(o);
+    const hit = objections.find((m) => {
+      const { score, shared } = gapSimilarity(`${m.label} ${m.detail ?? ''}`, `${o.label} ${o.detail ?? ''}`);
+      return shared >= config.recurrence.minSharedTokens && score >= config.recurrence.minSimilarity;
+    });
+    if (!hit) { objections.push({ ...o, evidence_comment_indexes: [...new Set(own)] }); continue; }
+    const pooled = [...new Set([...indexesOf(hit), ...own])];
+    const stronger = own.length > indexesOf(hit).length ? o : hit;
+    Object.assign(hit, stronger, { evidence_comment_indexes: pooled });
+  }
+  return { gaps, objections };
+}
+
+const sumUsage = (usages) => {
+  const list = usages.filter(Boolean);
+  if (!list.length) return null;
+  const add = (f) => list.reduce((n, u) => n + (f(u) ?? 0), 0);
+  return {
+    prompt_tokens: add((u) => u.prompt_tokens),
+    completion_tokens: add((u) => u.completion_tokens),
+    total_tokens: add((u) => u.total_tokens),
+    completion_tokens_details: { reasoning_tokens: add((u) => u.completion_tokens_details?.reasoning_tokens) },
+    calls: list.length,
+  };
+};
+
+export async function mineGaps(args) {
+  const { comments, onProgress } = args;
   onProgress?.('gaps', `Mining ${comments.length} comments for unmet demand`, 78);
+  if (!comments.length) return { gaps: [], objections: [], usage: null };
+  // A chunk needs enough comments to find a pattern in; small pools stay one call.
+  const n = Math.min(config.deepseek.gapChunks, Math.floor(comments.length / 60));
+  if (n < 2) return mineGapsOnce(args);
+  const parts = await Promise.all(splitComments(comments, n).map((part) => mineGapsOnce({ ...args, comments: part })));
+  return { ...mergeChunkResults(parts), usage: sumUsage(parts.map((p) => p.usage)) };
+}
+
+async function mineGapsOnce({ niche, window, videos, comments, topics, gapMode, channelMode = false, formulaHint = '', onThinking = null }) {
   if (!comments.length) return { gaps: [], objections: [], usage: null };
 
   const commentBlock = comments
@@ -371,7 +461,13 @@ Order gaps by strength of demand and objections by severity. Return at most 10
 gaps and at most 6 objections. Quality over quantity -- an empty list is better
 than a list of vague filler.`;
 
-  const { data, usage } = await chatJSON({ system: channelMode ? GAP_SYSTEM_CHANNEL : GAP_SYSTEM, user, thinking: config.deepseek.gapThinking || null });
+  // 32k ceiling for the same reason as clustering: a contentious niche's comments
+  // made this call write 15.7k of a 16k budget (run ea89a800, "politics news").
+  const { data, usage } = await chatJSON({
+    system: channelMode ? GAP_SYSTEM_CHANNEL : GAP_SYSTEM, user, maxTokens: 32000,
+    thinking: config.deepseek.gapThinking || null,
+    onDelta: onThinking ? ({ reasoningChars }) => onThinking(reasoningChars) : null,
+  });
   return { gaps: arrayOf(data?.gaps), objections: arrayOf(data?.objections), usage };
 }
 

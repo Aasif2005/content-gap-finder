@@ -18,7 +18,7 @@ const MAX_OUTPUT_TOKENS = 64000;
  * has no effect (api-docs.deepseek.com, "Thinking mode"). So `temperature`
  * here only means something for a call made with thinking 'disabled'.
  */
-export function requestBody({ model, system, user, maxTokens, temperature, thinking = null }) {
+export function requestBody({ model, system, user, maxTokens, temperature, thinking = null, stream = false }) {
   return {
     model,
     messages: [
@@ -29,10 +29,98 @@ export function requestBody({ model, system, user, maxTokens, temperature, think
     max_tokens: maxTokens,
     temperature,
     ...(thinking ? { thinking: { type: thinking } } : {}),
+    // Streaming changes only how the reply is delivered, not what the model writes.
+    ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
   };
 }
 
-export async function chatJSON({ system, user, model = config.deepseek.analysisModel, maxTokens = 16000, temperature = 0.3, attempts = 3, thinking = null }) {
+/**
+ * Reads an OpenAI-style SSE body into the same shape a non-streamed reply has:
+ * { choices: [{ message: { content }, finish_reason }], usage, model }.
+ * `onDelta({ content, reasoningChars })` is called as text arrives: the answer so
+ * far, and how many reasoning characters the model has written so far.
+ */
+export async function readStream(body, onDelta = () => {}) {
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+  let reasoningChars = 0;
+  let finishReason = null;
+  let usage = null;
+  let model = null;
+
+  const handleLine = (line) => {
+    if (!line.startsWith('data:')) return;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === '[DONE]') return;
+    const chunk = JSON.parse(payload);
+    if (chunk.model) model = chunk.model;
+    if (chunk.usage) usage = chunk.usage;
+    const choice = chunk.choices?.[0];
+    if (!choice) return;
+    if (choice.finish_reason) finishReason = choice.finish_reason;
+    const delta = choice.delta ?? {};
+    let changed = false;
+    if (delta.reasoning_content) { reasoningChars += delta.reasoning_content.length; changed = true; }
+    if (delta.content) { content += delta.content; changed = true; }
+    if (changed) onDelta({ content, reasoningChars });
+  };
+
+  for await (const piece of body) {
+    buffer += decoder.decode(piece, { stream: true });
+    let nl;
+    while ((nl = buffer.indexOf('\n')) !== -1) {
+      handleLine(buffer.slice(0, nl).replace(/\r$/, ''));
+      buffer = buffer.slice(nl + 1);
+    }
+  }
+  buffer += decoder.decode();
+  if (buffer.trim()) handleLine(buffer.trim());
+
+  return { choices: [{ message: { content }, finish_reason: finishReason }], usage, model };
+}
+
+/**
+ * The value of top-level `key` in a JSON object that is still being written, once
+ * that value (an array) is complete -- or null while it is not. Used to act on a
+ * reply's first field before the model has finished the rest.
+ */
+export function completedTopLevelArray(text, key) {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let stringStart = -1;
+  let lastKey = null; // the most recent string read at depth 1
+  let valueStart = -1;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') {
+        inString = false;
+        if (depth === 1) lastKey = text.slice(stringStart + 1, i);
+      }
+      continue;
+    }
+    if (ch === '"') { inString = true; stringStart = i; continue; }
+    if (ch === '{' || ch === '[') {
+      if (depth === 1 && ch === '[' && lastKey === key) valueStart = i;
+      depth++;
+    } else if (ch === '}' || ch === ']') {
+      depth--;
+      if (depth === 1 && valueStart !== -1) {
+        try { return JSON.parse(text.slice(valueStart, i + 1)); } catch { return null; }
+      }
+      if (depth <= 0) return null; // the object closed without the key
+    }
+  }
+  return null;
+}
+
+export async function chatJSON({ system, user, model = config.deepseek.analysisModel, maxTokens = 16000, temperature = 0.3, attempts = 3, thinking = null, onDelta = null }) {
   let lastError;
   let activeModel = model;
   let budget = maxTokens;
@@ -44,7 +132,7 @@ export async function chatJSON({ system, user, model = config.deepseek.analysisM
       const res = await fetch(`${base}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(requestBody({ model: activeModel, system, user, maxTokens: budget, temperature, thinking })),
+        body: JSON.stringify(requestBody({ model: activeModel, system, user, maxTokens: budget, temperature, thinking, stream: Boolean(onDelta) })),
         signal: signalWithTimeout(timeoutMs),
       });
 
@@ -57,7 +145,7 @@ export async function chatJSON({ system, user, model = config.deepseek.analysisM
         throw err;
       }
 
-      const data = await res.json();
+      const data = onDelta ? await readStream(res.body, (d) => onDelta({ ...d, attempt })) : await res.json();
       const choice = data.choices?.[0];
       const content = choice?.message?.content ?? '';
 

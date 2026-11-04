@@ -64,6 +64,10 @@ export const config = {
     // model's default (thinks). Thinking is most of a run's time: ~85% of the tokens.
     clusterThinking: (process.env.ANALYSIS_THINKING_CLUSTER ?? '').trim(),
     gapThinking: (process.env.ANALYSIS_THINKING_GAPS ?? '').trim(),
+    // Gap mining split across this many parallel calls (comments dealt out round-robin), results merged. 1 = one call.
+    gapChunks: Math.max(1, Math.floor(num(process.env.ANALYSIS_GAP_CHUNKS, 1))),
+    // Start gap mining as soon as the comments are in, in parallel with clustering (topics are then not in its prompt).
+    earlyGaps: /^(1|true|on)$/i.test((process.env.ANALYSIS_EARLY_GAPS ?? '').trim()),
   },
 
   // MongoDB Atlas holds everything the server remembers: accounts and daily
