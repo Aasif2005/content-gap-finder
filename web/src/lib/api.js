@@ -38,6 +38,7 @@ async function request(path, { method = 'GET', body, headers, timeoutMs } = {}) 
   if (isOffline()) throw offlineError();
   const h = { ...headers };
   if (body !== undefined) h['Content-Type'] = 'application/json';
+  const t0 = performance.now();
   try {
     const token = await within(tokenGetter(), TOKEN_TIMEOUT_MS, `reading the sign-in token for ${path}`);
     if (token) h.Authorization = `Bearer ${token}`;
@@ -47,6 +48,7 @@ async function request(path, { method = 'GET', body, headers, timeoutMs } = {}) 
     if (err.code === 'TIMEOUT') console.warn('[api] continuing without a token');
   }
 
+  const tokenAt = performance.now();
   const controller = new AbortController();
   const limit = timeoutMs ?? (method === 'GET' ? REQUEST_TIMEOUT_MS : null);
   const abort = limit ? setTimeout(() => controller.abort(), limit) : null;
@@ -59,6 +61,9 @@ async function request(path, { method = 'GET', body, headers, timeoutMs } = {}) 
   } finally {
     if (abort) clearTimeout(abort);
   }
+
+  // Dev only: where a slow call spent its time, the sign-in token or the server.
+  if (import.meta.env?.DEV) console.debug(`[api] ${method} ${path} token ${Math.round(tokenAt - t0)}ms, server ${Math.round(performance.now() - tokenAt)}ms`);
 
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);

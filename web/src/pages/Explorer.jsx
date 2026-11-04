@@ -22,6 +22,7 @@ import { describeLoadError, describeRunError, formatLabel, reportName, windowLab
 import { useConsent } from '../lib/consent.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { useMe } from '../lib/me.jsx';
+import { useRecentRuns } from '../lib/recentRuns.jsx';
 import { SITE_NAME, currentPathAndSearch, navigate, useRoute } from '../lib/router.jsx';
 
 // Niche search is exploratory (broad discovery across many creators, content
@@ -80,6 +81,7 @@ async function fetchRun(runId) {
 export function Explorer({ mode = 'niche', routeRunId = null }) {
   const { user, loading: authLoading } = useAuth();
   const { me, refresh: refreshMe } = useMe();
+  const { refresh: refreshRuns } = useRecentRuns();
   const { search } = useRoute();
   const ensureConsent = useConsent();
 
@@ -282,10 +284,11 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
       }
       setError(described);
     } finally {
-      // The allowance chip in the top bar follows what the server just counted.
+      // The allowance chip in the top bar follows what the server just counted, and the Dashboard's list gets the new report.
       refreshMe();
+      refreshRuns();
     }
-  }, [mode, ensureConsent, refreshMe, stopJob, me?.limits?.analyses]);
+  }, [mode, ensureConsent, refreshMe, refreshRuns, stopJob, me?.limits?.analyses]);
 
   /** Esc / Cancel on the orb: stop caring about the run in flight, like leaving the page does. */
   const onOrbDismiss = useCallback(({ cancelled }) => {

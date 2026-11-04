@@ -3,6 +3,7 @@ import { ArrowRight, Compass, Layers, MessageSquareQuote, Radar, Target } from '
 import { Link } from '../../lib/router.jsx';
 import { Button, EvidenceMark, Panel, Skeleton } from '../ui/index.js';
 import { getRun } from '../../lib/api.js';
+import { useAuth } from '../../lib/auth.jsx';
 import { compact } from '../../lib/format.js';
 import { WATCHES } from '../../lib/features.js';
 import { cx } from '../../lib/cx.js';
@@ -76,19 +77,66 @@ export function EntryCards() {
   );
 }
 
-/** The newest report as a feature: its top unmet request (first gap and first comment), read from the saved run. */
+// The newest report's top request, kept per account so a returning visit paints it at once and a
+// failed refresh keeps showing it. Cleared on sign-out together with `gs:runs` (lib/recentRuns.jsx).
+const TOP_KEY = 'gs:top';
+const readTop = (uid, id) => {
+  try {
+    const hit = JSON.parse(localStorage.getItem(TOP_KEY) || 'null');
+    return hit && hit.uid === uid && hit.id === id && hit.gap ? hit.gap : null;
+  } catch { return null; }
+};
+const writeTop = (uid, id, gap) => { try { localStorage.setItem(TOP_KEY, JSON.stringify({ uid, id, gap })); } catch { /* private mode, or full */ } };
+
+const RETRY_MS = 1500;
+
+/**
+ * The newest report as a feature: its top unmet request (first gap and first comment), read from the saved run.
+ *
+ * A request that failed used to be shown as "this report found no open request", right next to
+ * "4 gaps". Now a failure is never an empty report: it retries once, then says it could not load
+ * and offers Try again. "No open request" shows only when the report itself has no gaps.
+ */
 export function LatestReport({ row, summary }) {
-  const [top, setTop] = useState({ status: 'loading', gap: null });
+  const { user, loading: authLoading } = useAuth();
+  const uid = user?.uid ?? null;
+  const expected = summary.gapsFound ?? 0;
+  // status: loading | ready | error. A saved copy of this report's top request counts as ready.
+  const [top, setTop] = useState(() => {
+    const saved = uid ? readTop(uid, row.id) : null;
+    return saved ? { status: 'ready', gap: saved } : { status: 'loading', gap: null };
+  });
+  const [attempt, setAttempt] = useState(0); // bumped by Try again
 
   useEffect(() => {
+    // Wait for the sign-in: a request sent before it is restored has no valid token and fails.
+    if (authLoading || !uid) return undefined;
     let live = true;
-    setTop({ status: 'loading', gap: null });
-    getRun(row.id).then(
-      ({ result }) => { if (live) setTop({ status: 'ready', gap: result?.gaps?.[0] ?? null }); },
-      () => { if (live) setTop({ status: 'ready', gap: null }); }
-    );
-    return () => { live = false; };
-  }, [row.id]);
+    let timer;
+    const saved = readTop(uid, row.id);
+    setTop((t) => (saved ? { status: 'ready', gap: saved } : t.status === 'error' || t.gap === null ? { status: 'loading', gap: null } : t));
+
+    const fetchTop = (retried) => {
+      getRun(row.id).then(
+        ({ result }) => {
+          if (!live) return;
+          const gap = result?.gaps?.[0] ?? null;
+          if (gap) { writeTop(uid, row.id, gap); setTop({ status: 'ready', gap }); return; }
+          // The list says there are gaps but the report has none: the two disagree, so do not claim "none".
+          if (expected > 0 && !retried) { timer = setTimeout(() => fetchTop(true), RETRY_MS); return; }
+          setTop((t) => (expected > 0 && !t.gap ? { status: 'error', gap: null } : { status: 'ready', gap: t.gap }));
+        },
+        () => {
+          if (!live) return;
+          if (!retried) { timer = setTimeout(() => fetchTop(true), RETRY_MS); return; }
+          // Keep a saved copy on screen; only a first-ever failure shows the error.
+          setTop((t) => (t.gap ? t : { status: 'error', gap: null }));
+        },
+      );
+    };
+    fetchTop(false);
+    return () => { live = false; clearTimeout(timer); };
+  }, [row.id, uid, authLoading, attempt, expected]);
 
   const quote = top.gap?.evidence?.[0]?.text;
   return (
@@ -125,6 +173,13 @@ export function LatestReport({ row, summary }) {
                   {top.gap.evidenceCount} comments across {top.gap.distinctVideos} video{top.gap.distinctVideos === 1 ? '' : 's'}
                 </p>
               </>
+            ) : top.status === 'error' ? (
+              <div className="mt-3">
+                <p className="text-[16px] leading-relaxed text-fg-2">Could not load the top request.</p>
+                <Button variant="secondary" className="mt-4" onClick={() => { setTop({ status: 'loading', gap: null }); setAttempt((n) => n + 1); }}>
+                  Try again
+                </Button>
+              </div>
             ) : (
               <p className="mt-3 text-[16px] leading-relaxed text-fg-2">This report found no open request. Open it to see what is trending.</p>
             )}

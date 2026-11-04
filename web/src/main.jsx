@@ -8,6 +8,7 @@ import '@fontsource-variable/noto-sans-devanagari';
 import './index.css';
 import { AuthProvider } from './lib/auth.jsx';
 import { MeProvider } from './lib/me.jsx';
+import { RecentRunsProvider } from './lib/recentRuns.jsx';
 import { ToastProvider } from './components/ui/index.js';
 import { ConsentProvider } from './lib/consent.jsx';
 import { RouterProvider } from './lib/router.jsx';
@@ -18,13 +19,15 @@ createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AuthProvider>
       <MeProvider>
-        <ToastProvider>
-          <ConsentProvider>
-            <RouterProvider routes={routes}>
-              <AppFrame />
-            </RouterProvider>
-          </ConsentProvider>
-        </ToastProvider>
+        <RecentRunsProvider>
+          <ToastProvider>
+            <ConsentProvider>
+              <RouterProvider routes={routes}>
+                <AppFrame />
+              </RouterProvider>
+            </ConsentProvider>
+          </ToastProvider>
+        </RecentRunsProvider>
       </MeProvider>
     </AuthProvider>
   </React.StrictMode>

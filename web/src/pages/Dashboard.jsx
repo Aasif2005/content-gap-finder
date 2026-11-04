@@ -7,12 +7,11 @@ import { AllowancePanel } from '../components/dashboard/AllowancePanel.jsx';
 import { WATCHES } from '../lib/features.js';
 import { WatchesSummary } from '../components/dashboard/WatchesSummary.jsx';
 import { EntryCards, LatestReport, StatStrip, Tips } from '../components/dashboard/Overview.jsx';
-import { getRuns, getWatches } from '../lib/api.js';
+import { getWatches } from '../lib/api.js';
+import { useRecentRuns } from '../lib/recentRuns.jsx';
 import { useMe } from '../lib/me.jsx';
 import { navigate } from '../lib/router.jsx';
 import { toRunRow, toWatchRow } from '../lib/runRows.js';
-
-const loadRecentRuns = () => getRuns({ limit: 30 });
 
 /** `load` must be a stable function. Returns `[{ status, data, error }, reload]`. */
 function useLoad(load) {
@@ -46,7 +45,8 @@ const noWatches = () => Promise.resolve({ watches: [] });
  */
 export default function Dashboard() {
   const { me, error: meError, loading: meLoading, refresh: refreshMe } = useMe();
-  const [runs, reloadRuns] = useLoad(loadRecentRuns);
+  const { runs: recent, status: runsStatus, error: runsError, reload: reloadRuns } = useRecentRuns();
+  const runs = useMemo(() => ({ status: runsStatus, data: recent ? { runs: recent } : null, error: runsError }), [runsStatus, recent, runsError]);
   const [watches, reloadWatches] = useLoad(WATCHES ? getWatches : noWatches);
 
   const [niche, setNiche] = useState('');
