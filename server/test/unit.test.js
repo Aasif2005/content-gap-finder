@@ -3810,7 +3810,7 @@ describe('prerendered public pages', () => {
 
   test('only the homepage is served index.html (it holds the home snapshot); private routes get the plain shell', () => {
     for (const r of vercel.rewrites.filter((x) => x.destination === '/index.html')) assert.equal(r.source, '/');
-    for (const p of ['/dashboard', '/explore', '/profile', '/reset-password', '/auth/action']) {
+    for (const p of ['/dashboard', '/explore', '/profile', '/auth/action']) {
       assert.equal(vercel.rewrites.find((r) => r.source === p)?.destination, '/app.html', p);
     }
     assert.equal(SEO_PAGES['/'].file, null);
@@ -3821,8 +3821,9 @@ describe('prerendered public pages', () => {
       const html = renderSeoPage(template, origin, route);
       const title = html.match(/<title>(.*?)<\/title>/)[1];
       assert.ok(title.length >= 30 && title.length <= 60, `${route} title is ${title.length} chars`);
+      assert.ok(!html.includes('undefined'), `${route} renders a missing field`);
       assert.equal((html.match(/<h1>/g) ?? []).length, 1, route);
-      assert.ok((html.match(/<h2>/g) ?? []).length >= 2, route);
+      assert.equal((html.match(/<h2>/g) ?? []).length, 1, route);
       const url = `${origin}${route}`;
       assert.ok(html.includes(`<link rel="canonical" href="${url}" />`), route);
       assert.ok(html.includes(`<meta property="og:url" content="${url}" />`), route);
@@ -3832,6 +3833,19 @@ describe('prerendered public pages', () => {
       assert.ok(snapshotText(page).split(' ').length >= 200, `${route} has ${snapshotText(page).split(' ').length} words`);
       assert.ok(html.includes('<div id="root"><div class="seo-snap">'), route);
       assert.equal((html.match(/<title>/g) ?? []).length, 1, route);
+    }
+  });
+
+  test('h1 and h2 texts are unique across pages', () => {
+    for (const key of ['h1', 'h2']) {
+      const texts = Object.values(SEO_PAGES).map((p) => p[key]);
+      assert.equal(new Set(texts).size, texts.length, key);
+    }
+  });
+
+  test('every description is 70 to 160 characters', () => {
+    for (const [route, page] of Object.entries(SEO_PAGES)) {
+      assert.ok(page.description.length >= 70 && page.description.length <= 160, `${route} description is ${page.description.length} chars`);
     }
   });
 
@@ -3854,4 +3868,13 @@ test('Vercel sends a safe Referrer-Policy and a Content-Security-Policy that kee
     assert.ok(csp.includes(must), must);
   }
   assert.ok(!/script-src[^;]*'unsafe-(inline|eval)'/.test(csp), 'no inline or eval scripts');
+});
+
+test('after the app loads, each public route keeps the description it was served with', async () => {
+  const { SEO_PAGES } = await import('../src/lib/seoPages.js');
+  const src = readFileSync(new URL('../../web/src/routes.jsx', import.meta.url), 'utf8');
+  for (const [route, page] of Object.entries(SEO_PAGES)) {
+    if (route === '/') continue; // home uses the default description from index.html
+    assert.ok(src.includes(`description: '${page.description}'`), route);
+  }
 });

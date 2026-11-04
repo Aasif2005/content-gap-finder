@@ -10,7 +10,7 @@
     { "source": "/", "destination": "/index.html" },
     { "source": "/login", "destination": "/seo/login.html" },
     { "source": "/signup", "destination": "/seo/signup.html" },
-    { "source": "/reset-password", "destination": "/app.html" },
+    { "source": "/reset-password", "destination": "/seo/reset-password.html" },
     { "source": "/auth/action", "destination": "/app.html" },
     { "source": "/privacy", "destination": "/seo/privacy.html" },
     { "source": "/terms", "destination": "/seo/terms.html" },
