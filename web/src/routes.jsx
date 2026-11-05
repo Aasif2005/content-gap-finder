@@ -1,4 +1,7 @@
 import { lazy } from 'react';
+import { loadPage } from './lib/loadPage.js';
+import { setPreloader } from './lib/router.jsx';
+import { PrivacyPage, TermsPage } from './pages/Legal.jsx';
 import Home from './pages/Home.jsx';
 import Login from './pages/Login.jsx';
 import Signup from './pages/Signup.jsx';
@@ -7,11 +10,21 @@ import AuthAction from './pages/AuthAction.jsx';
 import NotFound from './pages/NotFound.jsx';
 
 // Loaded on arrival, so a first visit to the homepage does not download the whole app.
-const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
-const Profile = lazy(() => import('./pages/Profile.jsx'));
-const Explorer = lazy(() => import('./pages/Explorer.jsx'));
-const PrivacyPage = lazy(() => import('./pages/Legal.jsx').then((m) => ({ default: m.PrivacyPage })));
-const TermsPage = lazy(() => import('./pages/Legal.jsx').then((m) => ({ default: m.TermsPage })));
+const Dashboard = lazy(() => loadPage(() => import('./pages/Dashboard.jsx')));
+const Profile = lazy(() => loadPage(() => import('./pages/Profile.jsx')));
+const Explorer = lazy(() => loadPage(() => import('./pages/Explorer.jsx')));
+
+// Legal text ships in the main bundle: it is prerendered, so a lazy chunk made it vanish and jump on load.
+
+// Same imports as above, started early (idle time, link hover) so a click finds the code already here.
+const loaders = {
+  '/dashboard': () => import('./pages/Dashboard.jsx'),
+  '/profile': () => import('./pages/Profile.jsx'),
+  '/explore': () => import('./pages/Explorer.jsx'),
+};
+export const preloadRoute = (path) => { const base = '/' + String(path || '').split(/[?#]/)[0].split('/')[1]; loaders[base]?.()?.catch?.(() => {}); };
+export const preloadAppRoutes = () => Object.keys(loaders).forEach(preloadRoute);
+setPreloader(preloadRoute);
 
 /**
  * The route table. First match wins, so `*` stays last.

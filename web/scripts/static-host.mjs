@@ -13,18 +13,25 @@ import { fileURLToPath } from 'node:url';
 import { absoluteImages, robotsTxt, sitemapXml } from '../../server/src/lib/site.js';
 import { SEO_PAGES, renderSeoPage } from '../../server/src/lib/seoPages.js';
 
+// What a private route shows before the JavaScript arrives: the same quiet skeleton as RequireAuth's
+// AuthSkeleton (classes the bundle's stylesheet already has), so the first frame is never an empty page.
+// React replaces #root when it starts.
+const bar = (c) => `<div aria-hidden="true" class="shimmer relative overflow-hidden rounded-md bg-line ${c}"></div>`;
+const bootSkeleton = `<div id="root"><div class="min-h-screen bg-bg" aria-hidden="true"><div class="border-b border-line bg-surface"><div class="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-4 sm:px-8">${bar('h-6 w-36')}${bar('h-9 w-9 rounded-full')}</div></div><div class="mx-auto max-w-[1200px] space-y-4 px-4 pt-12 sm:px-8">${bar('h-9 w-64')}${bar('h-5 w-96 max-w-full')}${bar('mt-6 h-20 w-full rounded-panel')}</div></div></div>`;
+const withBoot = (h) => h.replace('<div id="root"></div>', () => bootSkeleton);
+
 const origin = (process.env.SITE_URL ?? '').trim().replace(/\/+$/, '');
 const dist = path.resolve(fileURLToPath(new URL('../dist', import.meta.url)));
 if (!origin) {
   // web/vercel.json sends private routes to /app.html, so it must exist on every build.
-  fs.copyFileSync(path.join(dist, 'index.html'), path.join(dist, 'app.html'));
+  fs.writeFileSync(path.join(dist, 'app.html'), withBoot(fs.readFileSync(path.join(dist, 'index.html'), 'utf8')));
   console.log('[static-host] SITE_URL not set: wrote app.html only (the Express server handles the rest).');
   process.exit(0);
 }
 
 const html = absoluteImages(fs.readFileSync(path.join(dist, 'index.html'), 'utf8'), origin);
 // The plain app shell: every private route (dashboard, reports...) and the 404 page get it.
-fs.writeFileSync(path.join(dist, 'app.html'), html);
+fs.writeFileSync(path.join(dist, 'app.html'), withBoot(html));
 fs.writeFileSync(path.join(dist, '404.html'), html); // the app draws its own NotFound page
 fs.writeFileSync(path.join(dist, 'robots.txt'), robotsTxt(origin));
 fs.writeFileSync(path.join(dist, 'sitemap.xml'), sitemapXml(origin));

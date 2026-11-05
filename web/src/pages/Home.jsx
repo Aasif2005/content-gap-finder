@@ -26,11 +26,17 @@ export default function Home() {
   }, [legacyNiche, search]);
 
   // undefined = loading, null = nothing usable (show the labelled examples).
-  const [featured, setFeatured] = useState(undefined);
+  // The last answer is kept in the tab, so a return visit paints real reports at once and refreshes behind them.
+  const [featured, setFeatured] = useState(() => {
+    try { const hit = JSON.parse(sessionStorage.getItem('gs:featured') || 'null'); return Array.isArray(hit) && hit.length ? hit : undefined; } catch { return undefined; }
+  });
   useEffect(() => {
     let off = false;
     getFeatured()
-      .then((f) => { if (!off) setFeatured(f); })
+      .then((f) => {
+        try { if (f?.length) sessionStorage.setItem('gs:featured', JSON.stringify(f)); else sessionStorage.removeItem('gs:featured'); } catch { /* private mode */ }
+        if (!off) setFeatured(f);
+      })
       .catch(() => { if (!off) setFeatured(null); });
     return () => { off = true; };
   }, []);

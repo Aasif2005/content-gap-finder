@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Skeleton } from './ui/index.js';
 import { useAuth } from '../lib/auth.jsx';
 import { currentPathAndSearch, navigate } from '../lib/router.jsx';
+import { preloadRoute } from '../routes.jsx';
 import { needsVerification, nextSuffix } from './auth/helpers.js';
 
 /** A quiet stand-in while we find out whether someone is signed in. */
@@ -23,6 +24,17 @@ function AuthSkeleton() {
   );
 }
 
+/** What a lazy page's slot shows while its code arrives: the page's own shape, never an empty block. */
+export function PageSkeleton() {
+  return (
+    <div className="mx-auto min-h-[60vh] max-w-[1200px] space-y-4 px-4 pt-12 sm:px-8" role="status" aria-label="Loading">
+      <Skeleton className="h-9 w-64" />
+      <Skeleton className="h-5 w-96 max-w-full" />
+      <Skeleton className="mt-6 h-20 w-full rounded-panel" />
+    </div>
+  );
+}
+
 /**
  * Wraps a page that needs an account (`required`; with it off this is a pass-through,
  * so a route's tree keeps one shape whether or not it is guarded). While auth is loading it shows a
@@ -33,6 +45,9 @@ function AuthSkeleton() {
 export default function RequireAuth({ required = true, children }) {
   const { user, loading } = useAuth();
   const locked = needsVerification(user);
+
+  // Download the page's code while auth is still being worked out, not after it.
+  useEffect(() => { if (required) preloadRoute(currentPathAndSearch()); }, [required]);
 
   useEffect(() => {
     if (!required || loading) return;

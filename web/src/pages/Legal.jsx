@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getSite } from '../lib/api.js';
 import { Link, goBackOr } from '../lib/router.jsx';
 import { analyticsConfigured, appCheckEnabled } from '../lib/analytics.js';
@@ -41,7 +41,8 @@ function useOutline(ref) {
   const [items, setItems] = useState([]);
   const [active, setActive] = useState(null);
 
-  useEffect(() => {
+  // Before paint: the contents card sits beside (or above) the text, so adding it after first paint shoved the whole page.
+  useLayoutEffect(() => {
     const heads = [...(ref.current?.querySelectorAll('h2') ?? [])];
     heads.forEach((h, i) => { h.id = h.id || `section-${i + 1}`; h.classList.add('scroll-mt-28'); });
     setItems(heads.map((h) => ({ id: h.id, text: h.textContent })));

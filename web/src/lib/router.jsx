@@ -85,6 +85,10 @@ const isExternal = (href) => {
   try { return new URL(href, window.location.href).origin !== window.location.origin; } catch { return false; }
 };
 
+// routes.jsx registers a function that starts downloading a route's code; links call it on hover/focus.
+let preloader = null;
+export const setPreloader = (fn) => { preloader = fn; };
+
 /**
  * An `<a>` that navigates without a page load on a plain left click, and leaves
  * modified clicks (new tab, download) and `target="_blank"` to the browser.
@@ -107,6 +111,8 @@ export const Link = forwardRef(function Link({ href, replace = false, scroll, on
       target={target}
       rel={target === '_blank' ? rel ?? 'noreferrer noopener' : rel}
       onClick={handle}
+      onPointerEnter={(e) => { rest.onPointerEnter?.(e); if (href && !isExternal(href)) preloader?.(href); }}
+      onFocus={(e) => { rest.onFocus?.(e); if (href && !isExternal(href)) preloader?.(href); }}
       {...rest}
     >
       {children}

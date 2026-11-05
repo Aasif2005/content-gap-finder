@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getMe } from './api.js';
 import { useAuth } from './auth.jsx';
 
@@ -84,7 +84,8 @@ export function MeProvider({ children }) {
 
   // A different account must not briefly see the last one's numbers. Signed
   // out for real (auth settled, no user): forget the saved copy, it holds an email.
-  useEffect(() => {
+  // A layout effect, so the saved numbers are in the very first frame after sign-in is known.
+  useLayoutEffect(() => {
     setMe(uid ? readCache(uid) : null);
     setError(null);
     if (!uid && !authLoading) clearCache();

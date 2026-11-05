@@ -14,6 +14,9 @@ import { useScrolled } from '../../lib/useScrolled.js';
  *  - `anchors` is `[{ href: '#how', label: 'How it works' }]`. The in-page links
  *    appear only when given, and only from the `lg` width up: below that they would not fit on one row.
  */
+// While Firebase is still working out who this is, guess from last visit so the buttons do not blink out and back.
+const returningHint = () => { try { return Boolean(localStorage.getItem('gs:me') || localStorage.getItem('gs:runs')); } catch { return false; } };
+
 export default function MarketingShell({ anchors, children }) {
   const { user, loading } = useAuth();
   const head = useRef(null);
@@ -39,14 +42,14 @@ export default function MarketingShell({ anchors, children }) {
               <a key={a.href} href={a.href} className={cx(link, 'hidden whitespace-nowrap lg:inline-flex')}>{a.label}</a>
             ))}
             <ThemeToggle className="-mr-1 sm:-mr-4" />
-            {!loading && (user ? (
+            {(loading ? returningHint() : Boolean(user)) ? (
               <Button href="/dashboard" className="!min-h-11 !rounded-full !px-5">Dashboard</Button>
             ) : (
               <>
                 <Link href="/login" className="inline-flex min-h-11 items-center whitespace-nowrap font-medium text-fg">Log in</Link>
                 <Button href="/signup" className="!rounded-full !px-4 sm:!px-5"><span className="sm:hidden">Sign up</span><span className="hidden sm:inline">Start free</span></Button>
               </>
-            ))}
+            )}
           </nav>
         </div>
       </header>
