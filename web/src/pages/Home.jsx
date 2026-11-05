@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { getFeatured } from '../lib/api.js';
 import { navigate, useRoute } from '../lib/router.jsx';
 import { useColorMode } from '../lib/colorMode.js';
 import RotatingHeadline from '../components/home/RotatingHeadline.jsx';
-import { EarthBlaze } from '../components/ui/EarthBlaze.jsx';
+import { useAfterLoad } from '../lib/useAfterLoad.js';
 import SearchConsole from '../components/home/SearchConsole.jsx';
-import Pricing from '../components/home/Pricing.jsx';
-import SampleReport from '../components/home/SampleReport.jsx';
 import { toView } from '../components/home/exampleReport.js';
-import { CtaCard, EvidenceSplit, FloatingCards, GapSplit, HowItWorks, Lenses, NicheStrip, Statement, ViewerQuote } from '../components/home/Sections.jsx';
+
+// The shader and everything below the first screen are separate chunks, fetched once the page has painted.
+const EarthBlaze = lazy(() => import('../components/ui/EarthBlaze.jsx').then((m) => ({ default: m.EarthBlaze })));
+const HomeBelow = lazy(() => import('../components/home/HomeBelow.jsx'));
 
 /**
  * The marketing homepage, on the Lunar Cream theme (the shell applies it).
@@ -18,6 +19,7 @@ import { CtaCard, EvidenceSplit, FloatingCards, GapSplit, HowItWorks, Lenses, Ni
 export default function Home() {
   const { query, search } = useRoute();
   const dark = useColorMode().mode === 'dark';
+  const later = useAfterLoad();
 
   // Old query links (/?niche=...) belong to the Explorer now.
   const legacyNiche = query.niche;
@@ -46,9 +48,18 @@ export default function Home() {
     return (featured ?? []).map(toView).filter(Boolean);
   }, [featured]);
 
+  // Same box as the shader while its code is on the way, so nothing below it moves.
+  const earthHolder = (
+    <div
+      aria-hidden
+      className="!rounded-[1.75rem] shadow-[0_40px_80px_-40px_rgba(15,30,46,0.35)] md:!rounded-[3rem]"
+      style={{ height: 'clamp(340px, 42vw, 720px)', background: dark ? '#050505' : '#0F1E2E' }}
+    />
+  );
+
   return (
     <>
-      <section aria-labelledby="hero-h" className="fade-in mx-auto max-w-[1200px] px-5 pt-11 text-center sm:px-10 md:pt-[72px]">
+      <section aria-labelledby="hero-h" className="mx-auto max-w-[1200px] px-5 pt-11 text-center sm:px-10 md:pt-[72px]">
         <p className="mx-auto inline-block rounded-full bg-surface-2 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-fg-2 max-[359px]:px-3 max-[359px]:text-[11px] max-[359px]:tracking-[0.06em]">
           Your viewers already told you
         </p>
@@ -63,7 +74,9 @@ export default function Home() {
       </section>
 
       <div className="mx-3 mt-11 sm:mx-6 md:mt-[72px] lg:mx-[4vw]">
-        <EarthBlaze
+        {later ? (
+          <Suspense fallback={earthHolder}>
+            <EarthBlaze
           className="!rounded-[1.75rem] shadow-[0_40px_80px_-40px_rgba(15,30,46,0.35)] md:!rounded-[3rem]"
           style={{ aspectRatio: 'auto', height: 'clamp(340px, 42vw, 720px)' }}
           illumination={1.75}
@@ -73,23 +86,11 @@ export default function Home() {
           auroraColor={dark ? '#050505' : '#0F1E2E'}
           backgroundColor={dark ? '#9A978F' : '#2F5BEA'}
         />
+          </Suspense>
+        ) : earthHolder}
       </div>
 
-      {/* The app-window demo needs the room; on phones the example cards below tell the same story. */}
-      <div className="mx-auto mt-11 max-w-[1200px] px-5 max-md:hidden sm:px-10 md:mt-[72px]">
-        <SampleReport views={views} />
-      </div>
-
-      <NicheStrip />
-      <FloatingCards />
-      <Statement />
-      <GapSplit />
-      <EvidenceSplit />
-      <HowItWorks />
-      <Lenses />
-      <ViewerQuote />
-      <Pricing />
-      <CtaCard />
+      {later ? <Suspense fallback={<div style={{ minHeight: 2400 }} aria-hidden />}><HomeBelow views={views} /></Suspense> : <div style={{ minHeight: 2400 }} aria-hidden />}
     </>
   );
 }

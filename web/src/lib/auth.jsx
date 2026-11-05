@@ -1,72 +1,16 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  EmailAuthProvider,
-  applyActionCode,
-  confirmPasswordReset,
-  verifyPasswordResetCode,
-  GoogleAuthProvider,
-  createUserWithEmailAndPassword,
-  deleteUser,
-  getRedirectResult,
-  onAuthStateChanged,
-  reauthenticateWithCredential,
-  reauthenticateWithPopup,
-  sendEmailVerification,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signInWithRedirect,
-  signOut,
-  updateProfile,
-} from 'firebase/auth';
-import { auth, firebaseConfigured } from './firebase.js';
-import { acceptConsent, deleteMe, requestPasswordReset, requestVerificationEmail, setTokenGetter } from './api.js';
-import { authError, isOffline, notConfiguredError, offlineError } from './authErrors.js';
+import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useState } from 'react';
+import { setTokenGetter } from './api.js';
 
 /**
- * Who is signed in. `user` is `{ uid, email, name, photoUrl, emailVerified,
- * provider }` (provider is 'google.com' or 'password') or null.
+ * Who is signed in, as `useAuth()` returns it: `{ user, loading, configured, ...actions }`.
+ * See authImpl.jsx for the shape of `user` and the actions.
  *
- * Every action that can fail throws an Error whose `message` is plain words
- * (never an `auth/...` code) and whose `code` is a short app-level code.
+ * Firebase (sign-in, App Check, reCAPTCHA) is most of the JavaScript a visitor downloads, and a visitor
+ * reading the homepage needs none of it to see the page. So this file is small and loads
+ * authImpl.jsx separately: at once on pages that need an account (or for someone who has signed in
+ * before), and once the page has finished loading on the homepage and legal pages. Until it arrives
+ * `loading` is true, and an action called early simply waits for it.
  */
-
-// api.js asks for a token through this, so it needs no import of this module.
-// Registered at load, not in an effect: a child's first fetch runs before its
-// parent's effects do.
-setTokenGetter(async () => (auth?.currentUser ? auth.currentUser.getIdToken() : null));
-
-const providerOf = (fb) => (fb.providerData.some((p) => p.providerId === 'google.com') ? 'google.com' : 'password');
-
-const toUser = (fb) => fb && ({
-  uid: fb.uid,
-  email: fb.email,
-  name: fb.displayName ?? '',
-  photoUrl: fb.photoURL ?? null,
-  emailVerified: fb.emailVerified,
-  provider: providerOf(fb),
-  // Firebase knows when the account was made, so the profile page need not wait for our server.
-  createdAt: fb.metadata?.creationTime ? new Date(fb.metadata.creationTime).toISOString() : null,
-});
-
-// Our own server sends the email (own design, own sender). Where it is not set up, or
-// cannot be reached, Firebase's built-in email is the fallback: a plain link beats no email.
-const sendVerification = async (fb) => {
-  try {
-    await requestVerificationEmail();
-    return;
-  } catch (err) {
-    if (err?.code === 'RATE_LIMITED') throw err;
-  }
-  await sendEmailVerification(fb, { url: `${window.location.origin}/dashboard` }).catch((err) => {
-    if (err?.code === 'auth/unauthorized-continue-uri') return sendEmailVerification(fb);
-    throw err;
-  });
-};
-
-// A tab opened after verifying holds a token from before it, and the server trusts the token.
-const refreshStaleToken = (fb) =>
-  fb.getIdTokenResult().then((t) => (t.claims.email_verified === false ? fb.getIdToken(true) : null)).catch(() => {});
 
 const AuthContext = createContext(null);
 
@@ -76,194 +20,62 @@ export const useAuth = () => {
   return ctx;
 };
 
-/** Runs a Firebase call, turning whatever it throws into a plain-words Error. */
-async function guarded(fn) {
-  if (!auth) throw notConfiguredError();
-  if (isOffline()) throw offlineError();
-  try { return await fn(auth); } catch (err) { throw authError(err); }
-}
+const env = import.meta.env;
+const configured = Boolean(env.VITE_FIREBASE_API_KEY && env.VITE_FIREBASE_PROJECT_ID && env.VITE_FIREBASE_APP_ID);
+
+// Pages that do not need an account: sign-in code can wait until they have loaded.
+const CAN_WAIT = new Set(['/', '/privacy', '/terms']);
+const returning = () => { try { return Boolean(localStorage.getItem('gs:me') || localStorage.getItem('gs:runs')); } catch { return false; } };
+
+let started = false;
+let begin = () => {};
+let latest = null;
+let resolveReady;
+const ready = new Promise((resolve) => { resolveReady = resolve; });
+
+const ACTIONS = [
+  'signInWithGoogle', 'signUpWithEmail', 'signInWithEmail', 'sendReset', 'verifyResetCode', 'confirmReset',
+  'applyVerification', 'signOutUser', 'resendVerification', 'deleteAccount', 'getIdToken', 'reloadUser',
+  'checkVerified', 'discardNewAccount',
+];
+// Before the real thing arrives: calling an action starts the load and waits for it.
+const waiting = Object.fromEntries(ACTIONS.map((name) => [name, (...args) => { begin(); return ready.then((v) => v[name](...args)); }]));
+
+// api.js asks for a token through this. Registered at load, not in an effect: a child's first fetch runs before
+// its parent's effects do. Nobody has been asked to sign in until `started`, so there is nothing to send.
+setTokenGetter(async () => {
+  if (!started) return null;
+  const v = latest ?? (await ready);
+  return v.getIdToken();
+});
+
+const AuthImpl = lazy(() => import('./authImpl.jsx'));
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(firebaseConfigured);
-  // While a sign-up is in flight the account exists but its terms are not yet
-  // recorded. Announcing the user early would let the app fetch /api/me and
-  // find no consent, then ask for it again a moment later.
-  const signingUp = useRef(false);
+  const [go, setGo] = useState(false);
+  const [impl, setImpl] = useState(null);
 
   useEffect(() => {
-    if (!auth) return undefined;
-    // A Google sign-in that fell back to a redirect finishes here on return.
-    // onAuthStateChanged reports the user either way; this only drains the result.
-    getRedirectResult(auth).catch(() => {});
-    return onAuthStateChanged(auth, (fb) => {
-      if (signingUp.current) return;
-      setUser(toUser(fb));
-      setLoading(false);
-      if (fb?.emailVerified && providerOf(fb) === 'password') refreshStaleToken(fb);
-    });
+    begin = () => { started = true; setGo(true); };
+    if (started) { setGo(true); return undefined; }
+    if (!CAN_WAIT.has(window.location.pathname) || returning()) { begin(); return undefined; }
+    let id;
+    let idle = false;
+    const afterLoad = () => {
+      if ('requestIdleCallback' in window) { idle = true; id = requestIdleCallback(() => begin(), { timeout: 2500 }); }
+      else id = setTimeout(() => begin(), 1500);
+    };
+    if (document.readyState === 'complete') afterLoad(); else window.addEventListener('load', afterLoad, { once: true });
+    return () => { window.removeEventListener('load', afterLoad); if (idle) cancelIdleCallback(id); else clearTimeout(id); };
   }, []);
 
-  const signInWithGoogle = useCallback(() => guarded(async (a) => {
-    const provider = new GoogleAuthProvider();
-    // Always show Google's account chooser, so a shared browser never signs someone in as
-    // whichever Google account happens to be open. No password is asked for here.
-    provider.setCustomParameters({ prompt: 'select_account' });
-    try {
-      await signInWithPopup(a, provider);
-    } catch (err) {
-      // A blocked popup is common on mobile and in in-app browsers; a full-page
-      // redirect always works. The page reloads signed in, so nothing returns.
-      if (err?.code === 'auth/popup-blocked') { await signInWithRedirect(a, provider); return; }
-      throw err;
-    }
-  }), []);
+  const onValue = useMemo(() => (v) => { latest = v; resolveReady(v); setImpl(v); }, []);
+  const value = useMemo(() => impl ?? { user: null, loading: configured, configured, ...waiting }, [impl]);
 
-  const signUpWithEmail = useCallback(({ name, email, password }) => guarded(async (a) => {
-    signingUp.current = true;
-    try {
-      const { user: fb } = await createUserWithEmailAndPassword(a, email, password);
-      if (name) await updateProfile(fb, { displayName: name.trim() });
-      await sendVerification(fb).catch(() => {}); // they can resend from the banner
-      // The signup form has a required terms checkbox; this is where it is recorded.
-      await acceptConsent().catch(() => {}); // not agreed here? the consent dialog asks later
-      await fb.getIdToken(true); // so the token carries the display name
-    } finally {
-      signingUp.current = false;
-      // Always, even if a step above threw after the account was created: the
-      // listener skipped that sign-in and Firebase will not report it again, so
-      // without this the app stays "logged out" until a reload.
-      if (a.currentUser) { setUser(toUser(a.currentUser)); setLoading(false); }
-    }
-  }), []);
-
-  const signInWithEmail = useCallback(({ email, password }) => guarded(async (a) => {
-    await signInWithEmailAndPassword(a, email, password);
-  }), []);
-
-  const sendReset = useCallback((email) => guarded(async (a) => {
-    try {
-      await requestPasswordReset(email);
-      return;
-    } catch (err) {
-      if (err?.code === 'RATE_LIMITED' || err?.code === 'VALIDATION') throw err;
-      // Our mail is not set up or not reachable: fall back to Firebase's own email.
-    }
-    try {
-      await sendPasswordResetEmail(a, email);
-    } catch (err) {
-      // Say "sent" for an unknown address too, so the form can't be used to probe for accounts.
-      if (err?.code !== 'auth/user-not-found') throw err;
-    }
-  }), []);
-
-  /** The email a reset link is for, or throws LINK_EXPIRED. */
-  const verifyResetCode = useCallback((code) => guarded((a) => verifyPasswordResetCode(a, code)), []);
-  const confirmReset = useCallback((code, password) => guarded((a) => confirmPasswordReset(a, code, password)), []);
-  /** Applies an email-verification link, then refreshes whoever is signed in here. */
-  const applyVerification = useCallback((code) => guarded(async (a) => {
-    await applyActionCode(a, code);
-    if (a.currentUser) {
-      await a.currentUser.reload();
-      await a.currentUser.getIdToken(true);
-      setUser(toUser(a.currentUser));
-    }
-  }), []);
-
-  const signOutUser = useCallback(() => guarded((a) => signOut(a)), []);
-
-  const resendVerification = useCallback(() => guarded(async (a) => {
-    if (!a.currentUser) throw Object.assign(new Error('Log in first.'), { code: 'AUTH_REQUIRED' });
-    await sendVerification(a.currentUser);
-  }), []);
-
-  const getIdToken = useCallback(async (forceRefresh = false) => (
-    auth?.currentUser ? auth.currentUser.getIdToken(forceRefresh) : null
-  ), []);
-
-  /** Re-reads the account from Firebase, e.g. after they clicked the verification link in another tab. */
-  const reloadUser = useCallback(() => guarded(async (a) => {
-    if (!a.currentUser) return null;
-    await a.currentUser.reload();
-    await a.currentUser.getIdToken(true); // the server reads email_verified from the token
-    const next = toUser(a.currentUser);
-    setUser(next);
-    return next;
-  }), []);
-
-  /**
-   * Quiet check behind useVerificationWatch: true once the email is verified.
-   * The token is only refreshed then, so polling never hits Firebase's token endpoint.
-   */
-  const checkVerified = useCallback(() => guarded(async (a) => {
-    const fb = a.currentUser;
-    if (!fb) return false;
-    await fb.reload();
-    if (!fb.emailVerified) return false;
-    await fb.getIdToken(true);
-    setUser(toUser(fb));
-    return true;
-  }), []);
-
-  /**
-   * Removes an unverified account, so its address is free to sign up again.
-   * Resolves false, leaving the account alone, if it turns out to be verified:
-   * the link may have been opened a moment ago in another tab.
-   */
-  const discardNewAccount = useCallback(() => guarded(async (a) => {
-    const fb = a.currentUser;
-    if (!fb) return true;
-    await fb.reload();
-    if (fb.emailVerified) {
-      await fb.getIdToken(true);
-      setUser(toUser(fb));
-      return false;
-    }
-    await deleteMe().catch(() => {}); // an unverified account holds nothing worth stopping for
-    try {
-      await deleteUser(fb);
-    } catch (err) {
-      // An older session may not delete without a fresh sign-in: leaving it signed out is enough.
-      if (err?.code !== 'auth/requires-recent-login') throw err;
-    }
-    await signOut(a).catch(() => {});
-    return true;
-  }), []);
-
-  const deleteAccount = useCallback(({ password } = {}) => guarded(async (a) => {
-    const fb = a.currentUser;
-    if (!fb) throw Object.assign(new Error('Log in first.'), { code: 'AUTH_REQUIRED' });
-    // Deleting an account needs a recent sign-in, so prove it again first.
-    if (providerOf(fb) === 'google.com') {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'login', login_hint: fb.email ?? undefined }); // Google asks for the password again
-      await reauthenticateWithPopup(fb, provider);
-    }
-    else await reauthenticateWithCredential(fb, EmailAuthProvider.credential(fb.email, password ?? ''));
-    await deleteMe(); // our server's data first; the Firebase account is the last thing to go
-    await deleteUser(fb);
-    await signOut(a).catch(() => {});
-  }), []);
-
-  const value = useMemo(() => ({
-    user,
-    loading,
-    configured: firebaseConfigured,
-    signInWithGoogle,
-    signUpWithEmail,
-    signInWithEmail,
-    sendReset,
-    verifyResetCode,
-    confirmReset,
-    applyVerification,
-    signOutUser,
-    resendVerification,
-    deleteAccount,
-    getIdToken,
-    reloadUser,
-    checkVerified,
-    discardNewAccount,
-  }), [user, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, sendReset, verifyResetCode, confirmReset, applyVerification, signOutUser, resendVerification, deleteAccount, getIdToken, reloadUser, checkVerified, discardNewAccount]);
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      {go && <Suspense fallback={null}><AuthImpl onValue={onValue} /></Suspense>}
+    </AuthContext.Provider>
+  );
 }

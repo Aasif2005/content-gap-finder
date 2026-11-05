@@ -3858,7 +3858,7 @@ describe('prerendered public pages', () => {
 
   test('page text cannot inject markup', () => {
     const html = renderSeoPage(template, origin, '/');
-    assert.ok(!html.includes('<script'));
+    assert.ok(!html.replace(/<script type="application\/ld\+json">/g, '').includes('<script'), 'only our own JSON-LD blocks may be scripts');
   });
 });
 
@@ -3918,4 +3918,31 @@ test('loadPage: a failed chunk reloads once, then gives up; other errors pass th
     assert.deepEqual(await loadPage(() => Promise.resolve({ default: 1 }), { reload }), { default: 1 });
     assert.equal(store.has('gs:chunk-reload'), false);
   } finally { delete globalThis.sessionStorage; }
+});
+
+// --- audit findings: structured data, llms.txt, Permissions-Policy ----------------
+import { structuredData } from '../src/lib/seoPages.js';
+
+test('structured data: homepage only, valid JSON, no ratings or prices', () => {
+  const blocks = structuredData('https://gapstronaut.com', '/');
+  assert.deepEqual(blocks.map((b) => b['@type']), ['Organization', 'WebSite', 'SoftwareApplication']);
+  for (const b of blocks) assert.equal(b['@context'], 'https://schema.org');
+  const text = JSON.stringify(blocks);
+  assert.ok(!/aggregateRating|review|offers|price/i.test(text), 'nothing unearned');
+  assert.deepEqual(structuredData('https://gapstronaut.com', '/privacy'), []);
+  const html = renderSeoPage('<html><head><title>x</title></head><body><div id="root"></div></body></html>', 'https://gapstronaut.com', '/');
+  const found = [...html.matchAll(/<script type="application\/ld\+json">([^<]*)<\/script>/g)].map((m) => JSON.parse(m[1]));
+  assert.equal(found.length, 3);
+});
+
+test('llms.txt lists only real public pages; vercel.json sends Permissions-Policy', () => {
+  const txt = fs.readFileSync(new URL('../../web/public/llms.txt', import.meta.url), 'utf8');
+  assert.match(txt, /^# Gapstronaut/);
+  const paths = [...txt.matchAll(/\]\(https:\/\/gapstronaut\.com(\/[^)]*)\)/g)].map((m) => m[1]);
+  assert.ok(paths.length >= 4);
+  for (const p of paths) assert.ok(SEO_PAGES[p], `${p} is a public page`);
+  const vercel = JSON.parse(fs.readFileSync(new URL('../../web/vercel.json', import.meta.url), 'utf8'));
+  const all = vercel.headers.find((h) => h.source === '/(.*)').headers;
+  const pp = all.find((h) => h.key === 'Permissions-Policy')?.value ?? '';
+  for (const f of ['camera=()', 'microphone=()', 'geolocation=()']) assert.ok(pp.includes(f), f);
 });

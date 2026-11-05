@@ -239,6 +239,33 @@ const setMeta = (html, attr, name, value) => {
 export const snapshotText = (page) => snapshotHtml(page).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
 /**
+ * Structured data for a page, as the JSON-LD blocks search engines and AI tools read. Only the homepage
+ * carries any: who runs the site and what the product is. Nothing here may claim what is not true, so
+ * there are no ratings, reviews or prices (pricing is a launch offer, and nothing has been reviewed).
+ */
+export function structuredData(origin, path) {
+  if (path !== '/') return [];
+  const url = `${origin}/`;
+  return [
+    {
+      '@context': 'https://schema.org', '@type': 'Organization', '@id': `${url}#organization`,
+      name: SITE_NAME, url, logo: `${origin}/icon-512.png`,
+      contactPoint: { '@type': 'ContactPoint', contactType: 'customer support', email: 'mission@gapstronaut.com' },
+    },
+    { '@context': 'https://schema.org', '@type': 'WebSite', '@id': `${url}#website`, name: SITE_NAME, url, publisher: { '@id': `${url}#organization` } },
+    {
+      '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: SITE_NAME, url,
+      applicationCategory: 'BusinessApplication', operatingSystem: 'Any (web browser)',
+      description: seoPageFor('/')?.description ?? '',
+      publisher: { '@id': `${url}#organization` },
+    },
+  ];
+}
+
+/** A JSON-LD block that cannot close its own script tag. */
+const ldScript = (data) => `    <script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>\n`;
+
+/**
  * The built index.html turned into one public page: its own title, description, canonical,
  * og:* and twitter:* tags, plus the plain-HTML snapshot inside #root (hidden off-screen until
  * React takes over, never display:none).
@@ -254,6 +281,7 @@ export function renderSeoPage(html, origin, path) {
   out = setMeta(out, 'property', 'og:url', url);
   out = setMeta(out, 'name', 'twitter:title', page.title);
   out = setMeta(out, 'name', 'twitter:description', page.ogDescription ?? page.description);
-  out = out.replace('</head>', () => `    <link rel="canonical" href="${url}" />\n    <style>.seo-snap{position:absolute;left:-10000px;top:0;width:1px;height:1px;overflow:hidden}</style>\n  </head>`);
+  const ld = structuredData(origin, path).map(ldScript).join('');
+  out = out.replace('</head>', () => `${ld}    <link rel="canonical" href="${url}" />\n    <style>.seo-snap{position:absolute;left:-10000px;top:0;width:1px;height:1px;overflow:hidden}</style>\n  </head>`);
   return out.replace('<div id="root"></div>', () => `<div id="root">${snapshotHtml(page)}</div>`);
 }

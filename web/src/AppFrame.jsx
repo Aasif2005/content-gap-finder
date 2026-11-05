@@ -1,5 +1,4 @@
-import { Suspense, useEffect } from 'react';
-import AppShell from './components/shell/AppShell.jsx';
+import { lazy, Suspense, useEffect } from 'react';
 import MarketingShell from './components/shell/MarketingShell.jsx';
 import RequireAuth, { PageSkeleton } from './components/RequireAuth.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -8,7 +7,10 @@ import OfflineBanner from './components/OfflineBanner.jsx';
 import { useRoute } from './lib/router.jsx';
 import { pageView } from './lib/analytics.js';
 import { preloadAppRoutes } from './routes.jsx';
+import { loadPage } from './lib/loadPage.js';
 
+// The signed-in frame (and the animation library it brings) is only fetched by people who have an account.
+const AppShell = lazy(() => loadPage(() => import('./components/shell/AppShell.jsx')));
 const SHELLS = { app: AppShell, marketing: MarketingShell };
 
 /** Picks the frame for the matched route (see routes.jsx) and the auth guard around it. */
@@ -31,7 +33,7 @@ export default function AppFrame() {
   const Shell = SHELLS[route.shell];
   // The frame stays up while a page's code arrives; a failed download lands in the boundary, whose Reload fixes it.
   const ready = <Suspense fallback={<PageSkeleton />}>{page}</Suspense>;
-  const framed = Shell ? <Shell {...route.shellProps}>{ready}</Shell> : ready;
+  const framed = Shell ? <Suspense fallback={<PageSkeleton />}><Shell {...route.shellProps}>{ready}</Shell></Suspense> : ready;
   return (
     <ErrorBoundary resetKey={ctx.path}>
       <RequireAuth required={route.auth === 'required'}>{framed}</RequireAuth>

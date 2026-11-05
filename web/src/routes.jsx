@@ -17,12 +17,13 @@ const Explorer = lazy(() => loadPage(() => import('./pages/Explorer.jsx')));
 // Legal text ships in the main bundle: it is prerendered, so a lazy chunk made it vanish and jump on load.
 
 // Same imports as above, started early (idle time, link hover) so a click finds the code already here.
+const shell = () => import('./components/shell/AppShell.jsx');
 const loaders = {
   '/dashboard': () => import('./pages/Dashboard.jsx'),
   '/profile': () => import('./pages/Profile.jsx'),
   '/explore': () => import('./pages/Explorer.jsx'),
 };
-export const preloadRoute = (path) => { const base = '/' + String(path || '').split(/[?#]/)[0].split('/')[1]; loaders[base]?.()?.catch?.(() => {}); };
+export const preloadRoute = (path) => { const base = '/' + String(path || '').split(/[?#]/)[0].split('/')[1]; if (!loaders[base]) return; shell().catch(() => {}); loaders[base]().catch(() => {}); };
 export const preloadAppRoutes = () => Object.keys(loaders).forEach(preloadRoute);
 setPreloader(preloadRoute);
 
