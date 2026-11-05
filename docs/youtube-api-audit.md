@@ -205,7 +205,7 @@ with the existing per-user limits and the 6-hour minimum between scheduled re-ru
 
 | Policy | Status | Where |
 |---|---|---|
-| III.A.1: users agree to the YouTube ToS | ✅ Terms say so. Email sign-up requires a ticked box; Google sign-in shows "By continuing with Google you agree to the Terms, Privacy Policy and YouTube Terms" beside the button and records the agreement on the account when they continue (`/accept-terms` is the fallback if recording fails), and the API refuses analyses until agreed | `web/src/pages/Legal.jsx`, `web/src/pages/AcceptTerms.jsx`, `web/src/lib/consent.jsx`, `server/src/routes/api.js` |
+| III.A.1: users agree to the YouTube ToS | ✅ Terms say so. Email sign-up requires a ticked box; a Google account that has not agreed yet is taken, right after Google, to an "Agree and continue" step (`/accept-terms`) linking the Terms, Privacy Policy and YouTube Terms, and nothing in the app opens until they agree, and the API refuses analyses until agreed | `web/src/pages/Legal.jsx`, `web/src/pages/AcceptTerms.jsx`, `web/src/lib/consent.jsx`, `server/src/routes/api.js` |
 | III.A.2: privacy policy, always reachable, names YouTube API Services, links Google's policy, covers collection, sharing and storage | ✅ | `/privacy`, footer on every page |
 | III.A.2.h–i: revocation link and contact for Authorized Data | Not applicable (no YouTube authorization); a contact is given anyway, and in-app account deletion removes user data | `CONTACT_EMAIL`, Profile page |
 | III.C.5: search results are not modified | ✅ Titles and thumbnails are shown as returned; ranking is ours and labelled | `VideoStrip.jsx` |

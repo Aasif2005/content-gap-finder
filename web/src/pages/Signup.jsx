@@ -11,7 +11,7 @@ import { EmailTypoHint } from '../components/auth/EmailTypoHint.jsx';
 import { MIN_NEW_PASSWORD, emailTypoFix, looksLikeEmail, needsVerification, nextSuffix, passwordStrength, safeNext } from '../components/auth/helpers.js';
 import { Link, navigate, useRoute } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { useRecordAgreement } from '../lib/consent.jsx';
+import { useAgreementStatus } from '../lib/consent.jsx';
 import { useVerificationWatch } from '../lib/useVerificationWatch.js';
 import { checkEmail } from '../lib/api.js';
 
@@ -111,7 +111,7 @@ function CheckInbox({ email, onContinue, toDashboard = true }) {
 /** Create an account with email or Google. Draws its own full-page layout (the bare shell). */
 export default function Signup() {
   const { user, loading, configured, signInWithGoogle, signUpWithEmail, discardNewAccount, signOutUser } = useAuth();
-  const recordAgreement = useRecordAgreement();
+  const hasAgreed = useAgreementStatus();
   const { query } = useRoute();
   const next = query.next;
   const goNext = () => navigate(safeNext(next), { replace: true });
@@ -258,8 +258,8 @@ export default function Signup() {
     holding.current = true;
     try {
       await signInWithGoogle();
-      // The sentence under the Google button is the agreement; record it (the app sends them to /accept-terms if that fails).
-      if (await recordAgreement()) goNext();
+      // A new Google account agrees on the next step (Terms, Privacy, YouTube Terms); one that already agreed goes straight on.
+      if (await hasAgreed()) goNext();
       else navigate(`/accept-terms${nextSuffix(next)}`, { replace: true });
     } catch (err) {
       fail(err);
@@ -304,7 +304,7 @@ export default function Signup() {
       >
         Sign up with Google
       </GoogleButton>
-      <p className="mt-3 text-[13px] leading-relaxed text-fg-3">By continuing with Google you agree to the <LegalLinks />.</p>
+      <p className="mt-3 text-[13px] leading-relaxed text-fg-3">You’ll agree to the <LegalLinks /> on the next step.</p>
 
       <OrDivider />
 

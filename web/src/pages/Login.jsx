@@ -8,7 +8,7 @@ import { EmailTypoHint } from '../components/auth/EmailTypoHint.jsx';
 import { emailTypoFix, looksLikeEmail, nextSuffix, safeNext } from '../components/auth/helpers.js';
 import { Link, navigate, useRoute } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { useRecordAgreement } from '../lib/consent.jsx';
+import { useAgreementStatus } from '../lib/consent.jsx';
 
 const link = 'font-semibold text-fg underline underline-offset-2 hover:text-focus';
 
@@ -17,8 +17,8 @@ export default function Login() {
   const { user, loading, configured, signInWithGoogle, signInWithEmail } = useAuth();
   const { query } = useRoute();
   const next = query.next;
-  const recordAgreement = useRecordAgreement();
-  const signingIn = useRef(false); // Google sign-in in progress: stay until the agreement is recorded
+  const hasAgreed = useAgreementStatus();
+  const signingIn = useRef(false); // Google sign-in in progress: stay until we know whether the agree step comes next
 
   // Arriving from "Password updated": say so and have the address waiting.
   const justReset = query.reset === '1';
@@ -93,8 +93,8 @@ export default function Login() {
     signingIn.current = true;
     try {
       await signInWithGoogle();
-      // The sentence under the button is the agreement (a no-op for an account that already agreed). If it could not be recorded, go straight to the agree step.
-      if (!(await recordAgreement())) { signingIn.current = false; navigate(`/accept-terms${nextSuffix(next)}`, { replace: true }); setBusy(null); return; }
+      // A Google account that has not agreed yet (a new one, usually) goes to the agree step and waits there for a click.
+      if (!(await hasAgreed())) { signingIn.current = false; navigate(`/accept-terms${nextSuffix(next)}`, { replace: true }); setBusy(null); return; }
     } catch (err) {
       fail(err);
     }
@@ -130,7 +130,7 @@ export default function Login() {
       <GoogleButton className="mt-8" onClick={google} loading={busy === 'google'} disabled={off}>
         Continue with Google
       </GoogleButton>
-      <p className="mt-3 text-[13px] leading-relaxed text-fg-3">New here? By continuing with Google you agree to the <LegalLinks />.</p>
+      <p className="mt-3 text-[13px] leading-relaxed text-fg-3">New here? You’ll agree to the <LegalLinks /> on the next step.</p>
 
       <OrDivider />
 

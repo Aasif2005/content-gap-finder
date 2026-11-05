@@ -14,7 +14,7 @@ import { Link } from './router.jsx';
  *
  * The agreement is stored on the account (`termsAcceptedAt`), not in the
  * browser, so it follows the person to another device. Signing up with email
- * records it already; Google sign-ups are asked here, the first time.
+ * records it already; a Google account agrees on /accept-terms right after its first sign-in.
  */
 
 const ConsentContext = createContext(async () => true);
@@ -27,26 +27,22 @@ const ConsentContext = createContext(async () => true);
 export const useConsent = () => useContext(ConsentContext);
 
 /**
- * After a Google sign-in: the sentence beside the Google button ("By continuing with Google you agree to...") was the
- * agreement, so record it now. An account that already agreed is left alone (recording overwrites the date).
- * Resolves to whether the account has agreed; when it has not (recording failed), the caller sends the person to
- * /accept-terms straight away, so nothing is skipped and no private page is drawn first.
+ * After a Google sign-in: has this account agreed to the Terms, Privacy Policy and YouTube Terms? It only reads; the
+ * agreement itself is the "Agree and continue" click on /accept-terms. A returning account that agreed goes straight
+ * on; a new one (or one that never agreed) is sent to that step. Any doubt (no answer) counts as not agreed, so the
+ * step is never skipped.
  */
-export function useRecordAgreement() {
+export function useAgreementStatus() {
   const { user } = useAuth();
   const { refresh } = useMe();
   // The sign-in promise can settle a beat before the new account reaches the rest of the app, and `refresh()` answers
-  // null until it has: read the latest value and wait (briefly) for the account, never mistake "not ready" for "not agreed".
+  // null until it has: read the latest value and wait (briefly) for the account, never mistake "not ready" for an answer.
   const latest = useRef(user);
   latest.current = user;
   return useCallback(async () => {
     for (let waited = 0; !latest.current && waited < 5000; waited += 50) await new Promise((r) => setTimeout(r, 50));
     if (!latest.current) return false;
-    let current = await refresh();
-    if (current?.user && !current.user.termsAcceptedAt) {
-      await acceptConsent().catch(() => {});
-      current = await refresh();
-    }
+    const current = await refresh();
     return Boolean(current?.user?.termsAcceptedAt);
   }, [refresh]);
 }
