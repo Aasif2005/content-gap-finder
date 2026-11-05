@@ -53,7 +53,11 @@ const AuthImpl = lazy(() => import('./authImpl.jsx'));
 
 export function AuthProvider({ children }) {
   const [go, setGo] = useState(false);
-  const [impl, setImpl] = useState(null);
+  // Who is signed in lives here, and authImpl.jsx sets it directly: a page that acts on the result of a sign-up
+  // (the sign-up page moving on to "check your inbox") must see the new user in the same render as its own change.
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(configured);
+  const [actions, setActions] = useState(null);
 
   useEffect(() => {
     begin = () => { started = true; setGo(true); };
@@ -68,13 +72,13 @@ export function AuthProvider({ children }) {
     return () => { early.forEach((e) => window.removeEventListener(e, go)); clearTimeout(id); };
   }, []);
 
-  const onValue = useMemo(() => (v) => { latest = v; resolveReady(v); setImpl(v); }, []);
-  const value = useMemo(() => impl ?? { user: null, loading: configured, configured, ...waiting }, [impl]);
+  const onActions = useMemo(() => (v) => { latest = v; resolveReady(v); setActions(v); }, []);
+  const value = useMemo(() => ({ user, loading, configured, ...(actions ?? waiting) }), [user, loading, actions]);
 
   return (
     <AuthContext.Provider value={value}>
       {children}
-      {go && <Suspense fallback={null}><AuthImpl onValue={onValue} /></Suspense>}
+      {go && <Suspense fallback={null}><AuthImpl setUser={setUser} setLoading={setLoading} onActions={onActions} /></Suspense>}
     </AuthContext.Provider>
   );
 }

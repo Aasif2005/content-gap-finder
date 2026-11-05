@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   EmailAuthProvider,
   applyActionCode,
@@ -71,9 +71,9 @@ async function guarded(fn) {
 }
 
 /** The real thing, loaded after first paint by auth.jsx (Firebase is most of the page's JavaScript). It draws nothing: it reports its value upward. */
-export default function AuthImpl({ onValue }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(firebaseConfigured);
+export default function AuthImpl({ setUser, setLoading, onActions }) {
+  // `user` and `loading` live in auth.jsx and are set from here. Keeping them one hop away (reported up
+  // after this component renders) made them lag behind a sign-up page that was already moving on.
   // While a sign-up is in flight the account exists but its terms are not yet
   // recorded. Announcing the user early would let the app fetch /api/me and
   // find no consent, then ask for it again a moment later.
@@ -233,10 +233,7 @@ export default function AuthImpl({ onValue }) {
     await signOut(a).catch(() => {});
   }), []);
 
-  const value = useMemo(() => ({
-    user,
-    loading,
-    configured: firebaseConfigured,
+  const actions = useMemo(() => ({
     signInWithGoogle,
     signUpWithEmail,
     signInWithEmail,
@@ -251,8 +248,8 @@ export default function AuthImpl({ onValue }) {
     reloadUser,
     checkVerified,
     discardNewAccount,
-  }), [user, loading, signInWithGoogle, signUpWithEmail, signInWithEmail, sendReset, verifyResetCode, confirmReset, applyVerification, signOutUser, resendVerification, deleteAccount, getIdToken, reloadUser, checkVerified, discardNewAccount]);
+  }), [signInWithGoogle, signUpWithEmail, signInWithEmail, sendReset, verifyResetCode, confirmReset, applyVerification, signOutUser, resendVerification, deleteAccount, getIdToken, reloadUser, checkVerified, discardNewAccount]);
 
-  useEffect(() => { onValue(value); }, [value, onValue]);
+  useEffect(() => { onActions(actions); }, [actions, onActions]);
   return null;
 }
