@@ -15,6 +15,7 @@ import { updateDisplayName } from '../lib/profile.js';
 import { Link, navigate } from '../lib/router.jsx';
 import { useColorMode } from '../lib/colorMode.js';
 import { cx } from '../lib/cx.js';
+import { useLogout } from '../lib/logout.jsx';
 
 function NameForm({ user }) {
   const { reloadUser } = useAuth();
@@ -209,6 +210,7 @@ function Appearance() {
 /** Your account: who you are, how you log in, today's allowance, your data, log out, delete. */
 export default function Profile() {
   const { user } = useAuth();
+  const requestLogout = useLogout();
   const { me, error, loading, refresh } = useMe();
   const [deleting, setDeleting] = useState(false);
 
@@ -219,7 +221,7 @@ export default function Profile() {
   // The server knows about an uploaded picture; Firebase only knows the Google one.
   const shownUser = { ...user, photoUrl: me?.user?.photoUrl ?? user.photoUrl };
 
-  const logOut = () => navigate('/logout'); // a confirmation page first
+  const logOut = requestLogout; // asks first, in a dialog over this page
 
   return (
     <div className="mx-auto max-w-[880px]">

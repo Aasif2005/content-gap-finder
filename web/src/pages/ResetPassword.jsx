@@ -54,7 +54,7 @@ export default function ResetPassword() {
 
   if (sentTo) {
     return (
-      <AuthLayout>
+      <AuthLayout brand="reset">
         <div ref={doneRef} tabIndex={-1} className="focus:outline-none">
           <span aria-hidden className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-fg">
             <MailCheck className="h-6 w-6" />
@@ -73,7 +73,7 @@ export default function ResetPassword() {
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout brand="reset">
       <AuthHeading title="Reset your password">
         Enter the email you signed up with and we’ll send you a link to choose a new password.
       </AuthHeading>

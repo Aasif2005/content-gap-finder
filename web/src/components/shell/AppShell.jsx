@@ -10,6 +10,7 @@ import { useMe } from '../../lib/me.jsx';
 import { cx } from '../../lib/cx.js';
 import { useScrolled } from '../../lib/useScrolled.js';
 import { useVerificationWatch } from '../../lib/useVerificationWatch.js';
+import { useLogout } from '../../lib/logout.jsx';
 
 /**
  * `/explore` and shared niche reports are one place; `/channel` and its reports another.
@@ -83,6 +84,7 @@ const sectionOf = (path) => {
 
 export default function AppShell({ children }) {
   const { user, loading } = useAuth();
+  const requestLogout = useLogout();
   const { me } = useMe();
   const { path } = useRoute();
   const allowance = allowanceLabel(me);
@@ -90,7 +92,7 @@ export default function AppShell({ children }) {
   const { arriving } = useScrolled(head);
 
   const logOut = async () => {
-    navigate('/logout'); // a confirmation page first
+    requestLogout(); // asks first, in a dialog over this page
   };
   const next = encodeURIComponent(currentPathAndSearch());
 
