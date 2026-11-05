@@ -10,7 +10,7 @@ import { renderSeoPage, seoPageFor } from './seoPages.js';
 
 // Every path the app's router knows (web/src/routes.jsx). A test keeps these in step.
 const APP_PATHS = [
-  /^\/$/, /^\/login$/, /^\/signup$/, /^\/reset-password$/, /^\/auth\/action$/, /^\/accept-terms$/, /^\/privacy$/, /^\/terms$/,
+  /^\/$/, /^\/login$/, /^\/signup$/, /^\/reset-password$/, /^\/auth\/action$/, /^\/accept-terms$/, /^\/logout$/, /^\/privacy$/, /^\/terms$/,
   /^\/dashboard$/, /^\/explore$/, /^\/channel$/, /^\/profile$/,
   /^\/r\/[a-zA-Z0-9_-]+$/, /^\/channel\/r\/[a-zA-Z0-9_-]+$/,
 ];

@@ -29,16 +29,18 @@ export const useConsent = () => useContext(ConsentContext);
 /**
  * After a Google sign-in: the sentence beside the Google button ("By continuing with Google you agree to...") was the
  * agreement, so record it now. An account that already agreed is left alone (recording overwrites the date).
- * If this fails the person is sent to /accept-terms instead, so nothing is skipped.
+ * Resolves to whether the account has agreed; when it has not (recording failed), the caller sends the person to
+ * /accept-terms straight away, so nothing is skipped and no private page is drawn first.
  */
 export function useRecordAgreement() {
   const { refresh } = useMe();
   return useCallback(async () => {
-    const current = await refresh();
+    let current = await refresh();
     if (current?.user && !current.user.termsAcceptedAt) {
       await acceptConsent().catch(() => {});
-      await refresh();
+      current = await refresh();
     }
+    return Boolean(current?.user?.termsAcceptedAt);
   }, [refresh]);
 }
 

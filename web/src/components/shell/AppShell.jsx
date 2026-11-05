@@ -82,16 +82,15 @@ const sectionOf = (path) => {
 };
 
 export default function AppShell({ children }) {
-  const { user, loading, signOutUser } = useAuth();
+  const { user, loading } = useAuth();
   const { me } = useMe();
   const { path } = useRoute();
-  const toast = useToast();
   const allowance = allowanceLabel(me);
   const head = useRef(null);
   const { arriving } = useScrolled(head);
 
   const logOut = async () => {
-    try { await signOutUser(); navigate('/'); } catch (err) { toast.error(err.message); }
+    navigate('/logout'); // a confirmation page first
   };
   const next = encodeURIComponent(currentPathAndSearch());
 

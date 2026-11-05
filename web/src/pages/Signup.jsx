@@ -259,8 +259,8 @@ export default function Signup() {
     try {
       await signInWithGoogle();
       // The sentence under the Google button is the agreement; record it (the app sends them to /accept-terms if that fails).
-      await recordAgreement();
-      goNext();
+      if (await recordAgreement()) goNext();
+      else navigate(`/accept-terms${nextSuffix(next)}`, { replace: true });
     } catch (err) {
       fail(err);
     }

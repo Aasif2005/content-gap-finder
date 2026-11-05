@@ -65,7 +65,7 @@ export default function AcceptTerms() {
 
   if (declined) {
     return (
-      <AuthLayout>
+      <AuthLayout brand="paused">
         <AuthHeading title="You need to agree to continue">
           Gapstronaut reads public YouTube data, so using it means agreeing to our terms and YouTube’s. We didn’t create your account.
         </AuthHeading>
@@ -83,14 +83,14 @@ export default function AcceptTerms() {
 
   if (loading || !user || agreed) {
     return (
-      <AuthLayout brand="benefits">
+      <AuthLayout brand="agree">
         <p role="status" className="text-fg-2">One moment…</p>
       </AuthLayout>
     );
   }
 
   return (
-    <AuthLayout brand="benefits">
+    <AuthLayout brand="agree">
       <AuthHeading title="One more step" />
       <p className="mt-6 text-[15px] leading-relaxed text-fg">
         By continuing you agree to the <LegalLinks />.

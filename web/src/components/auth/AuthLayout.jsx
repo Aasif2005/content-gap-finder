@@ -17,6 +17,21 @@ const BRANDS = {
     phrase: 'Stop guessing.\nYour viewers\nalready told you.',
     line: 'Pick up your reports where you left them.',
   },
+  agree: {
+    eyebrow: 'Almost in orbit',
+    phrase: 'One tiny tick.\nOne giant leap\nfor your content.',
+    line: 'Agree on the right and we’ll fire up your first report.',
+  },
+  paused: {
+    eyebrow: 'Mission on hold',
+    phrase: 'No agreement,\nno launch.\nThe lights stay on.',
+    line: 'Come back any time and we’ll be ready.',
+  },
+  goodbye: {
+    eyebrow: 'Leaving orbit?',
+    phrase: 'Your reports\nwill wait\nfor you.',
+    line: 'Log back in any time, they’ll be right here.',
+  },
   benefits: {
     eyebrow: 'Free during beta',
     phrase: 'Viewers are asking.\nNobody’s answering.\nBe first.',
@@ -106,7 +121,7 @@ function BeamText({ brand, lamps }) {
  * gives way to the site's usual pill header (logo, theme switch) above the form. The page's one `<h1>` belongs to
  * the form (passed as children), so the brand side uses no heading.
  *
- * `brand`: 'quote' (welcome back, for log in and reset) or 'benefits' (sign up).
+ * `brand`: 'quote' (welcome back, for log in and reset), 'benefits' (sign up), 'agree' / 'paused' (the terms step) or 'goodbye' (log out).
  * `onBack` replaces the "Back to overview" link with a "Back" button for that step.
  * The brand side is a dark studio whose ceiling lights flicker on (StudioLights);
  * its words light up with them.

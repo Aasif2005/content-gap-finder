@@ -208,10 +208,8 @@ function Appearance() {
 
 /** Your account: who you are, how you log in, today's allowance, your data, log out, delete. */
 export default function Profile() {
-  const { user, signOutUser } = useAuth();
+  const { user } = useAuth();
   const { me, error, loading, refresh } = useMe();
-  const toast = useToast();
-  const [loggingOut, setLoggingOut] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   if (!user) return null; // the route guard sends a logged-out visitor to log in
@@ -221,16 +219,7 @@ export default function Profile() {
   // The server knows about an uploaded picture; Firebase only knows the Google one.
   const shownUser = { ...user, photoUrl: me?.user?.photoUrl ?? user.photoUrl };
 
-  const logOut = async () => {
-    setLoggingOut(true);
-    try {
-      await signOutUser();
-      navigate('/');
-    } catch (err) {
-      toast.error(err.message);
-      setLoggingOut(false);
-    }
-  };
+  const logOut = () => navigate('/logout'); // a confirmation page first
 
   return (
     <div className="mx-auto max-w-[880px]">
@@ -275,7 +264,7 @@ export default function Profile() {
         </SettingRow>
 
         <SettingRow title="Log out" description="End this session on this device.">
-          <Button variant="secondary" onClick={logOut} loading={loggingOut}>Log out</Button>
+          <Button variant="secondary" onClick={logOut}>Log out</Button>
         </SettingRow>
 
         <SettingRow danger title="Delete account" description="Removes your account, usage, watches and saved links to reports. This can’t be undone.">

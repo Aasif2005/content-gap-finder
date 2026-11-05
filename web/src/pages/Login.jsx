@@ -93,7 +93,8 @@ export default function Login() {
     signingIn.current = true;
     try {
       await signInWithGoogle();
-      await recordAgreement(); // the sentence under the button is the agreement (a no-op for an account that already agreed)
+      // The sentence under the button is the agreement (a no-op for an account that already agreed). If it could not be recorded, go straight to the agree step.
+      if (!(await recordAgreement())) { signingIn.current = false; navigate(`/accept-terms${nextSuffix(next)}`, { replace: true }); setBusy(null); return; }
     } catch (err) {
       fail(err);
     }

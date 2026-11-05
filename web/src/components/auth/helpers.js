@@ -7,7 +7,7 @@ import { normalizePath } from '../../lib/routes.js';
 
 const FALLBACK_NEXT = '/dashboard';
 // Sending someone back to a sign-in page after signing in would loop.
-const AUTH_PATHS = new Set(['/login', '/signup', '/reset-password', '/auth/action', '/accept-terms']);
+const AUTH_PATHS = new Set(['/login', '/signup', '/reset-password', '/auth/action', '/accept-terms', '/logout']);
 const PROBE_ORIGIN = 'https://gapstronaut.invalid';
 
 /**
