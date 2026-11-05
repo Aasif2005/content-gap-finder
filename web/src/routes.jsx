@@ -1,30 +1,43 @@
 import { lazy } from 'react';
 import { loadPage } from './lib/loadPage.js';
 import { setPreloader } from './lib/router.jsx';
-import { PrivacyPage, TermsPage } from './pages/Legal.jsx';
 import Home from './pages/Home.jsx';
-import Login from './pages/Login.jsx';
-import Signup from './pages/Signup.jsx';
-import ResetPassword from './pages/ResetPassword.jsx';
-import AuthAction from './pages/AuthAction.jsx';
-import NotFound from './pages/NotFound.jsx';
+// The legal pages are indexed on their own and are plain text: they ship in the entry, because a lazy chunk
+// meant a skeleton first and the text jumping in after (layout shift).
+import { PrivacyPage, TermsPage } from './pages/Legal.jsx';
 
 // Loaded on arrival, so a first visit to the homepage does not download the whole app.
 const Dashboard = lazy(() => loadPage(() => import('./pages/Dashboard.jsx')));
 const Profile = lazy(() => loadPage(() => import('./pages/Profile.jsx')));
 const Explorer = lazy(() => loadPage(() => import('./pages/Explorer.jsx')));
+// The homepage is the entry point for most visits, so the other public pages are fetched when wanted (or once
+// the homepage has settled, see Home.jsx); their prerendered HTML is what crawlers read.
+const Login = lazy(() => loadPage(() => import('./pages/Login.jsx')));
+const Signup = lazy(() => loadPage(() => import('./pages/Signup.jsx')));
+const ResetPassword = lazy(() => loadPage(() => import('./pages/ResetPassword.jsx')));
+const AuthAction = lazy(() => loadPage(() => import('./pages/AuthAction.jsx')));
+const NotFound = lazy(() => loadPage(() => import('./pages/NotFound.jsx')));
 
-// Legal text ships in the main bundle: it is prerendered, so a lazy chunk made it vanish and jump on load.
 
 // Same imports as above, started early (idle time, link hover) so a click finds the code already here.
 const shell = () => import('./components/shell/AppShell.jsx');
-const loaders = {
+const appLoaders = {
   '/dashboard': () => import('./pages/Dashboard.jsx'),
   '/profile': () => import('./pages/Profile.jsx'),
   '/explore': () => import('./pages/Explorer.jsx'),
 };
-export const preloadRoute = (path) => { const base = '/' + String(path || '').split(/[?#]/)[0].split('/')[1]; if (!loaders[base]) return; shell().catch(() => {}); loaders[base]().catch(() => {}); };
-export const preloadAppRoutes = () => Object.keys(loaders).forEach(preloadRoute);
+const publicLoaders = {
+  '/login': () => import('./pages/Login.jsx'),
+  '/signup': () => import('./pages/Signup.jsx'),
+  '/reset-password': () => import('./pages/ResetPassword.jsx'),
+  '/auth': () => import('./pages/AuthAction.jsx'),
+};
+export const preloadRoute = (path) => {
+  const base = '/' + String(path || '').split(/[?#]/)[0].split('/')[1];
+  if (appLoaders[base]) { shell().catch(() => {}); appLoaders[base]().catch(() => {}); }
+  else publicLoaders[base]?.().catch(() => {});
+};
+export const preloadAppRoutes = () => Object.keys(appLoaders).forEach(preloadRoute);
 setPreloader(preloadRoute);
 
 /**

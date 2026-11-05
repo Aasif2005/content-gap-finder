@@ -770,3 +770,8 @@ html { scroll-padding-top: 88px; }
 @media (max-width: 639px) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea { font-size: max(16px, 1em); }
 }
+
+/* Homepage sections below the first screen: the browser skips their layout and paint until they near the viewport. */
+.cv { content-visibility: auto; contain-intrinsic-size: auto 900px; }
+/* Jumping to a section (#pricing) needs every section at its real height, or the target is wrong by the estimates. */
+html[data-cv="off"] .cv { content-visibility: visible; }

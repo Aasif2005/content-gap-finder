@@ -8,7 +8,7 @@ import { setTokenGetter } from './api.js';
  * Firebase (sign-in, App Check, reCAPTCHA) is most of the JavaScript a visitor downloads, and a visitor
  * reading the homepage needs none of it to see the page. So this file is small and loads
  * authImpl.jsx separately: at once on pages that need an account (or for someone who has signed in
- * before), and once the page has finished loading on the homepage and legal pages. Until it arrives
+ * before), and on a first tap, key or scroll (or after a long wait) on the homepage and legal pages. Until it arrives
  * `loading` is true, and an action called early simply waits for it.
  */
 
@@ -59,14 +59,13 @@ export function AuthProvider({ children }) {
     begin = () => { started = true; setGo(true); };
     if (started) { setGo(true); return undefined; }
     if (!CAN_WAIT.has(window.location.pathname) || returning()) { begin(); return undefined; }
-    let id;
-    let idle = false;
-    const afterLoad = () => {
-      if ('requestIdleCallback' in window) { idle = true; id = requestIdleCallback(() => begin(), { timeout: 2500 }); }
-      else id = setTimeout(() => begin(), 1500);
-    };
-    if (document.readyState === 'complete') afterLoad(); else window.addEventListener('load', afterLoad, { once: true });
-    return () => { window.removeEventListener('load', afterLoad); if (idle) cancelIdleCallback(id); else clearTimeout(id); };
+    // Nobody on these pages needs an account to read them: wait for a sign that they want one (a tap, a key, a
+    // scroll) or, failing that, a long while after load, so Firebase and reCAPTCHA never compete with the page itself.
+    const early = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    const go = () => begin();
+    early.forEach((e) => window.addEventListener(e, go, { once: true, passive: true }));
+    const id = setTimeout(go, 8000);
+    return () => { early.forEach((e) => window.removeEventListener(e, go)); clearTimeout(id); };
   }, []);
 
   const onValue = useMemo(() => (v) => { latest = v; resolveReady(v); setImpl(v); }, []);

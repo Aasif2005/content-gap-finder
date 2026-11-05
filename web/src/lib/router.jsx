@@ -88,6 +88,8 @@ const isExternal = (href) => {
 // routes.jsx registers a function that starts downloading a route's code; links call it on hover/focus.
 let preloader = null;
 export const setPreloader = (fn) => { preloader = fn; };
+/** Starts fetching a route's code (a no-op for routes that are not split out). */
+export const preload = (href) => preloader?.(href);
 
 /**
  * An `<a>` that navigates without a page load on a plain left click, and leaves

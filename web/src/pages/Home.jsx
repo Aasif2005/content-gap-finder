@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { getFeatured } from '../lib/api.js';
-import { navigate, useRoute } from '../lib/router.jsx';
+import { navigate, preload, useRoute } from '../lib/router.jsx';
 import { useColorMode } from '../lib/colorMode.js';
 import RotatingHeadline from '../components/home/RotatingHeadline.jsx';
 import { useAfterLoad } from '../lib/useAfterLoad.js';
@@ -19,7 +19,8 @@ const HomeBelow = lazy(() => import('../components/home/HomeBelow.jsx'));
 export default function Home() {
   const { query, search } = useRoute();
   const dark = useColorMode().mode === 'dark';
-  const later = useAfterLoad();
+  const later = useAfterLoad(); // the shader first,
+  const evenLater = useAfterLoad(1500); // then the rest, in a different task
 
   // Old query links (/?niche=...) belong to the Explorer now.
   const legacyNiche = query.niche;
@@ -42,6 +43,9 @@ export default function Home() {
       .catch(() => { if (!off) setFeatured(null); });
     return () => { off = true; };
   }, []);
+
+  // Most visitors who go on from here go to sign up or log in: have those pages ready.
+  useEffect(() => { if (evenLater) { preload('/signup'); preload('/login'); } }, [evenLater]);
 
   const views = useMemo(() => {
     if (featured === undefined) return undefined;
@@ -90,7 +94,7 @@ export default function Home() {
         ) : earthHolder}
       </div>
 
-      {later ? <Suspense fallback={<div style={{ minHeight: 2400 }} aria-hidden />}><HomeBelow views={views} /></Suspense> : <div style={{ minHeight: 2400 }} aria-hidden />}
+      {evenLater ? <Suspense fallback={<div style={{ minHeight: 2400 }} aria-hidden />}><HomeBelow views={views} /></Suspense> : <div style={{ minHeight: 2400 }} aria-hidden />}
     </>
   );
 }

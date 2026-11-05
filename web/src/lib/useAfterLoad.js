@@ -5,16 +5,17 @@ import { useEffect, useState } from 'react';
  * presses a key first), then true for good. Lets a page paint its first screen before it fetches the code
  * for everything lower down.
  */
-export function useAfterLoad() {
+export function useAfterLoad(extraMs = 0) {
   const [ready, setReady] = useState(false);
   useEffect(() => {
     if (ready) return undefined;
     let id;
     let idle = false;
     const go = () => setReady(true);
+    const later = () => { if (extraMs > 0) id = setTimeout(go, extraMs); else go(); };
     const afterLoad = () => {
-      if ('requestIdleCallback' in window) { idle = true; id = requestIdleCallback(go, { timeout: 2000 }); }
-      else id = setTimeout(go, 1200);
+      if ('requestIdleCallback' in window) { idle = true; id = requestIdleCallback(later, { timeout: 2000 }); }
+      else id = setTimeout(later, 1200);
     };
     if (document.readyState === 'complete') afterLoad(); else window.addEventListener('load', afterLoad, { once: true });
     const early = ['scroll', 'pointerdown', 'keydown', 'touchstart'];
@@ -22,8 +23,9 @@ export function useAfterLoad() {
     return () => {
       window.removeEventListener('load', afterLoad);
       early.forEach((e) => window.removeEventListener(e, go));
-      if (idle) cancelIdleCallback(id); else clearTimeout(id);
+      if (idle) cancelIdleCallback(id);
+      clearTimeout(id);
     };
-  }, [ready]);
+  }, [ready, extraMs]);
   return ready;
 }
