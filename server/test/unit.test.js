@@ -42,6 +42,7 @@ import { squareCrop, checkFile, fitImage, clampOffset, initialView, zoomAt, zoom
 import { setAvatar, getAvatar, clearAvatar } from '../src/lib/db.js';
 import * as jobs from '../src/lib/jobs.js';
 import { pollJob } from '../../web/src/lib/api.js';
+import { loadPage } from '../../web/src/lib/loadPage.js';
 import { gapsToCsv, reportToMarkdown, exportStem } from '../../web/src/lib/export.js';
 import { matchRoute, normalizePath } from '../../web/src/lib/routes.js';
 import { reportPathFor, correctReportPath, runIdFromPath, queryFromUrl, queryToSearch, pagePathFor } from '../../web/src/lib/urlState.js';
@@ -3716,13 +3717,15 @@ describe('streamed LLM replies', () => {
 import { resetPasswordEmail, verifyEmailEmail } from '../src/lib/emailTemplates.js';
 import { ourActionLink, parseServiceAccount } from '../src/lib/actionLink.js';
 
-test('reset email: our link, escaped address, plain-text part, no images, palette respected', () => {
+test('reset email: our link, escaped address, plain-text part, logo only image, content-sized button, palette respected', () => {
   const link = 'https://gapstronaut.com/auth/action?mode=resetPassword&oobCode=abc';
   const m = resetPasswordEmail({ link, email: 'a<b>@x.com', siteUrl: 'https://gapstronaut.com', support: 'mission@gapstronaut.com' });
   assert.match(m.subject, /Reset your Gapstronaut password/);
   assert.ok(m.html.includes('mode=resetPassword&amp;oobCode=abc'));
   assert.ok(m.html.includes('Choose a new password'));
-  assert.ok(!m.html.includes('<img'));
+  assert.equal((m.html.match(/<img/g) || []).length, 1);
+  assert.ok(m.html.includes('https://gapstronaut.com/brand/email-logo.png'));
+  assert.ok(!m.html.includes('display:block;padding:16px'), 'button must not stretch full width');
   assert.ok(!m.html.includes('a<b>'));
   assert.ok(!m.html.includes('firebaseapp.com'));
   assert.ok(m.html.includes('prefers-color-scheme: dark'));
@@ -3888,4 +3891,31 @@ test('the home page declares a favicon Google accepts (a multiple of 48px) and e
     const href = t.match(/href="([^"]+)"/)[1];
     assert.ok(existsSync(new URL(`../../web/public${href}`, import.meta.url)), href);
   }
+});
+
+// --- page code that fails to download -------------------------------------------
+test('loadPage: a failed chunk reloads once, then gives up; other errors pass through', async () => {
+  const store = new Map();
+  globalThis.sessionStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
+  try {
+    const chunkErr = () => Promise.reject(new TypeError('Failed to fetch dynamically imported module: /assets/Dashboard-x.js'));
+    let reloads = 0;
+    const reload = () => { reloads++; };
+    // first failure: reload requested, the promise stays pending
+    const first = loadPage(chunkErr, { reload });
+    const settled = await Promise.race([first.then(() => 'resolved', () => 'rejected'), new Promise((r) => setTimeout(() => r('pending'), 20))]);
+    assert.equal(settled, 'pending');
+    assert.equal(reloads, 1);
+    // still failing straight after the reload: surface the error, no loop
+    await assert.rejects(loadPage(chunkErr, { reload }), /dynamically imported module/);
+    assert.equal(reloads, 1);
+    // a different error is never swallowed or reloaded
+    store.clear();
+    await assert.rejects(loadPage(() => Promise.reject(new Error('boom')), { reload }), /boom/);
+    assert.equal(reloads, 1);
+    // success clears the guard
+    store.set('gs:chunk-reload', String(Date.now()));
+    assert.deepEqual(await loadPage(() => Promise.resolve({ default: 1 }), { reload }), { default: 1 });
+    assert.equal(store.has('gs:chunk-reload'), false);
+  } finally { delete globalThis.sessionStorage; }
 });

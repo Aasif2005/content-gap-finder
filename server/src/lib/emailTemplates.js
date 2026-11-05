@@ -1,7 +1,7 @@
 /**
  * Gapstronaut's account emails. One layout, built like the app: a warm paper ground, a single
- * white panel, a pill button in ink, one blue link colour. No images (nothing to block, nothing
- * to invert in dark mode) and no web fonts (the privacy policy promises none).
+ * white panel, a content-sized pill button in ink, one blue link colour. The only image is the
+ * logo (served from the site), and there are no web fonts (the privacy policy promises none).
  *
  * The strict palette rule applies here too: the amber highlighter is reserved for real viewer
  * evidence, so it never appears in a mail. Light is the default; clients that honour
@@ -56,7 +56,10 @@ function layout({ preheader, eyebrow, title, intro, email, buttonLabel, link, fa
 <table role="presentation" class="bg" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${C.bg};">
 <tr><td align="center" style="padding:48px 16px 40px;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:520px;">
-    <tr><td class="fg" style="padding:0 6px 22px;font-family:${SANS};font-size:19px;line-height:1;font-weight:600;letter-spacing:-0.02em;color:${C.fg};">Gapstronaut</td></tr>
+    <tr><td style="padding:0 6px 22px;"><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
+      <td style="vertical-align:middle;"><img src="${siteUrl}/brand/email-logo.png" width="44" height="44" alt="" style="display:block;border:0;"></td>
+      <td class="fg" style="vertical-align:middle;padding-left:10px;font-family:${SANS};font-size:20px;line-height:1;font-weight:600;letter-spacing:-0.02em;color:${C.fg};">Gapstronaut</td>
+    </tr></table></td></tr>
     <tr><td class="panel pad" style="background:${C.card};border:1px solid ${C.line};border-radius:20px;padding:44px 40px 36px;">
       <p class="fg3" style="margin:0;font-family:${SANS};font-size:12px;line-height:1;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:${C.fg3};">${escapeHtml(eyebrow)}</p>
       <h1 class="fg h1" style="margin:18px 0 0;font-family:${SANS};font-size:32px;line-height:1.1;font-weight:600;letter-spacing:-0.03em;color:${C.fg};">${escapeHtml(title)}</h1>
@@ -64,12 +67,12 @@ function layout({ preheader, eyebrow, title, intro, email, buttonLabel, link, fa
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0 0;"><tr>
         <td class="chip fg" style="background:${C.chip};border-radius:999px;padding:8px 14px;font-family:${MONO};font-size:13px;line-height:1.3;color:${C.fg};word-break:break-all;">${escapeHtml(email)}</td>
       </tr></table>
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:32px 0 0;"><tr>
-        <td class="btn" align="center" style="border-radius:999px;background:${C.ink};">
-          <a href="${safeLink}" style="display:block;padding:16px 28px;font-family:${SANS};font-size:16px;line-height:20px;font-weight:600;color:${C.onInk};text-decoration:none;border-radius:999px;">${escapeHtml(buttonLabel)}</a>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:28px 0 0;"><tr>
+        <td class="btn" style="border-radius:999px;background:${C.ink};">
+          <a href="${safeLink}" style="display:inline-block;padding:14px 26px;font-family:${SANS};font-size:16px;line-height:20px;font-weight:600;color:${C.onInk};text-decoration:none;border-radius:999px;">${escapeHtml(buttonLabel)}</a>
         </td>
       </tr></table>
-      <p class="fg3" style="margin:16px 0 0;font-family:${SANS};font-size:13px;line-height:1.5;text-align:center;color:${C.fg3};">${facts.map(escapeHtml).join('&nbsp;&nbsp;·&nbsp;&nbsp;')}</p>
+      <p class="fg3" style="margin:16px 0 0;font-family:${SANS};font-size:13px;line-height:1.5;color:${C.fg3};">${facts.map(escapeHtml).join('&nbsp;&nbsp;·&nbsp;&nbsp;')}</p>
       <div class="rule" style="margin:32px 0 0;border-top:1px solid ${C.line};font-size:0;line-height:0;">&nbsp;</div>
       <p class="fg2" style="margin:24px 0 0;font-family:${SANS};font-size:14px;line-height:1.6;color:${C.fg2};">${note}</p>
       <p class="fg3" style="margin:20px 0 0;font-family:${SANS};font-size:12px;line-height:1.5;color:${C.fg3};">Button not working? Paste this link into your browser:</p>
