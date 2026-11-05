@@ -772,6 +772,6 @@ html { scroll-padding-top: 88px; }
 }
 
 /* Homepage sections below the first screen: the browser skips their layout and paint until they near the viewport. */
-.cv { content-visibility: auto; contain-intrinsic-size: auto 900px; }
+.cv { /* content-visibility removed: its 900px estimates made the page height jump while scrolling */ }
 /* Jumping to a section (#pricing) needs every section at its real height, or the target is wrong by the estimates. */
 html[data-cv="off"] .cv { content-visibility: visible; }
