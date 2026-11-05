@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { Button, Checkbox, Dialog } from '../components/ui/index.js';
 import { acceptConsent } from './api.js';
 import { useAuth } from './auth.jsx';
-import { useMe } from './me.jsx';
+import { cachedMe, useMe } from './me.jsx';
+import { needsVerification, nextSuffix, safeNext } from '../components/auth/helpers.js';
 import { currentPathAndSearch, navigate } from './navigation.js';
 import { Link } from './router.jsx';
 
@@ -27,23 +28,30 @@ const ConsentContext = createContext(async () => true);
 export const useConsent = () => useContext(ConsentContext);
 
 /**
- * After a Google sign-in: has this account agreed to the Terms, Privacy Policy and YouTube Terms? It only reads; the
- * agreement itself is the "Agree and continue" click on /accept-terms. A returning account that agreed goes straight
- * on; a new one (or one that never agreed) is sent to that step. Any doubt (no answer) counts as not agreed, so the
- * step is never skipped.
+ * Where someone goes the moment a sign-in (Google or email) succeeds, decided while the sign-in page is still up so
+ * they land on the right page in one step, with no "one moment" page or skeleton in between:
+ *  - an email account that is not verified yet: the "check your inbox" step;
+ *  - an account that has agreed to the Terms, Privacy Policy and YouTube Terms: `next` (the dashboard by default).
+ *    The saved copy of /api/me answers this at once for a returning account (agreement is never taken back);
+ *  - otherwise (a new Google account, or no answer at all): the agree step, /accept-terms, which waits for a click.
+ * It only reads; the agreement itself is the "Agree and continue" click.
  */
-export function useAgreementStatus() {
+export function useAfterSignIn() {
   const { user } = useAuth();
   const { refresh } = useMe();
-  // The sign-in promise can settle a beat before the new account reaches the rest of the app, and `refresh()` answers
-  // null until it has: read the latest value and wait (briefly) for the account, never mistake "not ready" for an answer.
+  // The sign-in promise can settle a beat before the new account reaches the rest of the app: read the latest
+  // value and wait (briefly) for it, never mistake "not ready" for an answer.
   const latest = useRef(user);
   latest.current = user;
-  return useCallback(async () => {
+  return useCallback(async (next) => {
     for (let waited = 0; !latest.current && waited < 5000; waited += 50) await new Promise((r) => setTimeout(r, 50));
-    if (!latest.current) return false;
-    const current = await refresh();
-    return Boolean(current?.user?.termsAcceptedAt);
+    const u = latest.current;
+    const toTerms = `/accept-terms${nextSuffix(next)}`;
+    if (!u) return toTerms;
+    if (needsVerification(u)) return `/signup${nextSuffix(next)}`;
+    const agreed = Boolean(cachedMe(u.uid)?.user?.termsAcceptedAt)
+      || Boolean((await refresh({ join: true }))?.user?.termsAcceptedAt);
+    return agreed ? safeNext(next) : toTerms;
   }, [refresh]);
 }
 

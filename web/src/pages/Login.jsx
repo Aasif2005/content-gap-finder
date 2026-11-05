@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Button, Field, Input, PasswordInput } from '../components/ui/index.js';
 import AuthLayout, { AuthHeading, OrDivider } from '../components/auth/AuthLayout.jsx';
 import { GoogleButton } from '../components/auth/GoogleButton.jsx';
@@ -6,9 +6,9 @@ import { LegalLinks } from '../components/auth/LegalLinks.jsx';
 import { NotConfiguredAlert } from '../components/auth/NotConfiguredAlert.jsx';
 import { EmailTypoHint } from '../components/auth/EmailTypoHint.jsx';
 import { emailTypoFix, looksLikeEmail, nextSuffix, safeNext } from '../components/auth/helpers.js';
-import { Link, navigate, useRoute } from '../lib/router.jsx';
+import { Link, navigate, preload, useRoute } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { useAgreementStatus } from '../lib/consent.jsx';
+import { useAfterSignIn } from '../lib/consent.jsx';
 
 const link = 'font-semibold text-fg underline underline-offset-2 hover:text-focus';
 
@@ -17,8 +17,9 @@ export default function Login() {
   const { user, loading, configured, signInWithGoogle, signInWithEmail } = useAuth();
   const { query } = useRoute();
   const next = query.next;
-  const hasAgreed = useAgreementStatus();
-  const signingIn = useRef(false); // Google sign-in in progress: stay until we know whether the agree step comes next
+  const afterSignIn = useAfterSignIn();
+  // A sign-in from this page is under way: this page sends them on itself, once it knows where (dashboard or agree step).
+  const signingIn = useRef(false);
 
   // Arriving from "Password updated": say so and have the address waiting.
   const justReset = query.reset === '1';
@@ -35,10 +36,13 @@ export default function Login() {
   const passwordRef = useRef(null);
   const noticeRef = useRef(null);
 
-  // Already signed in (or just now): go where they were headed.
-  useEffect(() => {
+  // Opened while already signed in: go where they were headed, before anything is drawn.
+  useLayoutEffect(() => {
     if (!loading && user && !signingIn.current) navigate(safeNext(next), { replace: true });
   }, [loading, user, next, busy]);
+
+  // Fetch the code of both pages a sign-in can land on now, so neither arrives as a skeleton.
+  useEffect(() => { preload('/dashboard'); preload('/accept-terms'); }, []);
 
   // A failed submit moves focus to the message, so a keyboard or screen reader user lands on it.
   useEffect(() => { if (notice) noticeRef.current?.focus(); }, [notice]);
@@ -77,12 +81,15 @@ export default function Login() {
       return;
     }
     setBusy('email');
+    signingIn.current = true;
     try {
       await signInWithEmail({ email: email.trim(), password });
-      // The effect above takes it from here once the account is announced.
+      navigate(await afterSignIn(next), { replace: true }); // the form stays, button spinning, until we know where
+      return;
     } catch (err) {
       fail(err);
     }
+    signingIn.current = false;
     setBusy(null);
   };
 
@@ -93,8 +100,9 @@ export default function Login() {
     signingIn.current = true;
     try {
       await signInWithGoogle();
-      // A Google account that has not agreed yet (a new one, usually) goes to the agree step and waits there for a click.
-      if (!(await hasAgreed())) { signingIn.current = false; navigate(`/accept-terms${nextSuffix(next)}`, { replace: true }); setBusy(null); return; }
+      // Agreed already: the dashboard (or `next`). A Google account that has not agreed yet (a new one, usually): the agree step.
+      navigate(await afterSignIn(next), { replace: true });
+      return;
     } catch (err) {
       fail(err);
     }
@@ -102,14 +110,8 @@ export default function Login() {
     setBusy(null);
   };
 
-  // Signed in: the redirect is on its way. Show nothing that could be typed into.
-  if (!loading && user) {
-    return (
-      <AuthLayout>
-        <p role="status" className="text-fg-2">You’re signed in. One moment…</p>
-      </AuthLayout>
-    );
-  }
+  // Opened while already signed in: the redirect above runs before paint, so draw nothing.
+  if (!loading && user && !signingIn.current) return null;
 
   return (
     <AuthLayout>

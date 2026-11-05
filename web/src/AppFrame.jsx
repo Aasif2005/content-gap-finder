@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import MarketingShell from './components/shell/MarketingShell.jsx';
 import RequireAuth, { PageSkeleton } from './components/RequireAuth.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -6,11 +6,8 @@ import CookieNotice from './components/CookieNotice.jsx';
 import OfflineBanner from './components/OfflineBanner.jsx';
 import { useRoute } from './lib/router.jsx';
 import { pageView } from './lib/analytics.js';
-import { preloadAppRoutes } from './routes.jsx';
-import { loadPage } from './lib/loadPage.js';
+import { AppShell, preloadAppRoutes } from './routes.jsx';
 
-// The signed-in frame (and the animation library it brings) is only fetched by people who have an account.
-const AppShell = lazy(() => loadPage(() => import('./components/shell/AppShell.jsx')));
 const SHELLS = { app: AppShell, marketing: MarketingShell };
 
 /** Picks the frame for the matched route (see routes.jsx) and the auth guard around it. */

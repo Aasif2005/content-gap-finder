@@ -1,42 +1,42 @@
-import { lazy } from 'react';
-import { loadPage } from './lib/loadPage.js';
+import { lazyPage } from './lib/lazyPage.jsx';
 import { setPreloader } from './lib/router.jsx';
 import Home from './pages/Home.jsx';
 // The legal pages are indexed on their own and are plain text: they ship in the entry, because a lazy chunk
 // meant a skeleton first and the text jumping in after (layout shift).
 import { PrivacyPage, TermsPage } from './pages/Legal.jsx';
 
-// Loaded on arrival, so a first visit to the homepage does not download the whole app.
-const Dashboard = lazy(() => loadPage(() => import('./pages/Dashboard.jsx')));
-const Profile = lazy(() => loadPage(() => import('./pages/Profile.jsx')));
-const Explorer = lazy(() => loadPage(() => import('./pages/Explorer.jsx')));
+// Loaded on arrival, so a first visit to the homepage does not download the whole app. A page fetched early
+// (`preloadRoute`, below) then draws at once, with no skeleton in between.
+const Dashboard = lazyPage(() => import('./pages/Dashboard.jsx'));
+const Profile = lazyPage(() => import('./pages/Profile.jsx'));
+const Explorer = lazyPage(() => import('./pages/Explorer.jsx'));
 // The homepage is the entry point for most visits, so the other public pages are fetched when wanted (or once
 // the homepage has settled, see Home.jsx); their prerendered HTML is what crawlers read.
-const Login = lazy(() => loadPage(() => import('./pages/Login.jsx')));
-const Signup = lazy(() => loadPage(() => import('./pages/Signup.jsx')));
-const ResetPassword = lazy(() => loadPage(() => import('./pages/ResetPassword.jsx')));
-const AuthAction = lazy(() => loadPage(() => import('./pages/AuthAction.jsx')));
-const AcceptTerms = lazy(() => loadPage(() => import('./pages/AcceptTerms.jsx')));
-const NotFound = lazy(() => loadPage(() => import('./pages/NotFound.jsx')));
+const Login = lazyPage(() => import('./pages/Login.jsx'));
+const Signup = lazyPage(() => import('./pages/Signup.jsx'));
+const ResetPassword = lazyPage(() => import('./pages/ResetPassword.jsx'));
+const AuthAction = lazyPage(() => import('./pages/AuthAction.jsx'));
+const AcceptTerms = lazyPage(() => import('./pages/AcceptTerms.jsx'));
+const NotFound = lazyPage(() => import('./pages/NotFound.jsx'));
+// The signed-in frame (and the animation library it brings) is only fetched by people who have an account.
+export const AppShell = lazyPage(() => import('./components/shell/AppShell.jsx'));
 
-
-// Same imports as above, started early (idle time, link hover) so a click finds the code already here.
-const shell = () => import('./components/shell/AppShell.jsx');
+// The same loaders, started early (idle time, link hover, a sign-in under way) so a page finds its code already here.
 const appLoaders = {
-  '/dashboard': () => import('./pages/Dashboard.jsx'),
-  '/profile': () => import('./pages/Profile.jsx'),
-  '/explore': () => import('./pages/Explorer.jsx'),
+  '/dashboard': Dashboard.preload,
+  '/profile': Profile.preload,
+  '/explore': Explorer.preload,
 };
 const publicLoaders = {
-  '/login': () => import('./pages/Login.jsx'),
-  '/signup': () => import('./pages/Signup.jsx'),
-  '/reset-password': () => import('./pages/ResetPassword.jsx'),
-  '/auth': () => import('./pages/AuthAction.jsx'),
-  '/accept-terms': () => import('./pages/AcceptTerms.jsx'),
+  '/login': Login.preload,
+  '/signup': Signup.preload,
+  '/reset-password': ResetPassword.preload,
+  '/auth': AuthAction.preload,
+  '/accept-terms': AcceptTerms.preload,
 };
 export const preloadRoute = (path) => {
   const base = '/' + String(path || '').split(/[?#]/)[0].split('/')[1];
-  if (appLoaders[base]) { shell().catch(() => {}); appLoaders[base]().catch(() => {}); }
+  if (appLoaders[base]) { AppShell.preload().catch(() => {}); appLoaders[base]().catch(() => {}); }
   else publicLoaders[base]?.().catch(() => {});
 };
 export const preloadAppRoutes = () => Object.keys(appLoaders).forEach(preloadRoute);

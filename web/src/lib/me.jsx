@@ -21,6 +21,8 @@ const readCache = (uid) => {
   } catch { return null; }
 };
 const writeCache = (uid, me) => { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ uid, me })); } catch { /* private mode */ } };
+/** The saved copy for this account, or null. Read straight from storage, so it is there before React has re-rendered. */
+export const cachedMe = (uid) => (uid ? readCache(uid) : null);
 const clearCache = () => { try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ } };
 
 export const useMe = () => {
@@ -47,8 +49,8 @@ export function MeProvider({ children }) {
   const inFlight = useRef(0);
   const [pending, setPending] = useState(0); // mirrors inFlight so the self-heal below re-checks when calls finish
 
-  const load = useCallback(async () => {
-    const owner = uidRef.current;
+  // One GET /api/me for `owner`; the answer is applied only if it is still the newest for the account on screen.
+  const fetchFor = useCallback(async (owner) => {
     if (!owner) return null; // signed out (or not yet known): the uid effect below handles clearing
     const mine = ++seq.current;
     inFlight.current++;
@@ -81,6 +83,21 @@ export function MeProvider({ children }) {
       setPending((n) => n - 1);
     }
   }, []);
+
+  // The request on its way, so a caller that only needs "an answer for this account" can share it (`{ join: true }`)
+  // instead of asking twice. A plain refresh() never joins: after Agree it must not read an answer from before.
+  const running = useRef(null); // { owner, promise }
+
+  const load = useCallback((opts) => {
+    const owner = uidRef.current;
+    if (opts?.join === true && owner && running.current?.owner === owner) return running.current.promise;
+    const promise = fetchFor(owner);
+    if (owner) {
+      running.current = { owner, promise };
+      promise.finally(() => { if (running.current?.promise === promise) running.current = null; });
+    }
+    return promise;
+  }, [fetchFor]);
 
   // A different account must not briefly see the last one's numbers. Signed
   // out for real (auth settled, no user): forget the saved copy, it holds an email.

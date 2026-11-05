@@ -9,9 +9,9 @@ import { PasswordStrength } from '../components/auth/PasswordStrength.jsx';
 import { useCooldown } from '../components/auth/useCooldown.js';
 import { EmailTypoHint } from '../components/auth/EmailTypoHint.jsx';
 import { MIN_NEW_PASSWORD, emailTypoFix, looksLikeEmail, needsVerification, nextSuffix, passwordStrength, safeNext } from '../components/auth/helpers.js';
-import { Link, navigate, useRoute } from '../lib/router.jsx';
+import { Link, navigate, preload, useRoute } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { useAgreementStatus } from '../lib/consent.jsx';
+import { useAfterSignIn } from '../lib/consent.jsx';
 import { useVerificationWatch } from '../lib/useVerificationWatch.js';
 import { checkEmail } from '../lib/api.js';
 
@@ -111,7 +111,7 @@ function CheckInbox({ email, onContinue, toDashboard = true }) {
 /** Create an account with email or Google. Draws its own full-page layout (the bare shell). */
 export default function Signup() {
   const { user, loading, configured, signInWithGoogle, signUpWithEmail, discardNewAccount, signOutUser } = useAuth();
-  const hasAgreed = useAgreementStatus();
+  const afterSignIn = useAfterSignIn();
   const { query } = useRoute();
   const next = query.next;
   const goNext = () => navigate(safeNext(next), { replace: true });
@@ -183,6 +183,9 @@ export default function Signup() {
   }, [loading, user, sentTo, next, atInbox]);
 
   useEffect(() => { if (notice) noticeRef.current?.focus(); }, [notice]);
+
+  // Fetch the code of both pages a sign-in can land on now, so neither arrives as a skeleton.
+  useEffect(() => { preload('/dashboard'); preload('/accept-terms'); }, []);
 
   const off = !configured || Boolean(busy);
   const clear = (key) => setErrors((x) => ({ ...x, [key]: undefined }));
@@ -258,9 +261,10 @@ export default function Signup() {
     holding.current = true;
     try {
       await signInWithGoogle();
-      // A new Google account agrees on the next step (Terms, Privacy, YouTube Terms); one that already agreed goes straight on.
-      if (await hasAgreed()) goNext();
-      else navigate(`/accept-terms${nextSuffix(next)}`, { replace: true });
+      // A new Google account agrees on the next step (Terms, Privacy, YouTube Terms); one that already agreed goes
+      // straight on. The form stays, button spinning, until we know which, so nothing flashes in between.
+      navigate(await afterSignIn(next), { replace: true });
+      return;
     } catch (err) {
       fail(err);
     }
@@ -276,13 +280,8 @@ export default function Signup() {
     );
   }
 
-  if (!loading && user && !busy) {
-    return (
-      <AuthLayout brand="benefits">
-        <p role="status" className="text-fg-2">You’re signed in. One moment…</p>
-      </AuthLayout>
-    );
-  }
+  // Opened while already signed in: the effect above sends them on; draw nothing meanwhile.
+  if (!loading && user && !busy) return null;
 
   return (
     <AuthLayout brand="benefits">
