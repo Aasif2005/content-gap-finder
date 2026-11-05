@@ -11,9 +11,9 @@ import { EmailTypoHint } from '../components/auth/EmailTypoHint.jsx';
 import { MIN_NEW_PASSWORD, emailTypoFix, looksLikeEmail, needsVerification, nextSuffix, passwordStrength, safeNext } from '../components/auth/helpers.js';
 import { Link, navigate, useRoute } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { useMe } from '../lib/me.jsx';
+import { useRecordAgreement } from '../lib/consent.jsx';
 import { useVerificationWatch } from '../lib/useVerificationWatch.js';
-import { acceptConsent, checkEmail } from '../lib/api.js';
+import { checkEmail } from '../lib/api.js';
 
 const link = 'font-semibold text-fg underline underline-offset-2 hover:text-focus';
 
@@ -111,7 +111,7 @@ function CheckInbox({ email, onContinue, toDashboard = true }) {
 /** Create an account with email or Google. Draws its own full-page layout (the bare shell). */
 export default function Signup() {
   const { user, loading, configured, signInWithGoogle, signUpWithEmail, discardNewAccount, signOutUser } = useAuth();
-  const { refresh } = useMe();
+  const recordAgreement = useRecordAgreement();
   const { query } = useRoute();
   const next = query.next;
   const goNext = () => navigate(safeNext(next), { replace: true });
@@ -258,9 +258,8 @@ export default function Signup() {
     holding.current = true;
     try {
       await signInWithGoogle();
-      // Ticked the box anyway? Record it now. Otherwise the app sends them to /accept-terms, the step right after Google's own screen.
-      if (agree) await acceptConsent().catch(() => {});
-      await refresh();
+      // The sentence under the Google button is the agreement; record it (the app sends them to /accept-terms if that fails).
+      await recordAgreement();
       goNext();
     } catch (err) {
       fail(err);
@@ -305,7 +304,7 @@ export default function Signup() {
       >
         Sign up with Google
       </GoogleButton>
-      <p className="mt-2 text-[13px] text-fg-3">You’ll agree to the Terms, Privacy Policy and YouTube Terms in the next step.</p>
+      <p className="mt-3 text-[13px] leading-relaxed text-fg-3">By continuing with Google you agree to the <LegalLinks />.</p>
 
       <OrDivider />
 

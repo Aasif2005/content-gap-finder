@@ -45,7 +45,7 @@ export function PageSkeleton() {
  */
 export default function RequireAuth({ required = true, children }) {
   const { user, loading } = useAuth();
-  const { me } = useMe();
+  const { me, loading: meLoading } = useMe();
   const locked = needsVerification(user);
   // Signed in with Google and not yet agreed to the terms: that step comes first (email sign-ups record it as they go).
   const needsTerms = Boolean(me?.user) && !me.user.termsAcceptedAt;
@@ -60,6 +60,9 @@ export default function RequireAuth({ required = true, children }) {
     else if (needsTerms) navigate(`/accept-terms${nextSuffix(currentPathAndSearch())}`, { replace: true });
   }, [required, loading, user, locked, needsTerms]);
 
-  if (required && (loading || !user || locked || needsTerms)) return <AuthSkeleton />;
+  // Signed in but the account's details have not arrived: wait, so a page never shows for a moment before the terms step.
+  const waitingForMe = Boolean(user) && !locked && meLoading;
+
+  if (required && (loading || !user || locked || needsTerms || waitingForMe)) return <AuthSkeleton />;
   return children;
 }

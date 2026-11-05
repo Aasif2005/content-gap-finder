@@ -8,6 +8,7 @@ import { EmailTypoHint } from '../components/auth/EmailTypoHint.jsx';
 import { emailTypoFix, looksLikeEmail, nextSuffix, safeNext } from '../components/auth/helpers.js';
 import { Link, navigate, useRoute } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
+import { useRecordAgreement } from '../lib/consent.jsx';
 
 const link = 'font-semibold text-fg underline underline-offset-2 hover:text-focus';
 
@@ -16,6 +17,8 @@ export default function Login() {
   const { user, loading, configured, signInWithGoogle, signInWithEmail } = useAuth();
   const { query } = useRoute();
   const next = query.next;
+  const recordAgreement = useRecordAgreement();
+  const signingIn = useRef(false); // Google sign-in in progress: stay until the agreement is recorded
 
   // Arriving from "Password updated": say so and have the address waiting.
   const justReset = query.reset === '1';
@@ -34,8 +37,8 @@ export default function Login() {
 
   // Already signed in (or just now): go where they were headed.
   useEffect(() => {
-    if (!loading && user) navigate(safeNext(next), { replace: true });
-  }, [loading, user, next]);
+    if (!loading && user && !signingIn.current) navigate(safeNext(next), { replace: true });
+  }, [loading, user, next, busy]);
 
   // A failed submit moves focus to the message, so a keyboard or screen reader user lands on it.
   useEffect(() => { if (notice) noticeRef.current?.focus(); }, [notice]);
@@ -87,11 +90,14 @@ export default function Login() {
     if (off) return;
     reset();
     setBusy('google');
+    signingIn.current = true;
     try {
       await signInWithGoogle();
+      await recordAgreement(); // the sentence under the button is the agreement (a no-op for an account that already agreed)
     } catch (err) {
       fail(err);
     }
+    signingIn.current = false;
     setBusy(null);
   };
 
@@ -123,6 +129,7 @@ export default function Login() {
       <GoogleButton className="mt-8" onClick={google} loading={busy === 'google'} disabled={off}>
         Continue with Google
       </GoogleButton>
+      <p className="mt-3 text-[13px] leading-relaxed text-fg-3">New here? By continuing with Google you agree to the <LegalLinks />.</p>
 
       <OrDivider />
 
