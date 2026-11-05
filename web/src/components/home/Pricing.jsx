@@ -24,7 +24,7 @@ const PLANS = [
       '20 Make it drafts a day',
       'Niche and channel reports',
       'Every comment linked to its video',
-      'Saved and cached reports are free to reopen',
+      'Saved reports are free to reopen',
     ],
   },
   {
@@ -197,7 +197,7 @@ export default function Pricing() {
       </ul>
 
       <p className="mx-auto mt-6 max-w-[620px] text-center text-[13px] leading-[1.55] text-fg-3">
-        Fresh analyses spend YouTube API quota. Opening a saved or cached report costs nothing on any plan.
+        Fresh analyses count toward your daily allowance. Reopening a saved report costs nothing on any plan.
       </p>
 
       <WaitlistDialog plan={waitlist} onClose={() => setWaitlist(null)} defaultEmail={user?.email ?? ''} />

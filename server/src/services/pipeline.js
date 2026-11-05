@@ -150,7 +150,7 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   }
 
   // 2. Stats + channels, both batched at 50 ids per call.
-  onProgress('stats', `Pulling stats for ${hits.length} videos`, 22);
+  onProgress('stats', `Reading stats for ${hits.length} videos`, 22);
   let videos = await timed('details', () => yt.getVideoDetails(hits.map((h) => h.videoId)));
 
   // Hits that videos.list did not return: deleted, private, or restricted since
@@ -258,7 +258,7 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   let outlierSummary = null;
   let baselinesDone = Promise.resolve();
   if (!channelMode && config.outlier.channels > 0 && ranked.length) {
-    onProgress('stats', 'Measuring each channel against its own median', 33);
+    onProgress('stats', 'Comparing channels', 33);
     const topChannels = [...new Set(ranked.map((v) => v.channelId))].slice(0, config.outlier.channels);
     baselinesDone = timed('baselines', () => yt.getChannelBaselines(topChannels, { minAgeDays: config.outlier.minBaselineAgeDays }))
       .then((baselines) => { outlierSummary = annotateOutliers(ranked, baselines); })
@@ -312,13 +312,12 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
 
   // Live "the model is thinking" progress for the two long LLM waits. ~4 characters a token.
   let atGaps = false;
-  const thinkingLabel = (chars) => (chars ? ` · thinking ≈${Math.max(1, Math.round(chars / 4000))}k tokens` : '');
   let lastClusterK = -1;
   const onClusterThinking = (chars) => {
     const k = Math.round(chars / 4000);
     if (!commentsIn || atGaps || k === lastClusterK) return;
     lastClusterK = k;
-    onProgress('clustering', `Clustering ${ranked.length} videos into topics${thinkingLabel(chars)}`, 55);
+    onProgress('clustering', `Finding patterns across ${ranked.length} videos`, 55);
   };
 
   // Speculative gap mining. Gap mining needs clustering's topics, the comments, and
@@ -356,7 +355,7 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
     const k = Math.round(chars / 4000);
     if (!atGaps || k === lastGapK) return;
     lastGapK = k;
-    onProgress('gaps', `Mining ${count} comments for unmet demand${thinkingLabel(chars)}`, 78);
+    onProgress('gaps', `Finding gaps in ${count} comments`, 78);
   }
 
   // Read in parallel (config.youtube.concurrency), then recorded in rank order,
@@ -422,7 +421,7 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
   trySpeculate(); // if clustering's topics came in before the comments did
 
   // 5. LLM pass A (started above, before the comments).
-  onProgress('clustering', `Clustering ${ranked.length} videos into topics`, 55);
+  onProgress('clustering', `Finding patterns across ${ranked.length} videos`, 55);
   const { topics: rawTopics, avoid: rawAvoid, usage: clusterUsage } = await clustered;
   const clusteringDoneAt = Date.now();
 
@@ -535,7 +534,7 @@ export async function runPipeline(input, reportProgress = () => {}, runId) {
 
   // 7. LLM pass B: gap mining, grounded back to real comments.
   atGaps = true;
-  onProgress('gaps', `Mining ${gapComments.length} comments for unmet demand`, 78);
+  onProgress('gaps', `Finding gaps in ${gapComments.length} comments`, 78);
   // The speculative call is used only when its prompt inputs equal these exactly.
   const useSpeculative = speculative && speculative.key === gapKey;
   // gapsHeadStart: how long the gap call had already been running when clustering finished

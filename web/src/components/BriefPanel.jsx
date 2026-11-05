@@ -9,6 +9,7 @@ import { copyToClipboard } from '../lib/export.js';
 import { useConsent } from '../lib/consent.jsx';
 import { currentPathAndSearch } from '../lib/navigation.js';
 import { cx } from '../lib/cx.js';
+import { publicMessage } from '../lib/runRows.js';
 
 const BAND_TONE = { STRONG: 'good', WORKABLE: 'warn', WEAK: 'neutral' };
 
@@ -535,7 +536,7 @@ export function BriefPanel({ runId, index, sensitive, gap, canMake = true }) {
       setState('idle');
     } catch (err) {
       if (err.cancelled || gone()) return;
-      setError(err.message);
+      setError(publicMessage(err.message, 'Something went wrong. Try again in a minute.'));
       setState('error');
     }
   };

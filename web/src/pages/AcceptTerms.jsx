@@ -91,9 +91,7 @@ export default function AcceptTerms() {
 
   return (
     <AuthLayout brand="benefits">
-      <AuthHeading title="One more step">
-        Gapstronaut reads public videos, statistics and comments through the YouTube API Services, and sends comment text to an AI model to find what viewers are asking for. Saved reports are deleted after 30 days.
-      </AuthHeading>
+      <AuthHeading title="One more step" />
       <p className="mt-6 text-[15px] leading-relaxed text-fg">
         By continuing you agree to the <LegalLinks />.
       </p>

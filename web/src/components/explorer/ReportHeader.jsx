@@ -61,7 +61,7 @@ export function ReportHeader({ result, canRun, busy, formOpen, onToggleForm, onR
 
         <div className="flex flex-wrap items-center gap-2">
           {result.runId && (
-            <Button variant="soft" onClick={share} title="Copies a link to this saved report. Opening it costs no quota.">
+            <Button variant="soft" onClick={share} title="Copies a link to this saved report. Opening it is free.">
               <Link2 aria-hidden className="h-4 w-4" />
               {copied ?? 'Share'}
             </Button>

@@ -254,7 +254,7 @@ export function SearchForm({ onSubmit, busy, initial = {}, mode = 'niche' }) {
 
           {!DEEP_SCAN && !channelMode && (
             <p className="text-[13px] leading-relaxed text-fg-3 sm:col-span-2 lg:col-span-4">
-              Coming soon: deep scan, custom date range and watches. They are switched off until Gapstronaut&rsquo;s YouTube API quota is extended.
+              Coming soon: deep scan, custom date range and watches. They are switched off for now.
             </p>
           )}
 

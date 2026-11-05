@@ -145,7 +145,7 @@ function Allowance({ me, error, loading, refresh }) {
       <div className="flex flex-col gap-[18px]">
         <UsageMeter label="Fresh analyses" used={me.usage.analyses} limit={me.limits.analyses} />
         <UsageMeter label="Make it drafts" used={me.usage.briefs} limit={me.limits.briefs} />
-        <p className="text-[13px] leading-normal text-fg-3">Free during beta. Opening a saved or cached report doesn’t use any.</p>
+        <p className="text-[13px] leading-normal text-fg-3">Free during beta. Reopening a saved report doesn’t use any.</p>
       </div>
     );
   }
@@ -267,7 +267,7 @@ export default function Profile() {
 
         <SettingRow title="Your data" description="What we keep.">
           <p className="text-[15px] leading-relaxed text-fg-2">
-            Your reports and drafts are kept for 30 days, then removed to follow YouTube’s data rules. Your account details stay until you delete the account.{' '}
+            Your reports and drafts are kept for 30 days, then removed. Your account details stay until you delete the account.{' '}
             <Link href="/privacy" className="font-semibold text-fg underline underline-offset-2 hover:text-focus">
               Read the Privacy Policy
             </Link>

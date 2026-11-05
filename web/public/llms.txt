@@ -2,13 +2,13 @@
 
 > Gapstronaut finds the videos a YouTube audience is still asking for. It reads the comments under the videos in a niche or on a channel and lists the questions nobody has answered, each one linked to the real comment that asked it.
 
-Gapstronaut is a web app for YouTube creators. It uses YouTube API Services to read public video, channel and comment data. It does not invent statistics: every gap it reports is backed by at least two real viewer comments, and every score is computed by code, not by a language model.
+Gapstronaut is a web app for YouTube creators. It does not invent statistics: every gap it reports is backed by at least two real viewer comments.
 
 ## What it does
 
 - Niche mode: type a niche and a time window, and get topics, unanswered viewer requests (gaps), viewer objections and an avoid list.
 - Channel mode: analyse one channel's uploads and its viewers' comments.
-- Each report can be exported as Markdown or CSV, and reports stay available for 30 days because of YouTube's data limits.
+- Each report can be exported as Markdown or CSV, and reports stay available for 30 days.
 
 ## What it does not do
 

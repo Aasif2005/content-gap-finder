@@ -26,7 +26,7 @@ export function AllowancePanel({ me, error, loading, onRetry }) {
           <UsageMeter className="mt-5" label="Fresh analyses" used={me.usage.analyses} limit={me.limits.analyses} />
           <UsageMeter className="mt-[18px]" label="Make it drafts" used={me.usage.briefs} limit={me.limits.briefs} />
           <p className="mt-[18px] text-[13px] leading-relaxed text-fg-3">
-            {reset ? `Resets ${reset} (midnight Pacific).` : 'Resets at midnight Pacific.'} Opening a saved or cached report doesn&rsquo;t use any.
+            {reset ? `Resets ${reset} (midnight Pacific).` : 'Resets at midnight Pacific.'} Reopening a saved report doesn&rsquo;t use any.
           </p>
         </>
       )}

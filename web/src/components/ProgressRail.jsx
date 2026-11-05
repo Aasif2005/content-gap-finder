@@ -6,10 +6,10 @@ import { useSmoothProgress } from '../lib/useSmoothProgress.js';
 
 export const PHASES = [
   { key: 'searching', label: 'Finding videos' },
-  { key: 'stats', label: 'Pulling stats' },
+  { key: 'stats', label: 'Reading stats' },
   { key: 'comments', label: 'Reading comments' },
-  { key: 'clustering', label: 'Clustering topics' },
-  { key: 'gaps', label: 'Mining gaps' },
+  { key: 'clustering', label: 'Finding patterns' },
+  { key: 'gaps', label: 'Finding gaps' },
 ];
 
 /**

@@ -182,7 +182,7 @@ export function EvidenceSplit() {
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-info-fg">Evidence</p>
         <h2 id="evidence-h" className={`${h2} mt-3`}>Click any claim. See who said it.</h2>
         <p className={`mt-5 max-w-[520px] text-lg leading-[1.55] ${SOFT}`}>
-          Not “AI says people want this.” The comment itself, who liked it, and the video it was written under. Open it on YouTube and check.
+          Not a guess about what people want. The comment itself, who liked it, and the video it was written under. Open it on YouTube and check.
         </p>
         <dl className="mt-7 grid max-w-[520px] gap-4 text-[15px] leading-[1.5]">
           <div>
@@ -255,7 +255,7 @@ export function CtaCard() {
       <div className="mx-auto max-w-[1000px] rounded-[1.75rem] bg-surface-2 px-6 py-12 text-center md:rounded-[3rem] md:px-16 md:py-20">
         <h2 id="close-h" className={`${h2} mx-auto max-w-[640px]`}>Film it before anyone else does.</h2>
         <p className="mx-auto mt-4 max-w-[560px] text-base leading-[1.55] text-fg-2 md:text-lg">
-          Free while we’re in beta: 3 fresh analyses and 20 Make it drafts a day. Opening a saved or cached report costs nothing. No card needed.
+          Free while we’re in beta: 3 fresh analyses and 20 Make it drafts a day. Reopening a saved report costs nothing. No card needed.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Button href={signedIn ? '/explore' : '/signup'} size="lg" className="!rounded-full !px-8 !text-[17px]">

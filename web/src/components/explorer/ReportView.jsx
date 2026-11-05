@@ -42,8 +42,8 @@ export function ReportView({ result, cacheInfo, busy, canRun, canMake, formOpen,
               <StatRow stats={result.stats} />
             </div>
             {cacheInfo?.cached && (
-              <Badge tone="info" title="Served from cache, so it cost no API quota.">
-                cached {Math.max(1, Math.round((cacheInfo.ageSeconds ?? 0) / 60))}m ago
+              <Badge tone="info" title="A recent report, so it was free to open.">
+                made {Math.max(1, Math.round((cacheInfo.ageSeconds ?? 0) / 60))}m ago
               </Badge>
             )}
           </div>

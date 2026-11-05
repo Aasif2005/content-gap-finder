@@ -69,7 +69,7 @@ export function StatRow({ stats }) {
     <div className="flex sm:grid sm:grid-cols-5 [&>*]:min-w-max [&>*]:flex-1 [&>*]:pr-1.5 [&>*]:sm:pr-0 [&>*]:border-l [&>*]:border-line [&>*]:pl-2.5 [&>*]:sm:pl-5 [&>*:first-child]:border-l-0 [&>*:first-child]:pl-0">
       <Stat label="Videos" value={compact(stats.videosAnalyzed)} sub="Scored uploads" hint="Videos that passed your filters and were scored" />
       <Stat label="Comments" value={compact(stats.commentsAnalyzed)} sub="Highest-signal" hint={`${compact(stats.commentsFetched)} fetched, filtered down to the highest-signal ones`} />
-      <Stat label="Topics" value={stats.topicsFound} sub="Distinct clusters" />
+      <Stat label="Topics" value={stats.topicsFound} sub="Distinct themes" />
       <Stat label="Gaps" value={stats.gapsFound} sub="Unmet requests" />
       <Stat label="Avoid" value={stats.avoidFound} sub="Oversaturated" />
     </div>

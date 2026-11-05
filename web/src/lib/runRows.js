@@ -142,7 +142,7 @@ export function describeRunError(err, { limit, now = new Date(), locale } = {}) 
       kind: 'daily',
       tone: 'warn',
       title: `You’ve used your${n} for today.`,
-      message: `${reset ? `They reset ${reset}.` : 'They reset at midnight Pacific.'} Opening a saved or cached report doesn’t use any.`,
+      message: `${reset ? `They reset ${reset}.` : 'They reset at midnight Pacific.'} Reopening a saved report doesn’t use any.`,
     };
   }
   if (code === 'EMAIL_NOT_VERIFIED') {
@@ -160,7 +160,7 @@ export function describeRunError(err, { limit, now = new Date(), locale } = {}) 
     return {
       kind: 'quota',
       tone: 'info',
-      title: 'Gapstronaut has used its YouTube allowance for today',
+      title: 'Gapstronaut has reached its limit for today',
       message: 'New analyses can’t run until it resets, around midnight Pacific. Opening saved reports still works, and nothing was taken from your own allowance.',
     };
   }
@@ -176,8 +176,12 @@ export function describeRunError(err, { limit, now = new Date(), locale } = {}) 
   if (code === 'JOB_NOT_FOUND') {
     return { kind: 'generic', tone: 'warn', title: 'We lost track of that run', message: err.message };
   }
-  return { kind: 'generic', tone: 'bad', title: 'Analysis failed', message: err?.message || 'Something went wrong. Try again.' };
+  return { kind: 'generic', tone: 'bad', title: 'Analysis failed', message: publicMessage(err?.message, 'Something went wrong on our side. Try again in a minute.') };
 }
+
+// Server errors can carry the name of an internal service or step; people only see a plain sentence.
+const INTERNAL = /deepseek|\bmodel\b|token|\bjson\b|quota|ledger|search\.list|upstream|cluster|prompt|\bllm\b|api key|youtube api|stack|undefined|ECONN|ETIMEDOUT|mongo/i;
+export const publicMessage = (message, fallback) => (message && !INTERNAL.test(message) ? message : fallback);
 
 /** A saved report that would not open. Expired and missing are calm facts, not faults. */
 export function describeLoadError(err) {
@@ -185,5 +189,5 @@ export function describeLoadError(err) {
   if (err?.code === 'RUN_NOT_FOUND' || err?.status === 404) {
     return { kind: 'gone', tone: 'info', title: 'We could not find that report', message: err.message || 'It may have been removed, or the link is mistyped.' };
   }
-  return { kind: 'load', tone: 'bad', title: 'Could not load that report', message: err?.message || 'Try again in a moment.' };
+  return { kind: 'load', tone: 'bad', title: 'Could not load that report', message: publicMessage(err?.message, 'Try again in a moment.') };
 }

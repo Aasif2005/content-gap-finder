@@ -381,7 +381,7 @@ export function ReportSections({ result, canMake, canRun, evidence }) {
             </>
           ) : (
             <EmptyState title="No clear topics">
-              The videos in this window were too scattered to cluster. Try a broader niche or a longer window.
+              The videos in this window did not share enough common themes. Try a broader niche or a longer window.
             </EmptyState>
           )}
           {result.topics.length > 3 && (

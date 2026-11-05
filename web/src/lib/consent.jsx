@@ -106,7 +106,7 @@ function ConsentDialog({ open, onAgreed, onCancel, refresh }) {
       onClose={onCancel}
       dismissible={!busy}
       title="Before your first analysis"
-      description="Gapstronaut reads public videos, statistics and comments through the YouTube API Services, and sends comment text to an AI model to find what viewers are asking for. Saved reports are deleted after 30 days."
+      description="Please agree to continue."
       actions={(
         <>
           <Button variant="ghost" onClick={onCancel} disabled={busy}>Not now</Button>

@@ -7,6 +7,7 @@ import { Badge } from './Bits.jsx';
 import { Button } from './ui/Button.jsx';
 import { Panel } from './ui/Panel.jsx';
 import { Collapse } from './ui/Disclosure.jsx';
+import { publicMessage } from '../lib/runRows.js';
 
 const INTERVALS = [
   { hours: 24, label: 'Daily' },
@@ -46,7 +47,7 @@ export function WatchPanel({ currentQuery, onOpenRun, mode = 'niche' }) {
   const ensureConsent = useConsent();
 
   const load = useCallback(() => {
-    getWatches().then(setState).catch((e) => setError(e.message));
+    getWatches().then(setState).catch((e) => setError(publicMessage(e.message, 'Something went wrong. Try again in a minute.')));
   }, []);
 
   // Loaded on mount (so the count shows before the panel is opened), again
@@ -67,21 +68,21 @@ export function WatchPanel({ currentQuery, onOpenRun, mode = 'niche' }) {
       await createWatch(currentQuery, hours);
       load();
     } catch (e) {
-      setError(e.message);
+      setError(publicMessage(e.message, 'Something went wrong. Try again in a minute.'));
     }
   };
 
   const toggle = async (w) => {
     setBusyId(w.id);
     try { await updateWatch(w.id, { enabled: !w.enabled }); load(); }
-    catch (e) { setError(e.message); }
+    catch (e) { setError(publicMessage(e.message, 'Something went wrong. Try again in a minute.')); }
     finally { setBusyId(null); }
   };
 
   const remove = async (w) => {
     setBusyId(w.id);
     try { await deleteWatch(w.id); load(); }
-    catch (e) { setError(e.message); }
+    catch (e) { setError(publicMessage(e.message, 'Something went wrong. Try again in a minute.')); }
     finally { setBusyId(null); }
   };
 
@@ -137,7 +138,7 @@ export function WatchPanel({ currentQuery, onOpenRun, mode = 'niche' }) {
                     variant="secondary"
                     disabled={full}
                     onClick={() => add(i.hours)}
-                    title={full ? 'Watch limit reached — delete one first.' : `Re-run this query every ${i.hours} hours. Each run spends YouTube quota.`}
+                    title={full ? 'Watch limit reached — delete one first.' : `Re-run this query every ${i.hours} hours. Each run counts toward your daily allowance.`}
                   >
                     {i.label}
                   </Button>

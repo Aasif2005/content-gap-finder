@@ -70,7 +70,7 @@ export const SEO_PAGES = {
       {
         h3: 'Free while we’re in beta.',
         p: [
-          'Start free: 3 fresh analyses and 20 Make it drafts a day. Opening a saved or cached report costs nothing, and no card is needed. Paid plans for heavier use are on the waitlist.',
+          'Start free: 3 fresh analyses and 20 Make it drafts a day. Reopening a saved report costs nothing, and no card is needed. Paid plans for heavier use are on the waitlist.',
         ],
       },
     ],
@@ -96,7 +96,7 @@ export const SEO_PAGES = {
         h3: 'New here?',
         p: [
           'Create a free account in under a minute. During the beta you get 3 fresh analyses and 20 Make it drafts a day, with every claim linked to the viewer comment and the video behind it. No card is needed.',
-          'By continuing you agree to the Terms of Service and the Privacy Policy. Gapstronaut reads public YouTube data through the YouTube API Services, and you agree to the YouTube Terms of Service when you use it.',
+          'By continuing you agree to the Terms of Service, the Privacy Policy and the YouTube Terms of Service.',
         ],
       },
       {
@@ -128,13 +128,13 @@ export const SEO_PAGES = {
         h3: 'How sign-up works',
         p: [
           'Sign up with Google, or with your email and a password of at least eight characters. If you use email we send a link to verify your address, and your account opens as soon as you click it.',
-          'We ask you to agree to the Terms of Service and the Privacy Policy. Gapstronaut reads public YouTube data through the YouTube API Services, and by using it you also agree to the YouTube Terms of Service.',
+          'We ask you to agree to the Terms of Service, the Privacy Policy and the YouTube Terms of Service.',
         ],
       },
       {
         h3: 'Your data',
         p: [
-          'You can delete your account and everything stored with it at any time from your profile. Reports and the data read from YouTube delete themselves after 30 days, apart from anonymous demand history. The Privacy Policy explains what is stored, for how long and who it is shared with.',
+          'You can delete your account and everything stored with it at any time from your profile. The Privacy Policy explains what is stored, for how long and who it is shared with.',
         ],
       },
     ],
