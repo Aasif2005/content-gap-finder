@@ -12,6 +12,7 @@
     { "source": "/signup", "destination": "/seo/signup.html" },
     { "source": "/reset-password", "destination": "/seo/reset-password.html" },
     { "source": "/auth/action", "destination": "/app.html" },
+    { "source": "/accept-terms", "destination": "/app.html" },
     { "source": "/privacy", "destination": "/seo/privacy.html" },
     { "source": "/terms", "destination": "/seo/terms.html" },
     { "source": "/dashboard", "destination": "/app.html" },

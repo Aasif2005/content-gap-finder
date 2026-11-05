@@ -36,7 +36,7 @@ const ready = new Promise((resolve) => { resolveReady = resolve; });
 const ACTIONS = [
   'signInWithGoogle', 'signUpWithEmail', 'signInWithEmail', 'sendReset', 'verifyResetCode', 'confirmReset',
   'applyVerification', 'signOutUser', 'resendVerification', 'deleteAccount', 'getIdToken', 'reloadUser',
-  'checkVerified', 'discardNewAccount',
+  'checkVerified', 'discardNewAccount', 'declineTerms',
 ];
 // Before the real thing arrives: calling an action starts the load and waits for it.
 const waiting = Object.fromEntries(ACTIONS.map((name) => [name, (...args) => { begin(); return ready.then((v) => v[name](...args)); }]));

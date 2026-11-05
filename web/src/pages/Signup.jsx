@@ -258,9 +258,8 @@ export default function Signup() {
     holding.current = true;
     try {
       await signInWithGoogle();
-      // They ticked the box, so record it now rather than asking again later.
-      // Failing here is fine: the app asks at the first analysis.
-      await acceptConsent().catch(() => {});
+      // Ticked the box anyway? Record it now. Otherwise the app sends them to /accept-terms, the step right after Google's own screen.
+      if (agree) await acceptConsent().catch(() => {});
       await refresh();
       goNext();
     } catch (err) {
@@ -302,14 +301,11 @@ export default function Signup() {
         className="mt-7"
         onClick={google}
         loading={busy === 'google'}
-        disabled={off || !agree}
-        aria-describedby={!agree ? 'google-hint' : undefined}
+        disabled={off}
       >
         Sign up with Google
       </GoogleButton>
-      <p id="google-hint" aria-live="polite" className="mt-2 text-[13px] text-fg-3 empty:hidden">
-        {configured && !agree ? 'Tick the agreement below to use Google.' : null}
-      </p>
+      <p className="mt-2 text-[13px] text-fg-3">You’ll agree to the Terms, Privacy Policy and YouTube Terms in the next step.</p>
 
       <OrDivider />
 

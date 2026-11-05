@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Skeleton } from './ui/index.js';
 import { useAuth } from '../lib/auth.jsx';
+import { useMe } from '../lib/me.jsx';
 import { currentPathAndSearch, navigate } from '../lib/router.jsx';
 import { preloadRoute } from '../routes.jsx';
 import { needsVerification, nextSuffix } from './auth/helpers.js';
@@ -44,7 +45,10 @@ export function PageSkeleton() {
  */
 export default function RequireAuth({ required = true, children }) {
   const { user, loading } = useAuth();
+  const { me } = useMe();
   const locked = needsVerification(user);
+  // Signed in with Google and not yet agreed to the terms: that step comes first (email sign-ups record it as they go).
+  const needsTerms = Boolean(me?.user) && !me.user.termsAcceptedAt;
 
   // Download the page's code while auth is still being worked out, not after it.
   useEffect(() => { if (required) preloadRoute(currentPathAndSearch()); }, [required]);
@@ -53,8 +57,9 @@ export default function RequireAuth({ required = true, children }) {
     if (!required || loading) return;
     if (!user) navigate(`/login?next=${encodeURIComponent(currentPathAndSearch())}`, { replace: true });
     else if (locked) navigate(`/signup${nextSuffix(currentPathAndSearch())}`, { replace: true });
-  }, [required, loading, user, locked]);
+    else if (needsTerms) navigate(`/accept-terms${nextSuffix(currentPathAndSearch())}`, { replace: true });
+  }, [required, loading, user, locked, needsTerms]);
 
-  if (required && (loading || !user || locked)) return <AuthSkeleton />;
+  if (required && (loading || !user || locked || needsTerms)) return <AuthSkeleton />;
   return children;
 }

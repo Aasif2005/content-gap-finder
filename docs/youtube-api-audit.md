@@ -205,7 +205,7 @@ with the existing per-user limits and the 6-hour minimum between scheduled re-ru
 
 | Policy | Status | Where |
 |---|---|---|
-| III.A.1: users agree to the YouTube ToS | ✅ Terms say so; consent dialog before first use | `web/src/pages/Legal.jsx`, `web/src/lib/consent.jsx` |
+| III.A.1: users agree to the YouTube ToS | ✅ Terms say so. Email sign-up requires a ticked box; Google sign-up goes to an agree step (`/accept-terms`) right after Google's screen, and the API refuses analyses until agreed | `web/src/pages/Legal.jsx`, `web/src/pages/AcceptTerms.jsx`, `web/src/lib/consent.jsx`, `server/src/routes/api.js` |
 | III.A.2: privacy policy, always reachable, names YouTube API Services, links Google's policy, covers collection, sharing and storage | ✅ | `/privacy`, footer on every page |
 | III.A.2.h–i: revocation link and contact for Authorized Data | Not applicable (no YouTube authorization); a contact is given anyway, and in-app account deletion removes user data | `CONTACT_EMAIL`, Profile page |
 | III.C.5: search results are not modified | ✅ Titles and thumbnails are shown as returned; ranking is ours and labelled | `VideoStrip.jsx` |

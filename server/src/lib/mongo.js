@@ -72,7 +72,14 @@ export async function closeMongo() {
 
 /** Tests point the layer at a throwaway database instead of the real one. */
 export async function dropDatabase() {
-  if (database) await database.dropDatabase();
+  if (!database) return;
+  try {
+    await database.dropDatabase();
+  } catch {
+    // A least-privilege app user (readWrite, no dbAdmin) may not drop a database, but may drop its collections,
+    // and a database with none left is gone from the cluster.
+    for (const { name } of await database.listCollections({}, { nameOnly: true }).toArray()) await database.collection(name).drop().catch(() => {});
+  }
 }
 
 export async function ensureIndexes(d = db()) {

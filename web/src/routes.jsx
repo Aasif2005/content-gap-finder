@@ -16,6 +16,7 @@ const Login = lazy(() => loadPage(() => import('./pages/Login.jsx')));
 const Signup = lazy(() => loadPage(() => import('./pages/Signup.jsx')));
 const ResetPassword = lazy(() => loadPage(() => import('./pages/ResetPassword.jsx')));
 const AuthAction = lazy(() => loadPage(() => import('./pages/AuthAction.jsx')));
+const AcceptTerms = lazy(() => loadPage(() => import('./pages/AcceptTerms.jsx')));
 const NotFound = lazy(() => loadPage(() => import('./pages/NotFound.jsx')));
 
 
@@ -31,6 +32,7 @@ const publicLoaders = {
   '/signup': () => import('./pages/Signup.jsx'),
   '/reset-password': () => import('./pages/ResetPassword.jsx'),
   '/auth': () => import('./pages/AuthAction.jsx'),
+  '/accept-terms': () => import('./pages/AcceptTerms.jsx'),
 };
 export const preloadRoute = (path) => {
   const base = '/' + String(path || '').split(/[?#]/)[0].split('/')[1];
@@ -79,6 +81,7 @@ export const routes = [
   { path: '/signup', indexable: true, title: 'Sign up', fullTitle: 'Create a Free Gapstronaut Account · No Card Needed', description: 'Create a free Gapstronaut account and find the videos your audience is still asking for. No card needed.', shell: 'bare', auth: 'public', element: <Signup /> },
   { path: '/reset-password', indexable: true, title: 'Reset your password', fullTitle: 'Reset Your Gapstronaut Password · Get a Secure Link', description: 'Forgot your Gapstronaut password? Enter your email and we will send a secure link to choose a new one, so you can get back to your saved reports.', shell: 'bare', auth: 'public', element: <ResetPassword /> },
   { path: '/auth/action', title: 'Account link', shell: 'bare', auth: 'public', element: <AuthAction /> },
+  { path: '/accept-terms', title: 'Agree to continue', shell: 'bare', auth: 'public', element: <AcceptTerms /> },
   { path: '/privacy', indexable: true, title: 'Privacy Policy', fullTitle: 'Privacy Policy: What Gapstronaut Collects and Keeps', description: 'What Gapstronaut collects, how long it keeps it, and how to have it deleted.', shell: 'marketing', auth: 'public', element: <PrivacyPage /> },
   { path: '/terms', indexable: true, title: 'Terms of Service', fullTitle: 'Terms of Service: Using Gapstronaut and YouTube Data', description: 'The terms for using Gapstronaut, including the YouTube Terms of Service they bind you to.', shell: 'marketing', auth: 'public', element: <TermsPage /> },
   { path: '/dashboard', title: 'Dashboard', shell: 'app', auth: 'required', element: <Dashboard /> },

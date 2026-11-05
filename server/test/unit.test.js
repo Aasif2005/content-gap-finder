@@ -2739,7 +2739,7 @@ describe('safeNext (post-login redirect)', () => {
     for (const bad of ['/\t/evil.com', '/\n/evil.com', '/\r/evil.com', '/ok\u0000', '/a\\b']) assert.equal(safeNext(bad), '/dashboard');
   });
   test('does not send people back to a sign-in page', () => {
-    for (const bad of ['/login', '/login?next=/x', '/signup', '/reset-password/']) assert.equal(safeNext(bad), '/dashboard');
+    for (const bad of ['/login', '/login?next=/x', '/signup', '/reset-password/', '/accept-terms']) assert.equal(safeNext(bad), '/dashboard');
   });
   test('nextSuffix carries only a safe value onto a link', () => {
     assert.equal(nextSuffix('/explore?x=1'), '?next=%2Fexplore%3Fx%3D1');

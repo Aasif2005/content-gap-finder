@@ -218,6 +218,20 @@ export default function AuthImpl({ setUser, setLoading, onActions }) {
     return true;
   }), []);
 
+  /**
+   * "Cancel" on the agree-to-terms step. Signs out always. A brand-new account (made within the last half hour,
+   * so nothing of theirs is stored yet) is also deleted, so the address is not left half-registered; an older
+   * account that simply has not agreed yet is never deleted by this.
+   */
+  const declineTerms = useCallback(() => guarded(async (a) => {
+    const fb = a.currentUser;
+    if (fb && Date.now() - Date.parse(fb.metadata?.creationTime ?? '') < 30 * 60 * 1000) {
+      await deleteMe().catch(() => {});
+      try { await deleteUser(fb); } catch (err) { if (err?.code !== 'auth/requires-recent-login') throw err; }
+    }
+    await signOut(a).catch(() => {});
+  }), []);
+
   const deleteAccount = useCallback(({ password } = {}) => guarded(async (a) => {
     const fb = a.currentUser;
     if (!fb) throw Object.assign(new Error('Log in first.'), { code: 'AUTH_REQUIRED' });
@@ -248,7 +262,8 @@ export default function AuthImpl({ setUser, setLoading, onActions }) {
     reloadUser,
     checkVerified,
     discardNewAccount,
-  }), [signInWithGoogle, signUpWithEmail, signInWithEmail, sendReset, verifyResetCode, confirmReset, applyVerification, signOutUser, resendVerification, deleteAccount, getIdToken, reloadUser, checkVerified, discardNewAccount]);
+    declineTerms,
+  }), [signInWithGoogle, signUpWithEmail, signInWithEmail, sendReset, verifyResetCode, confirmReset, applyVerification, signOutUser, resendVerification, deleteAccount, getIdToken, reloadUser, checkVerified, discardNewAccount, declineTerms]);
 
   useEffect(() => { onActions(actions); }, [actions, onActions]);
   return null;
