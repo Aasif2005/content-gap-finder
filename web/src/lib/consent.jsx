@@ -33,8 +33,15 @@ export const useConsent = () => useContext(ConsentContext);
  * /accept-terms straight away, so nothing is skipped and no private page is drawn first.
  */
 export function useRecordAgreement() {
+  const { user } = useAuth();
   const { refresh } = useMe();
+  // The sign-in promise can settle a beat before the new account reaches the rest of the app, and `refresh()` answers
+  // null until it has: read the latest value and wait (briefly) for the account, never mistake "not ready" for "not agreed".
+  const latest = useRef(user);
+  latest.current = user;
   return useCallback(async () => {
+    for (let waited = 0; !latest.current && waited < 5000; waited += 50) await new Promise((r) => setTimeout(r, 50));
+    if (!latest.current) return false;
     let current = await refresh();
     if (current?.user && !current.user.termsAcceptedAt) {
       await acceptConsent().catch(() => {});

@@ -17,7 +17,7 @@ import { Link, navigate, useRoute } from '../lib/router.jsx';
  */
 export default function AcceptTerms() {
   const { user, loading, configured, signInWithGoogle, declineTerms } = useAuth();
-  const { me, refresh } = useMe();
+  const { me, refresh, loading: meLoading } = useMe();
   const { query } = useRoute();
   const next = query.next;
   const declined = query.declined === '1';
@@ -81,7 +81,9 @@ export default function AcceptTerms() {
     );
   }
 
-  if (loading || !user || agreed) {
+  // While the account's details are on their way, show nothing to act on: an account that already agreed would see
+  // the buttons and then be sent on without a click.
+  if (loading || !user || agreed || meLoading) {
     return (
       <AuthLayout brand="agree">
         <p role="status" className="text-fg-2">One moment…</p>
