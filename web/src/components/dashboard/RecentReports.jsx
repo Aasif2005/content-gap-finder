@@ -20,7 +20,8 @@ export function RecentReports({ rows }) {
               className="group flex h-full min-h-[168px] flex-col justify-between rounded-panel border border-line bg-surface p-6 shadow-panel transition-colors hover:border-line-strong"
             >
               <span className="flex items-start justify-between gap-3">
-                <span className="text-[12px] font-semibold uppercase tracking-[0.12em] text-fg-3">{r.meta.slice(0, 2).join(' · ')}</span>
+                {/* The right padding keeps the label clear of the delete button that sits over the card's top-right corner. */}
+                <span className="min-w-0 pr-11 text-[12px] font-semibold uppercase tracking-[0.12em] text-fg-3">{r.meta.slice(0, 2).join(' · ')}</span>
                 <ArrowUpRight aria-hidden className="h-4 w-4 shrink-0 text-fg-3 transition-colors group-hover:text-fg" />
               </span>
               <span className="mt-4 block">
