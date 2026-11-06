@@ -1,4 +1,5 @@
 import { createContext, forwardRef, useContext, useId, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { cx } from '../../lib/cx.js';
 
 const FieldContext = createContext(null);
@@ -58,7 +59,7 @@ export const Input = forwardRef(function Input({ trailing, invalid, className, i
           'placeholder:text-fg-3 disabled:cursor-not-allowed disabled:opacity-55',
           // Doubled with an inset ring: in dark mode the alert tone is as light as the focus border.
           bad && '!border-bad-fg shadow-[inset_0_0_0_1px_var(--bad-fg)]',
-          trailing && 'pr-20',
+          trailing && 'pr-14',
           className
         )}
         {...rest}
@@ -68,7 +69,7 @@ export const Input = forwardRef(function Input({ trailing, invalid, className, i
   );
 });
 
-/** A password input with a Show / Hide toggle. Takes the same props as `Input`. */
+/** A password input with an eye toggle (closed eye = hidden, open eye = shown). Takes the same props as `Input`. */
 export const PasswordInput = forwardRef(function PasswordInput({ autoComplete = 'current-password', ...rest }, ref) {
   const [shown, setShown] = useState(false);
   return (
@@ -82,9 +83,10 @@ export const PasswordInput = forwardRef(function PasswordInput({ autoComplete = 
           onClick={() => setShown((s) => !s)}
           aria-pressed={shown}
           aria-label={shown ? 'Hide password' : 'Show password'}
-          className="min-h-11 rounded-lg px-3 text-sm font-medium text-fg-2 transition-colors hover:bg-hover hover:text-fg"
+          title={shown ? 'Hide password' : 'Show password'}
+          className="grid h-11 w-11 place-items-center rounded-full text-fg-3 transition-colors hover:text-fg focus-visible:text-fg"
         >
-          {shown ? 'Hide' : 'Show'}
+          {shown ? <Eye aria-hidden className="h-5 w-5" /> : <EyeOff aria-hidden className="h-5 w-5" />}
         </button>
       )}
       {...rest}
