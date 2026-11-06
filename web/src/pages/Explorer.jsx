@@ -249,7 +249,7 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
       currentJob.current = started.jobId ?? null;
 
       if (started.status === 'done') {
-        // Served straight from cache -- no quota spent, no waiting.
+        // Served straight from cache -- no YouTube quota spent, no waiting (the server still counted it as one of the day's analyses).
         setCacheInfo({ cached: true, ageSeconds: started.cacheAgeSeconds });
         loadedRunId.current = started.result?.runId ?? null;
         setResult(started.result);

@@ -163,7 +163,7 @@ with the existing per-user limits and the 6-hour minimum between scheduled re-ru
 > 67 units of videos, channels, commentThreads and playlistItems calls. We minimise usage:
 >
 > - Identical queries are served from a cache, and an identical query already running is joined
->   instead of re-run, so cached views and repeat visits cost nothing.
+>   instead of re-run, so cached views and repeat visits cost no YouTube quota (each one still counts as one of the person's daily analyses).
 > - videos.list and channels.list are batched 50 ids per call.
 > - Comments are read for at most 25 videos a run.
 > - Each user is rate-limited per hour and per day.

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Compass, Layers, MessageSquareQuote, Radar, Target } from 'lucide-react';
+import { ArrowRight, Compass, Layers, MessageSquareQuote, Radar, Target, Trash2 } from 'lucide-react';
 import { Link } from '../../lib/router.jsx';
 import { Button, EvidenceMark, Panel, Skeleton } from '../ui/index.js';
 import { getRun } from '../../lib/api.js';
 import { useAuth } from '../../lib/auth.jsx';
+import { useRemoveReport } from '../../lib/removeReport.jsx';
 import { compact } from '../../lib/format.js';
 import { WATCHES } from '../../lib/features.js';
 import { cx } from '../../lib/cx.js';
@@ -99,6 +100,7 @@ const RETRY_MS = 1500;
 export function LatestReport({ row, summary }) {
   const { user, loading: authLoading } = useAuth();
   const uid = user?.uid ?? null;
+  const requestRemove = useRemoveReport();
   const expected = summary.gapsFound ?? 0;
   // status: loading | ready | error. A saved copy of this report's top request counts as ready.
   const [top, setTop] = useState(() => {
@@ -150,7 +152,12 @@ export function LatestReport({ row, summary }) {
               {summary.gapsFound ?? 0} gaps · {summary.topicsFound ?? 0} topics · {summary.objectionsFound ?? 0} complaints
             </p>
             <div className="mt-auto pt-8">
-              <Button href={row.href}>Open report <ArrowRight aria-hidden className="h-4 w-4" /></Button>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button href={row.href}>Open report <ArrowRight aria-hidden className="h-4 w-4" /></Button>
+                <Button variant="ghost" onClick={() => requestRemove({ runId: row.id, title: row.title })}>
+                  <Trash2 aria-hidden className="h-4 w-4" /> Remove
+                </Button>
+              </div>
             </div>
           </div>
 

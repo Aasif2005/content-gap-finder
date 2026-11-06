@@ -255,7 +255,7 @@ export function CtaCard() {
       <div className="mx-auto max-w-[1000px] rounded-[1.75rem] bg-surface-2 px-6 py-12 text-center md:rounded-[3rem] md:px-16 md:py-20">
         <h2 id="close-h" className={`${h2} mx-auto max-w-[640px]`}>Film it before anyone else does.</h2>
         <p className="mx-auto mt-4 max-w-[560px] text-base leading-[1.55] text-fg-2 md:text-lg">
-          Free while we’re in beta: 3 fresh analyses and 20 Make it drafts a day. Reopening a saved report costs nothing. No card needed.
+          Free while we’re in beta: 3 analyses and 20 Make it drafts a day. Reopening a saved report costs nothing. No card needed.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Button href={signedIn ? '/explore' : '/signup'} size="lg" className="!rounded-full !px-8 !text-[17px]">

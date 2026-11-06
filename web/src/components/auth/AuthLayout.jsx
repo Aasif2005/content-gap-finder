@@ -35,7 +35,7 @@ const BRANDS = {
   benefits: {
     eyebrow: 'Free during beta',
     phrase: 'Viewers are asking.\nNobody’s answering.\nBe first.',
-    line: 'Three fresh analyses a day. Free.',
+    line: 'Three analyses a day. Free.',
   },
 };
 

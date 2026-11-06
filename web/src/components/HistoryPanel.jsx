@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react';
-import { ChevronDown, Tv } from 'lucide-react';
+import { ChevronDown, Trash2, Tv } from 'lucide-react';
+import { useRemoveReport } from '../lib/removeReport.jsx';
 import { getRuns } from '../lib/api.js';
 import { cx } from '../lib/cx.js';
 import { Badge } from './Bits.jsx';
@@ -28,6 +29,7 @@ export function HistoryPanel({ onOpen, currentRunId, mode = 'niche' }) {
   const [runs, setRuns] = useState(null);
   const [error, setError] = useState(null);
   const panelId = useId();
+  const requestRemove = useRemoveReport();
 
   useEffect(() => {
     if (!open) return;
@@ -70,30 +72,47 @@ export function HistoryPanel({ onOpen, currentRunId, mode = 'niche' }) {
           )}
 
           {runs?.map((r) => (
-            <button
+            <div
               key={r.runId}
-              type="button"
-              onClick={() => onOpen(r.runId)}
-              aria-current={r.runId === currentRunId ? 'true' : undefined}
               className={cx(
-                'flex min-h-14 w-full flex-wrap items-center gap-x-4 gap-y-1 border-b border-line-soft px-5 py-3 text-left transition-colors last:border-0 hover:bg-hover',
+                'flex items-center border-b border-line-soft transition-colors last:border-0 hover:bg-hover',
                 r.runId === currentRunId && 'bg-hover'
               )}
             >
-              <span className="flex min-w-0 flex-1 items-center gap-2 text-base font-semibold text-fg">
-                {r.channelMode && <Tv aria-hidden className="h-4 w-4 shrink-0 text-fg-3" />}
-                <span className="truncate">{r.channelMode ? (r.channelTitle ?? 'channel') : r.niche}</span>
-              </span>
-              <span className="nums font-mono text-[13px] text-fg-2">
-                {r.videosAnalyzed} videos · {r.gapsFound} gaps · {r.topicsFound} topics
-              </span>
-              <span className="flex shrink-0 items-center gap-2">
-                {r.thinPool && <Badge tone="warn" title="Too few videos for the ranking to mean much">thin</Badge>}
-                {r.deepScan && <Badge tone="info">deep</Badge>}
-                <span className="nums font-mono text-[13px] text-fg-3">{r.window}</span>
-                <span className="nums w-16 text-right font-mono text-[13px] text-fg-3">{when(r.generatedAt)}</span>
-              </span>
-            </button>
+              <button
+                type="button"
+                onClick={() => onOpen(r.runId)}
+                aria-current={r.runId === currentRunId ? 'true' : undefined}
+                className="flex min-h-14 min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 py-3 pl-5 pr-2 text-left"
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-2 text-base font-semibold text-fg">
+                  {r.channelMode && <Tv aria-hidden className="h-4 w-4 shrink-0 text-fg-3" />}
+                  <span className="truncate">{r.channelMode ? (r.channelTitle ?? 'channel') : r.niche}</span>
+                </span>
+                <span className="nums font-mono text-[13px] text-fg-2">
+                  {r.videosAnalyzed} videos · {r.gapsFound} gaps · {r.topicsFound} topics
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  {r.thinPool && <Badge tone="warn" title="Too few videos for the ranking to mean much">thin</Badge>}
+                  {r.deepScan && <Badge tone="info">deep</Badge>}
+                  <span className="nums font-mono text-[13px] text-fg-3">{r.window}</span>
+                  <span className="nums w-16 text-right font-mono text-[13px] text-fg-3">{when(r.generatedAt)}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => requestRemove({
+                  runId: r.runId,
+                  title: r.channelMode ? (r.channelTitle ?? 'this channel') : r.niche,
+                  after: (id) => setRuns((list) => list?.filter((x) => x.runId !== id) ?? list),
+                })}
+                aria-label={`Remove ${r.channelMode ? (r.channelTitle ?? 'channel') : r.niche} from your reports`}
+                title="Remove from your reports"
+                className="mr-3 grid h-10 w-10 shrink-0 place-items-center rounded-full text-fg-3 transition-colors hover:text-fg focus-visible:text-fg"
+              >
+                <Trash2 aria-hidden className="h-4 w-4" />
+              </button>
+            </div>
           ))}
         </Panel>
       </Collapse>

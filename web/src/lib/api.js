@@ -207,6 +207,9 @@ export const createWatch = (input, intervalHours, label) =>
 
 export const updateWatch = (id, patch) => request(`/api/watches/${id}`, { method: 'PATCH', body: patch });
 
+/** Takes one report out of the caller's own history; the stored copy is kept for a few hours. */
+export const deleteRun = (runId) => request(`/api/runs/${encodeURIComponent(runId)}`, { method: 'DELETE' }).then(() => true);
+
 export const deleteWatch = (id) => request(`/api/watches/${id}`, { method: 'DELETE' }).then(() => true);
 
 /** What a watch's newest run found that the previous one did not. Costs nothing. */

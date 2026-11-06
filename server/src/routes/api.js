@@ -14,7 +14,7 @@ import { PLANS as WAITLIST_PLANS, normalizeEmail, joinWaitlist } from '../lib/wa
 import * as scheduler from '../services/scheduler.js';
 import { loadUser, requireUser, requireVerified, requireAdmin, forgetUser } from '../lib/auth.js';
 import { parseAvatarDataUrl } from '../lib/avatar.js';
-import { getUser, setAvatar, clearAvatar, getAvatar, upsertUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../lib/db.js';
+import { getUser, setAvatar, clearAvatar, getAvatar, upsertUser, acceptTerms, linkRun, unlinkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../lib/db.js';
 import { limitsFor } from '../lib/limits.js';
 import { domainAcceptsMail } from '../lib/emailDomain.js';
 import { sendMail, mailConfigured } from '../lib/mailer.js';
@@ -166,23 +166,39 @@ router.post('/analyze', requireUser, requireVerified, requireTerms, wrap(async (
   const force = req.body?.force === true;
   const key = runner.analysisKey(input);
 
-  // A cache hit costs nothing, so it bypasses the rate limit entirely --
-  // browsing already-computed reports should never be throttled.
+  const day = quotaDay();
+  // An analysis that is answered from the cache (same search, same settings, within
+  // the cache window) or by joining a run already in flight spends no YouTube
+  // quota, but it is still one of the person's daily analyses. It skips the hourly
+  // limiter: nothing is being spent, so there is nothing to throttle.
+  const takeAnalysis = async () => {
+    const used = await tryConsume(uid, day, 'analyses', limitsFor(req.user).analyses);
+    if (!used.ok) res.status(429).json(dailyLimitBody(used.limit, ['analysis', 'analyses']));
+    return used.ok;
+  };
+  // A joined run's allowance is owed back if it fails for a reason that is not the person's doing.
+  const settleJoin = (jobId) => jobs.whenSettled(jobId, (err, result) => {
+    if (err) { if (!chargedFailure(err)) quietly(refund(uid, day, 'analyses')); }
+    else quietly(linkRun(uid, result?.runId));
+  });
+
   if (!force) {
     const hit = await runner.usableHit(key);
     if (hit) {
+      if (!(await takeAnalysis())) return;
       await linkRun(uid, hit.value?.runId);
       return res.json({ status: 'done', cached: true, cacheAgeSeconds: hit.ageSeconds, result: hit.value });
     }
   }
 
-  // Joining a run already in flight is free too (even with force: the runner
-  // would join it regardless). The link is made when the job settles, on the
-  // server, so it still happens if the browser stops polling.
+  // Joining a run already in flight (even with force: the runner would join it
+  // regardless). The link is made when the job settles, on the server, so it
+  // still happens if the browser stops polling.
   const running = runner.runningJobFor(key);
   if (running) {
+    if (!(await takeAnalysis())) return;
     jobs.addOwner(running, uid);
-    jobs.whenSettled(running, (err, result) => { if (!err) quietly(linkRun(uid, result?.runId)); });
+    settleJoin(running);
     return res.status(202).json({ status: 'running', jobId: running, cached: false, joined: true });
   }
 
@@ -195,9 +211,7 @@ router.post('/analyze', requireUser, requireVerified, requireTerms, wrap(async (
   // The allowance is taken BEFORE the per-person limiter so someone who is out of
   // analyses is told so, rather than burning their hourly limit on refusals and
   // then seeing a misleading "rate limit" message.
-  const day = quotaDay();
-  const used = await tryConsume(uid, day, 'analyses', limitsFor(req.user).analyses);
-  if (!used.ok) return res.status(429).json(dailyLimitBody(used.limit, ['analysis', 'analyses']));
+  if (!(await takeAnalysis())) return;
 
   // The limiter answers 429 itself when it refuses; the allowance taken above was then never used.
   const allowed = await new Promise((resolve) => {
@@ -215,10 +229,10 @@ router.post('/analyze', requireUser, requireVerified, requireTerms, wrap(async (
     throw err;
   }
   if (started.status === 'done' || started.joined) {
-    // Raced into a hit or a join after all: nothing was spent.
-    await refund(uid, day, 'analyses');
+    // Raced into a hit or a join after all: no quota was spent, but it is still
+    // an analysis for this person, so the allowance stays taken.
     if (started.status === 'done') await linkRun(uid, started.result?.runId);
-    else jobs.whenSettled(started.jobId, (err, result) => { if (!err) quietly(linkRun(uid, result?.runId)); });
+    else settleJoin(started.jobId);
   } else {
     // Refunded unless the failure was the person's own doing: see chargedFailure.
     jobs.whenSettled(started.jobId, (err, result) => {
@@ -386,6 +400,18 @@ router.get('/runs/:runId', wrap(async (req, res) => {
   }
   if (!result) return res.status(404).json({ error: 'Report not found or pruned.', code: 'RUN_NOT_FOUND' });
   res.json({ status: 'done', persisted: true, result });
+}));
+
+/**
+ * Takes a report out of the caller's own history. The report is not deleted: other
+ * accounts may hold it and the cache still serves it; once nobody does it is purged
+ * after a grace period (services/retention.js). Always 204: an id that is not theirs
+ * must not be confirmed to exist.
+ */
+const deleteRunLimit = createRateLimit({ perHour: 120, noun: 'report removals' });
+router.delete('/runs/:runId', requireUser, deleteRunLimit, wrap(async (req, res) => {
+  if (store.isRunId(req.params.runId)) await unlinkRun(req.user.uid, req.params.runId);
+  res.status(204).end();
 }));
 
 /**

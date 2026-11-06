@@ -220,7 +220,7 @@ export function PrivacyPage() {
         <H>Deleting data</H>
         <p className="mt-2">
           Reports, drafts, cached results and run logs delete themselves after {dataMaxDays} days, and demand history after 36 months. Your account record stays until you delete your account, which you can do at any
-          time from your profile page. To have a report or anything else removed sooner, contact <Contact email={contactEmail} /> with the report link or search. We act on
+          time from your profile page. Removing a report from your reports takes it out of your history at once; the stored copy is deleted within about 6 hours unless another account still has it. To have a report or anything else removed sooner, contact <Contact email={contactEmail} /> with the report link or search. We act on
           deletion requests within 7 days.
         </p>
       </section>

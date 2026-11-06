@@ -12,6 +12,7 @@ import { RecentRunsProvider } from './lib/recentRuns.jsx';
 import { ToastProvider } from './components/ui/index.js';
 import { ConsentProvider } from './lib/consent.jsx';
 import { LogoutProvider } from './lib/logout.jsx';
+import { RemoveReportProvider } from './lib/removeReport.jsx';
 import { RouterProvider } from './lib/router.jsx';
 import AppFrame from './AppFrame.jsx';
 import routes from './routes.jsx';
@@ -24,9 +25,11 @@ createRoot(document.getElementById('root')).render(
           <ToastProvider>
             <ConsentProvider>
               <LogoutProvider>
-                <RouterProvider routes={routes}>
-                  <AppFrame />
-                </RouterProvider>
+                <RemoveReportProvider>
+                  <RouterProvider routes={routes}>
+                    <AppFrame />
+                  </RouterProvider>
+                </RemoveReportProvider>
               </LogoutProvider>
             </ConsentProvider>
           </ToastProvider>

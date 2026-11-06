@@ -57,6 +57,8 @@ import { charge, analysesAffordable, searchCallsPerAnalysis, unitsPerAnalysis, n
 import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet } from 'jose';
 import { verifyIdToken, normalizeUser } from '../src/lib/firebaseToken.js';
 import { bearerToken, shouldTouch, requireUser, requireVerified, requireAdmin, isAdmin, needsVerification } from '../src/lib/auth.js';
+import { unlinkRun, runHasOwners } from '../src/lib/db.js';
+import { purgeOrphans } from '../src/lib/store.js';
 import { upsertUser, getUser, acceptTerms, linkRun, runIdsFor, usageFor, tryConsume, refund, deleteUserData } from '../src/lib/db.js';
 import { ownRuns, featuredCandidates, featuredReports, trimFeatured } from '../src/lib/store.js';
 import { isPublicSafe } from '../src/lib/publicFilter.js';
@@ -3588,6 +3590,7 @@ describe('analysisKey', () => {
   });
   test('other settings still separate searches', () => {
     assert.notEqual(analysisKey({ ...base, niche: 'x y' }), analysisKey({ ...base, niche: 'x y', window: '30d' }));
+    assert.notEqual(analysisKey({ ...base, niche: 'x y' }), analysisKey({ ...base, niche: 'x y', relevanceLanguage: 'ta' }));
   });
 });
 
@@ -3945,4 +3948,64 @@ test('llms.txt lists only real public pages; vercel.json sends Permissions-Polic
   const all = vercel.headers.find((h) => h.source === '/(.*)').headers;
   const pp = all.find((h) => h.key === 'Permissions-Policy')?.value ?? '';
   for (const f of ['camera=()', 'microphone=()', 'geolocation=()']) assert.ok(pp.includes(f), f);
+});
+
+describe('removing a report from one history', { skip: !process.env.MONGODB_URI && 'MONGODB_URI not set' }, () => {
+  before(() => connectMongo({ uri: process.env.MONGODB_URI, dbName: `gs_test_del_${process.pid}_${Date.now()}` }));
+  after(async () => { await dropDatabase(); await closeMongo(); });
+  const HOUR = 3600 * 1000;
+  const seedRun = (id) => col('runs').insertOne({ _id: id, generatedAt: new Date().toISOString(), result: { runId: id } });
+  const orphanedAt = (id) => col('run_orphans').findOne({ _id: id }).then((d) => d?.orphanedAt);
+
+  test('unlinking removes only the caller\'s row, keeps the report, and is idempotent', async () => {
+    await upsertUser({ uid: 'u1', email: 'u1@x.com' });
+    await upsertUser({ uid: 'u2', email: 'u2@x.com' });
+    await seedRun('r-shared');
+    await linkRun('u1', 'r-shared');
+    await linkRun('u2', 'r-shared');
+    assert.equal(await unlinkRun('u1', 'r-shared'), true);
+    assert.equal(await unlinkRun('u1', 'r-shared'), false);
+    assert.deepEqual(await runIdsFor('u1'), []);
+    assert.deepEqual(await runIdsFor('u2'), ['r-shared']);
+    assert.equal(await runHasOwners('r-shared'), true);
+    assert.equal(await orphanedAt('r-shared'), undefined);
+    assert.ok(await col('runs').findOne({ _id: 'r-shared' }));
+  });
+
+  test('the last holder leaving marks the report; running the search again clears the mark', async () => {
+    await seedRun('r-solo');
+    await linkRun('u1', 'r-solo');
+    await unlinkRun('u1', 'r-solo');
+    assert.ok(await orphanedAt('r-solo'));
+    await linkRun('u1', 'r-solo');
+    assert.equal(await orphanedAt('r-solo'), undefined);
+  });
+
+  test('purgeOrphans waits 6 hours, then removes the report and its drafts without an expired marker', async () => {
+    await seedRun('r-old');
+    await col('briefs').insertOne({ _id: 'r-old-0', runId: 'r-old' });
+    await linkRun('u1', 'r-old');
+    await unlinkRun('u1', 'r-old');
+    assert.deepEqual(await purgeOrphans({ now: Date.now() + 5 * HOUR }), { runs: 0, briefs: 0 });
+    assert.ok(await col('runs').findOne({ _id: 'r-old' }));
+    assert.deepEqual(await purgeOrphans({ now: Date.now() + 7 * HOUR }), { runs: 1, briefs: 1 });
+    assert.equal(await col('runs').findOne({ _id: 'r-old' }), null);
+    assert.equal(await col('expired_runs').findOne({ _id: 'r-old' }), null);
+    assert.equal(await orphanedAt('r-old'), undefined);
+  });
+
+  test('purgeOrphans leaves protected (featured, watched) and re-held reports alone', async () => {
+    for (const id of ['r-feat', 'r-held']) await seedRun(id);
+    await linkRun('u1', 'r-feat');
+    await unlinkRun('u1', 'r-feat');
+    await linkRun('u1', 'r-held');
+    await unlinkRun('u1', 'r-held');
+    // Held again by someone else without going through linkRun's clean-up: the purge re-checks.
+    await col('user_runs').insertOne({ uid: 'u2', runId: 'r-held', createdAt: new Date() });
+    const out = await purgeOrphans({ now: Date.now() + 7 * HOUR, protectedIds: ['r-feat'] });
+    assert.deepEqual(out, { runs: 0, briefs: 0 });
+    assert.ok(await col('runs').findOne({ _id: 'r-feat' }));
+    assert.ok(await col('runs').findOne({ _id: 'r-held' }));
+    assert.equal(await orphanedAt('r-held'), undefined);
+  });
 });

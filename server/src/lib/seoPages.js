@@ -70,7 +70,7 @@ export const SEO_PAGES = {
       {
         h3: 'Free while we’re in beta.',
         p: [
-          'Start free: 3 fresh analyses and 20 Make it drafts a day. Reopening a saved report costs nothing, and no card is needed. Paid plans for heavier use are on the waitlist.',
+          'Start free: 3 analyses and 20 Make it drafts a day. Reopening a saved report costs nothing, and no card is needed. Paid plans for heavier use are on the waitlist.',
         ],
       },
     ],
@@ -95,7 +95,7 @@ export const SEO_PAGES = {
       {
         h3: 'New here?',
         p: [
-          'Create a free account in under a minute. During the beta you get 3 fresh analyses and 20 Make it drafts a day, with every claim linked to the viewer comment and the video behind it. No card is needed.',
+          'Create a free account in under a minute. During the beta you get 3 analyses and 20 Make it drafts a day, with every claim linked to the viewer comment and the video behind it. No card is needed.',
           'By continuing you agree to the Terms of Service, the Privacy Policy and the YouTube Terms of Service.',
         ],
       },
@@ -120,7 +120,7 @@ export const SEO_PAGES = {
       {
         h3: 'What you get for free',
         p: [
-          'Three fresh analyses a day and 20 Make it drafts a day while Gapstronaut is in beta. Niche reports and channel reports, with every comment linked to its video. Saved and cached reports are free to reopen, always.',
+          'Three analyses a day and 20 Make it drafts a day while Gapstronaut is in beta. Niche reports and channel reports, with every comment linked to its video. Reopening a saved report is free, always.',
           'Each analysis reads the comments under the videos that are working in your niche, keeps the ones that sound like unmet demand, and shows you the gaps with the exact comments behind them.',
         ],
       },

@@ -1,9 +1,11 @@
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, Trash2 } from 'lucide-react';
+import { useRemoveReport } from '../../lib/removeReport.jsx';
 import { Link } from '../../lib/router.jsx';
 import { Badge, Panel, Skeleton } from '../ui/index.js';
 
 /** The user's latest reports, newest first. `rows` come from toRunRow (lib/runRows.js). */
 export function RecentReports({ rows }) {
+  const requestRemove = useRemoveReport();
   return (
     <section aria-labelledby="recent-h">
       <div className="flex items-baseline justify-between gap-3">
@@ -12,7 +14,7 @@ export function RecentReports({ rows }) {
       </div>
       <ul className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {rows.map((r) => (
-          <li key={r.id}>
+          <li key={r.id} className="relative">
             <Link
               href={r.href}
               className="group flex h-full min-h-[168px] flex-col justify-between rounded-panel border border-line bg-surface p-6 shadow-panel transition-colors hover:border-line-strong"
@@ -29,6 +31,15 @@ export function RecentReports({ rows }) {
                 <span className="nums mt-3 block border-t border-line-soft pt-3 font-mono text-[13px] text-fg-2">{r.counts}</span>
               </span>
             </Link>
+            <button
+              type="button"
+              onClick={() => requestRemove({ runId: r.id, title: r.title })}
+              aria-label={`Remove ${r.title} from your reports`}
+              title="Remove from your reports"
+              className="absolute right-12 top-[14px] grid h-10 w-10 place-items-center rounded-full text-fg-3 transition-colors hover:bg-hover hover:text-fg focus-visible:bg-hover focus-visible:text-fg"
+            >
+              <Trash2 aria-hidden className="h-4 w-4" />
+            </button>
           </li>
         ))}
       </ul>

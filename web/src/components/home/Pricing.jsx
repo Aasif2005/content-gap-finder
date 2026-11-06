@@ -20,7 +20,7 @@ const PLANS = [
     annual: 0,
     blurb: 'Test a niche before you hit record.',
     features: [
-      '3 fresh analyses a day',
+      '3 analyses a day',
       '20 Make it drafts a day',
       'Niche and channel reports',
       'Every comment linked to its video',
@@ -37,7 +37,7 @@ const PLANS = [
     popular: true,
     blurb: 'For channels that upload every week.',
     features: [
-      '15 fresh analyses a day',
+      '15 analyses a day',
       '100 Make it drafts a day',
       'Deep scan for bigger niches',
       'Watches: re-run a niche on a schedule',
@@ -53,7 +53,7 @@ const PLANS = [
     regularAnnual: 36,
     blurb: 'For teams running more than one channel.',
     features: [
-      '50 fresh analyses a day',
+      '50 analyses a day',
       'Unlimited Make it drafts',
       '10 watches',
       'Analyze client channels',
@@ -197,7 +197,7 @@ export default function Pricing() {
       </ul>
 
       <p className="mx-auto mt-6 max-w-[620px] text-center text-[13px] leading-[1.55] text-fg-3">
-        Fresh analyses count toward your daily allowance. Reopening a saved report costs nothing on any plan.
+        Every analysis counts toward your daily allowance, including one answered from an identical search made in the last few hours. Reopening a saved report costs nothing on any plan.
       </p>
 
       <WaitlistDialog plan={waitlist} onClose={() => setWaitlist(null)} defaultEmail={user?.email ?? ''} />

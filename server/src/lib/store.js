@@ -24,6 +24,7 @@ const DAY_MS = 24 * 3600 * 1000;
 export const HISTORY_MAX_DAYS = 36 * 30;
 
 const validId = (id) => /^[a-zA-Z0-9_-]+$/.test(id ?? '');
+export const isRunId = (id) => validId(id) && id.length <= 64;
 const plain = (x) => JSON.parse(JSON.stringify(x)); // what the old JSON files stored: no undefined, no class instances
 const dropMeta = ({ _id, expireAt, ...rest }) => rest;
 
@@ -281,12 +282,40 @@ export async function sweepExpired({ now = Date.now(), maxDays = config.store.ma
     const at = new Date(now);
     await col('expired_runs').bulkWrite(ids.map((id) => ({ updateOne: { filter: { _id: id }, update: { $setOnInsert: { expiredAt: at } }, upsert: true } })));
     await col('runs').deleteMany({ _id: { $in: ids } });
+    await col('run_orphans').deleteMany({ _id: { $in: ids } });
   }
   // Briefs quote titles and comments and are never younger than their report.
   const briefs = (await col('briefs').deleteMany({ $or: [{ runId: { $in: ids } }, { createdAt: { $lt: new Date(cutoff) } }] })).deletedCount;
   const historyCutoff = new Date(now - HISTORY_MAX_DAYS * DAY_MS).toISOString();
   const historyRows = (await col('niche_history').deleteMany({ generatedAt: { $lt: historyCutoff } })).deletedCount;
   return { runs: ids.length, briefs, historyRows };
+}
+
+const ORPHAN_GRACE_MS = 6 * 3600 * 1000;
+
+/**
+ * Removes reports that no account holds any more, `graceMs` after the last
+ * holder deleted theirs. Until then the report keeps serving as cache and for
+ * anyone with its link. `protectedIds` (featured samples, a watch's latest run)
+ * are never purged. No expired_runs marker is written: that would make the link
+ * say "kept for 30 days", which is not why it is gone.
+ */
+export async function purgeOrphans({ now = Date.now(), graceMs = ORPHAN_GRACE_MS, protectedIds = [] } = {}) {
+  const keep = new Set(protectedIds);
+  const due = await col('run_orphans').find({ orphanedAt: { $lt: new Date(now - graceMs) } }).toArray();
+  let runs = 0;
+  let briefs = 0;
+  for (const { _id: id } of due) {
+    // Re-linked since (or never really orphaned): the marker is stale.
+    if (keep.has(id) || (await col('user_runs').countDocuments({ runId: id }, { limit: 1 })) > 0) {
+      if (!keep.has(id)) await col('run_orphans').deleteOne({ _id: id });
+      continue;
+    }
+    runs += (await col('runs').deleteOne({ _id: id })).deletedCount;
+    briefs += (await col('briefs').deleteMany({ runId: id })).deletedCount;
+    await col('run_orphans').deleteOne({ _id: id });
+  }
+  return { runs, briefs };
 }
 
 /** Whether a run id was deleted by the retention sweep (vs. never existing). */

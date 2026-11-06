@@ -1,7 +1,7 @@
 import { col } from './mongo.js';
 
 /**
- * Accounts and allowances (MongoDB collections users, usage, user_runs).
+ * Accounts and allowances (MongoDB collections users, usage, user_runs, run_orphans).
  * This holds what is about PEOPLE, which has to be counted atomically (a daily
  * allowance read-then-written by two requests would let both through) and
  * deleted by uid on request. Reports, drafts and watches live in their own
@@ -83,6 +83,8 @@ export async function linkRun(uid, runId) {
   if (!uid || !runId) return false;
   const exists = await col('users').countDocuments({ _id: uid }, { limit: 1 });
   if (!exists) return false;
+  // Someone holds this report again, so it is no longer waiting to be purged.
+  await col('run_orphans').deleteOne({ _id: runId });
   try {
     await col('user_runs').insertOne({ uid, runId, createdAt: now() });
     return true;
@@ -90,6 +92,25 @@ export async function linkRun(uid, runId) {
     if (isDuplicate(err)) return false;
     throw err;
   }
+}
+
+/**
+ * Takes a report out of ONE person's history. The report itself stays: other
+ * accounts may hold it and the query cache still serves it. When this was the
+ * last holder it is marked so store.purgeOrphans removes it after the grace period.
+ */
+export async function unlinkRun(uid, runId) {
+  if (!uid || !runId) return false;
+  const r = await col('user_runs').deleteOne({ uid, runId });
+  if (!r.deletedCount) return false;
+  if (!(await runHasOwners(runId))) {
+    await col('run_orphans').updateOne({ _id: runId }, { $setOnInsert: { orphanedAt: now() } }, { upsert: true });
+  }
+  return true;
+}
+
+export async function runHasOwners(runId) {
+  return (await col('user_runs').countDocuments({ runId }, { limit: 1 })) > 0;
 }
 
 export async function runIdsFor(uid) {

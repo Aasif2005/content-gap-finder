@@ -1,7 +1,7 @@
 import { Alert, Button, Panel, Skeleton, UsageMeter } from '../ui/index.js';
 import { resetTimeLabel } from '../../lib/runRows.js';
 
-/** Today's allowance: fresh analyses and Make it drafts, from /api/me. */
+/** Today's allowance: analyses and Make it drafts, from /api/me. */
 export function AllowancePanel({ me, error, loading, onRetry }) {
   if (error && !me) {
     return (

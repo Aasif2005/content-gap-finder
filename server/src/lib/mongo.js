@@ -9,6 +9,7 @@ import { config } from '../config.js';
  *   users          accounts                         _id = Firebase uid
  *   usage          daily allowance counters         unique (uid, day)
  *   user_runs      which reports an account ran     unique (uid, runId)
+ *   run_orphans    reports no account holds any more, purged after a grace period
  *   runs           finished reports + list summary  _id = runId, TTL backstop
  *   expired_runs   "this report was removed" markers
  *   briefs         "Make it" drafts                 TTL backstop
@@ -89,6 +90,7 @@ export async function ensureIndexes(d = db()) {
     ttl('usage', 'createdAt', 60 * DAY),
     d.collection('user_runs').createIndex({ uid: 1, runId: 1 }, { unique: true }),
     d.collection('user_runs').createIndex({ uid: 1, createdAt: -1 }),
+    ttl('run_orphans', 'orphanedAt', 35 * DAY),
     d.collection('runs').createIndex({ generatedAt: -1 }),
     d.collection('runs').createIndex({ nicheKey: 1, generatedAt: -1 }),
     d.collection('runs').createIndex({ channelId: 1, generatedAt: -1 }),
