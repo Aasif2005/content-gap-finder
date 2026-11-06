@@ -6,7 +6,7 @@ import { SUPPORT_EMAIL } from '../lib/support.js';
 
 // Plain-language drafts written against what the app actually does. Review them
 // (and have them reviewed) before publishing: they are not legal advice.
-const EFFECTIVE = '27 October 2026';
+const EFFECTIVE = '5 November 2026';
 const YT_TERMS = 'https://www.youtube.com/t/terms';
 const GOOGLE_PRIVACY = 'https://policies.google.com/privacy';
 
@@ -179,7 +179,10 @@ export function PrivacyPage() {
         <H>Cookies and browser storage</H>
         <p className="mt-2">
           Firebase Authentication keeps your sign-in session in your browser's storage so you stay logged in, and the app
-          stores your light or dark choice and that you have seen the storage notice.
+          stores your light or dark choice and that you have seen the storage notice. While you are signed in, the app also keeps
+          a saved copy of your account numbers (your email address, today's usage and limits) and your recent report list in your
+          browser so pages open faster; it is removed when you log out. A tab also remembers the example reports on the homepage
+          and, while you reset a password, the email address you asked for. {appCheckEnabled && 'To tell people from bots, Google reCAPTCHA (used with Firebase App Check) sets a security cookie (_GRECAPTCHA, up to 6 months) and stores a value in your browser; it is used for that purpose only.'}
           {analyticsConfigured
             ? ' These are needed for the app to work. Optional analytics: if you press Accept on the notice, Google Analytics sets cookies (_ga) and receives your IP address, browser details and the pages you view, with report ids removed. Press Decline, or ignore the notice, and it is never loaded. You can change your choice any time with "Cookie settings" in the footer.'
             : ' The app sets no cookies of its own and runs no analytics or advertising trackers.'}
@@ -196,7 +199,13 @@ export function PrivacyPage() {
             <b>MongoDB Atlas</b> (MongoDB, Inc.) hosts our database, so it stores everything described above: account records,
             reports, drafts, watches and usage counts. It acts on our instructions and does not use the data for its own purposes.
           </li>
-          <li><b>Google (Firebase Authentication)</b> handles sign-in, and so receives your email address, password or Google account details when you log in.{appCheckEnabled && ' Sign-in pages also use Firebase App Check with reCAPTCHA to tell people from bots, which receives your IP address and browser details.'}</li>
+          <li><b>Google (Firebase Authentication)</b> handles sign-in, and so receives your email address, password or Google account details when you log in.{appCheckEnabled && ' Wherever sign-in is loaded (the sign-up and log-in pages, the app, and other pages shortly after you first use them), Firebase App Check with reCAPTCHA Enterprise tells people from bots, and receives your IP address and browser details.'}</li>
+          <li>
+            <b>Resend</b> (Resend, Inc.) delivers the emails we send you, such as the verification and password-reset messages. It receives your email address and the content of that message.
+          </li>
+          <li>
+            <b>Vercel</b> (Vercel Inc.) serves the website and <b>Railway</b> (Railway Corporation) runs the Gapstronaut server. Both process your requests, so they see your IP address and the pages and addresses you request, and keep their own short-lived request logs.
+          </li>
           {analyticsConfigured && <li><b>Google Analytics</b> (Google LLC) receives your IP address, browser details and page views, only if you accept analytics cookies.</li>}
           <li>
             <b>DeepSeek</b> (deepseek.com), an AI model provider, receives video titles, statistics and comment text from
@@ -210,7 +219,7 @@ export function PrivacyPage() {
       <section>
         <H>Deleting data</H>
         <p className="mt-2">
-          Everything except demand history deletes itself after {dataMaxDays} days. You can delete your account at any
+          Reports, drafts, cached results and run logs delete themselves after {dataMaxDays} days, and demand history after 36 months. Your account record stays until you delete your account, which you can do at any
           time from your profile page. To have a report or anything else removed sooner, contact <Contact email={contactEmail} /> with the report link or search. We act on
           deletion requests within 7 days.
         </p>
@@ -224,8 +233,7 @@ export function PrivacyPage() {
       <section>
         <H>Changes and contact</H>
         <p className="mt-2">
-          If this policy changes, the effective date above changes, and you will be asked to accept it again before your
-          next analysis. Questions: <Contact email={contactEmail} />.
+          If this policy changes, the effective date above changes, and we will tell you about important changes in the app or by email. Questions: <Contact email={contactEmail} />.
         </p>
       </section>
     </LegalLayout>
