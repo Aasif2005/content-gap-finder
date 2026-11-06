@@ -284,7 +284,7 @@ export default function Signup() {
   if (!loading && user && !busy) return null;
 
   return (
-    <AuthLayout brand="benefits" info="/signup">
+    <AuthLayout brand="benefits">
       <AuthHeading title="Create your account">No card needed. Takes under a minute.</AuthHeading>
 
       {!configured && <NotConfiguredAlert className="mt-6" />}

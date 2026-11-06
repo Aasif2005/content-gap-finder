@@ -73,7 +73,7 @@ export default function ResetPassword() {
   }
 
   return (
-    <AuthLayout brand="reset" info="/reset-password">
+    <AuthLayout brand="reset">
       <AuthHeading title="Reset your password">
         Enter the email you signed up with and we’ll send you a link to choose a new password.
       </AuthHeading>

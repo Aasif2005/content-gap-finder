@@ -1,5 +1,4 @@
 import { ArrowLeft } from 'lucide-react';
-import { SEO_PAGES } from '../../../../server/src/lib/seoPages.js';
 import { Logo, SPOTS, StudioLights, ThemeToggle, coneClip, floodClip, useStudioFlicker } from '../ui/index.js';
 import { Link } from '../../lib/router.jsx';
 
@@ -127,7 +126,7 @@ function BeamText({ brand, lamps }) {
  * The brand side is a dark studio whose ceiling lights flicker on (StudioLights);
  * its words light up with them.
  */
-export default function AuthLayout({ brand = 'quote', onBack, info, children }) {
+export default function AuthLayout({ brand = 'quote', onBack, children }) {
   const lamps = useStudioFlicker();
   return (
     <div className="min-h-dvh bg-bg text-fg lg:grid lg:grid-cols-[480fr_560fr]">
@@ -171,30 +170,8 @@ export default function AuthLayout({ brand = 'quote', onBack, info, children }) 
           <ThemeToggle className="-mr-2 max-lg:hidden" />
         </div>
         <div className="fade-in mt-4 w-full max-w-[400px] lg:mt-16">{children}</div>
-        {info && <AuthInfo path={info} />}
       </main>
     </div>
-  );
-}
-
-/**
- * Plain words about the page under its form: what the account includes, how it works, what happens to the data.
- * The same copy search engines get in the prerendered page (server/src/lib/seoPages.js), so what a visitor
- * reads and what a crawler reads never disagree. The h1 is the form's own heading, so this starts at h2.
- */
-function AuthInfo({ path }) {
-  const page = SEO_PAGES[path];
-  if (!page) return null;
-  return (
-    <section aria-labelledby="auth-info-h" className="mt-14 w-full max-w-[400px] border-t border-line pt-10 lg:max-w-[460px]">
-      <h2 id="auth-info-h" className="text-[22px] font-semibold tracking-[-0.02em]">{page.h2}</h2>
-      {page.sections.map((s) => (
-        <div key={s.h3} className="mt-6">
-          <h3 className="text-[16px] font-semibold">{s.h3}</h3>
-          {s.p.map((t) => <p key={t} className="mt-2 text-[15px] leading-relaxed text-fg-2">{t}</p>)}
-        </div>
-      ))}
-    </section>
   );
 }
 
