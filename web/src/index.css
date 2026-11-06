@@ -372,14 +372,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   .marquee > ul[aria-hidden] { display: none; }
 }
 
-/* Footer entrance, kept slow and quiet: the panel never moves. A glow warms its
-   top edge and each column fades up a few pixels, one after another, once. */
-.footer-glow {
-  background: radial-gradient(60% 100% at 50% 0%, color-mix(in oklab, var(--focus) 22%, transparent), transparent 70%);
-  opacity: 0;
-  transition: opacity 1800ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-.footer-rise[data-seen="true"] .footer-glow { opacity: 1; }
+/* Footer entrance, kept slow and quiet: the panel never moves. Each column
+   fades up a few pixels, one after another, once. */
 .footer-item {
   opacity: 0;
   transform: translateY(14px);
@@ -388,7 +382,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 }
 .footer-rise[data-seen="true"] .footer-item { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) {
-  .footer-glow, .footer-item { opacity: 1; transform: none; transition: none; }
+  .footer-item { opacity: 1; transform: none; transition: none; }
 }
 
 /* --- Shiny call-to-action ------------------------------------------------------

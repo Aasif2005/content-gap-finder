@@ -80,7 +80,6 @@ export default function Dashboard() {
   return (
     <div className="pb-8">
       <div className="relative pt-4 sm:pt-8">
-        <span aria-hidden className="pointer-events-none absolute -top-24 left-1/2 h-72 w-[min(900px,100%)] -translate-x-1/2 rounded-full bg-focus/10 blur-3xl" />
         <h1 className="relative text-[44px] font-semibold leading-[1.05] tracking-[-0.035em] sm:text-[60px]">{greeting}</h1>
         <p className="relative mt-3 text-[18px] text-fg-2">Search a niche, or pick up where you left off.</p>
         <div className="relative">

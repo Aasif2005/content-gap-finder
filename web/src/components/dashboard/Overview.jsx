@@ -59,7 +59,6 @@ export function EntryCards() {
           href={href}
           className="group relative flex min-h-[220px] flex-col justify-between overflow-hidden rounded-panel border border-line bg-surface p-7 shadow-panel transition-colors hover:border-line-strong sm:p-8"
         >
-          <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-focus/10 blur-3xl" />
           <div className="relative">
             <span className="grid h-11 w-11 place-items-center rounded-full bg-surface-2 text-focus">
               <Icon aria-hidden className="h-5 w-5" />

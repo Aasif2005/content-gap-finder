@@ -341,7 +341,6 @@ export function Explorer({ mode = 'niche', routeRunId = null }) {
         <section aria-label={result ? 'Edit your search' : undefined} className={result ? 'mx-auto mb-8 max-w-[760px]' : undefined}>
           {!result ? (
             <div className="relative mx-auto max-w-[760px] pb-10 pt-8 text-center sm:pt-16">
-              <span aria-hidden className="pointer-events-none absolute left-1/2 top-0 h-72 w-[min(820px,100%)] -translate-x-1/2 rounded-full bg-focus/10 blur-3xl" />
               <p className="relative text-[13px] font-semibold uppercase tracking-[0.16em] text-fg-3">{page.eyebrow}</p>
               <h1 className="relative mt-4 text-[44px] font-semibold leading-[1.04] tracking-[-0.035em] sm:text-[64px]">{page.navLabel}</h1>
               <p className="relative mx-auto mt-4 max-w-[46ch] text-[18px] leading-relaxed text-fg-2">{page.tagline}</p>

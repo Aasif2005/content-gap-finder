@@ -33,8 +33,7 @@ const link = 'inline-flex min-h-11 items-center text-[17px] text-fg-2 transition
 
 /**
  * The homepage footer: a full-width dark panel with curved top corners. As it
- * scrolls into view a soft glow warms the top edge and the columns fade up one
- * after another, slowly and once. Reduced motion shows it already in place. It keeps what the YouTube API
+ * scrolls into view the columns fade up one after another, slowly and once. Reduced motion shows it already in place. It keeps what the YouTube API
  * terms require: the Privacy Policy, YouTube's terms, the "developed with
  * YouTube" line and the not-affiliated notice.
  */
@@ -53,7 +52,6 @@ export function SiteFooter() {
   return (
     <div className="theme-night mt-16 bg-transparent md:mt-24">
     <footer ref={ref} data-seen={seen} className="footer-rise relative isolate overflow-hidden rounded-t-[1.75rem] bg-surface text-fg md:rounded-t-[3rem]">
-      <div aria-hidden className="footer-glow pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px]" />
       <div className="mx-auto max-w-[1200px] px-6 pb-8 pt-14 sm:px-10 md:pt-24">
         <div className="grid gap-12 lg:grid-cols-[1.2fr_repeat(3,1fr)] lg:gap-8">
           <div className="footer-item" {...step(0)}>
