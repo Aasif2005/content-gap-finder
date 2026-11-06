@@ -127,7 +127,7 @@ export const config = {
     maxWatches: num(process.env.USER_MAX_WATCHES, 2),
     // Accounts that get a bigger allowance for testing (comma-separated emails in .env).
     testerEmails: (process.env.TESTER_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean),
-    testerDailyAnalyses: num(process.env.TESTER_DAILY_ANALYSES, 100),
+    testerDailyAnalyses: num(process.env.TESTER_DAILY_ANALYSES, 15),
     testerDailyBriefs: num(process.env.TESTER_DAILY_BRIEFS, 100),
     // Accounts that may read the operator-only API (run logs, quota). Empty = nobody.
     adminEmails: (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean),
