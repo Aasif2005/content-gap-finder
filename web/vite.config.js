@@ -22,6 +22,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // The sign-in pages read their copy from server/src/lib/seoPages.js (the same text crawlers get).
+    fs: { allow: ['..'] },
     // Keeps the browser on one origin so API keys never reach the client.
     proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: true } },
   },

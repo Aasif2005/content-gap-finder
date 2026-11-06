@@ -36,7 +36,8 @@ if (!origin) {
 
 const html = withFontPreload(absoluteImages(fs.readFileSync(path.join(dist, 'index.html'), 'utf8'), origin));
 // The plain app shell: every private route (dashboard, reports...) and the 404 page get it.
-fs.writeFileSync(path.join(dist, 'app.html'), withBoot(html));
+// Signed-in screens and share links have no words for a search result to show, so they stay out of the index.
+fs.writeFileSync(path.join(dist, 'app.html'), withBoot(html).replace('</head>', () => '    <meta name="robots" content="noindex" />\n  </head>'));
 fs.writeFileSync(path.join(dist, '404.html'), html); // the app draws its own NotFound page
 fs.writeFileSync(path.join(dist, 'robots.txt'), robotsTxt(origin));
 fs.writeFileSync(path.join(dist, 'sitemap.xml'), sitemapXml(origin));

@@ -114,7 +114,7 @@ export default function Login() {
   if (!loading && user && !signingIn.current) return null;
 
   return (
-    <AuthLayout>
+    <AuthLayout info="/login">
       <AuthHeading title="Welcome back">
         Log in to run analyses and open your saved reports.
       </AuthHeading>

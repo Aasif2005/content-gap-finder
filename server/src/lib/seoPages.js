@@ -88,7 +88,7 @@ export const SEO_PAGES = {
       {
         h3: 'Pick up where you left off',
         p: [
-          'Your saved reports are waiting. Gapstronaut keeps each analysis you run, so you can reopen a niche, review the viewer comments behind a gap and carry on writing the plan or script. Opening a saved or cached report is always free and does not use your daily allowance.',
+          'Your saved reports are waiting. Gapstronaut keeps each analysis you run, so you can reopen a niche, review the viewer comments behind a gap and carry on writing the plan or script. Reopening a saved report is free and does not use your daily allowance.',
           'Log in with Google or with your email and password. If you have forgotten your password, use the reset link on the log-in page and we will email you a link to choose a new one.',
         ],
       },
@@ -98,6 +98,10 @@ export const SEO_PAGES = {
           'Create a free account in under a minute. During the beta you get 3 analyses and 20 Make it drafts a day, with every claim linked to the viewer comment and the video behind it. No card is needed.',
           'By continuing you agree to the Terms of Service, the Privacy Policy and the YouTube Terms of Service.',
         ],
+      },
+      {
+        h3: 'Cannot log in?',
+        p: ['Use the same sign-in method you signed up with: Google, or your email and password. If you have forgotten your password, ask for a reset link. Still stuck? Write to the contact address in our Privacy Policy and we will help.'],
       },
       {
         h3: 'What Gapstronaut does',
@@ -130,6 +134,10 @@ export const SEO_PAGES = {
           'Sign up with Google, or with your email and a password of at least eight characters. If you use email we send a link to verify your address, and your account opens as soon as you click it.',
           'We ask you to agree to the Terms of Service, the Privacy Policy and the YouTube Terms of Service.',
         ],
+      },
+      {
+        h3: 'Who it is for',
+        p: ['Gapstronaut is for YouTube creators, and for the people who plan videos with them. Search a niche to see what viewers keep asking for that nobody has made yet, or paste a channel to see which of its videos work and what its own viewers want next.'],
       },
       {
         h3: 'Your data',
@@ -167,6 +175,10 @@ export const SEO_PAGES = {
         p: [
           'Check your spam or junk folder if the email has not arrived within a minute or two. If the link has expired or has already been used, go back and ask for a new one.',
         ],
+      },
+      {
+        h3: 'Keep your account safe',
+        p: ['Choose a password you do not use anywhere else and keep it to yourself. Gapstronaut will never ask you for your password by email or message.'],
       },
       {
         h3: 'Signed up with Google?',

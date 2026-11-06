@@ -60,5 +60,6 @@ export function renderIndex(html, origin, path) {
   // Public pages get their own title, tags and a plain-HTML snapshot (lib/seoPages.js).
   if (seoPageFor(path)) return renderSeoPage(withImage, origin, trimSlashes(path));
   const url = `${origin}${trimSlashes(path)}`;
-  return withImage.replace('</head>', `  <link rel="canonical" href="${url}" />\n    <meta property="og:url" content="${url}" />\n  </head>`);
+  // Account screens and share links are not search results.
+  return withImage.replace('</head>', `  <link rel="canonical" href="${url}" />\n    <meta property="og:url" content="${url}" />\n    <meta name="robots" content="noindex" />\n  </head>`);
 }
