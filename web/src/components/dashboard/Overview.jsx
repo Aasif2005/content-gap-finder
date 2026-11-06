@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Compass, Layers, MessageSquareQuote, Radar, Target, Trash2 } from 'lucide-react';
+import { ArrowRight, Compass, Layers, MessageSquareQuote, Radar, Target } from 'lucide-react';
 import { Link } from '../../lib/router.jsx';
 import { Button, EvidenceMark, Panel, Skeleton } from '../ui/index.js';
 import { getRun } from '../../lib/api.js';
@@ -155,7 +155,7 @@ export function LatestReport({ row, summary }) {
               <div className="flex flex-wrap items-center gap-3">
                 <Button href={row.href}>Open report <ArrowRight aria-hidden className="h-4 w-4" /></Button>
                 <Button variant="ghost" onClick={() => requestRemove({ runId: row.id, title: row.title })}>
-                  <Trash2 aria-hidden className="h-4 w-4" /> Remove
+                  Delete
                 </Button>
               </div>
             </div>

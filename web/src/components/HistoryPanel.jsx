@@ -106,8 +106,8 @@ export function HistoryPanel({ onOpen, currentRunId, mode = 'niche' }) {
                   title: r.channelMode ? (r.channelTitle ?? 'this channel') : r.niche,
                   after: (id) => setRuns((list) => list?.filter((x) => x.runId !== id) ?? list),
                 })}
-                aria-label={`Remove ${r.channelMode ? (r.channelTitle ?? 'channel') : r.niche} from your reports`}
-                title="Remove from your reports"
+                aria-label={`Delete ${r.channelMode ? (r.channelTitle ?? 'channel') : r.niche}`}
+                title="Delete report"
                 className="mr-3 grid h-10 w-10 shrink-0 place-items-center rounded-full text-fg-3 transition-colors hover:text-fg focus-visible:text-fg"
               >
                 <Trash2 aria-hidden className="h-4 w-4" />

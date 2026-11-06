@@ -36,7 +36,7 @@ function RemoveDialog({ target, onClose }) {
       target.after?.(target.runId);
       reload();
       onClose();
-      toast.success('Report removed.');
+      toast.success('Report deleted.');
     } catch (err) {
       toast.error(err.message);
     }
@@ -48,12 +48,12 @@ function RemoveDialog({ target, onClose }) {
       open={Boolean(target)}
       onClose={onClose}
       dismissible={!busy}
-      title="Remove this report?"
-      description={`“${target?.title ?? 'This report'}” leaves your reports. Running the same search again brings it back and uses one of your daily analyses.`}
+      title="Delete this report?"
+      description={`“${target?.title ?? 'This report'}” will be deleted from your reports.`}
       actions={(
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={remove} loading={busy}>Remove</Button>
+          <Button onClick={remove} loading={busy}>Delete</Button>
         </>
       )}
     />

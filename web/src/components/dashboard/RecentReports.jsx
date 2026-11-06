@@ -34,8 +34,8 @@ export function RecentReports({ rows }) {
             <button
               type="button"
               onClick={() => requestRemove({ runId: r.id, title: r.title })}
-              aria-label={`Remove ${r.title} from your reports`}
-              title="Remove from your reports"
+              aria-label={`Delete ${r.title}`}
+              title="Delete report"
               className="absolute right-12 top-[14px] grid h-10 w-10 place-items-center rounded-full text-fg-3 transition-colors hover:bg-hover hover:text-fg focus-visible:bg-hover focus-visible:text-fg"
             >
               <Trash2 aria-hidden className="h-4 w-4" />
