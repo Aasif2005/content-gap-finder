@@ -3,6 +3,7 @@ import { ArrowLeft, CircleCheck, MailCheck, MailX } from 'lucide-react';
 import { Alert, Button, Field, PasswordInput } from '../components/ui/index.js';
 import AuthLayout, { AuthHeading } from '../components/auth/AuthLayout.jsx';
 import { PasswordStrength } from '../components/auth/PasswordStrength.jsx';
+import { newPasswordError } from '../components/auth/helpers.js';
 import { Link, navigate, useRoute } from '../lib/router.jsx';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -39,10 +40,13 @@ function ChoosePassword({ code }) {
   const [phase, setPhase] = useState('checking'); // checking | form | done | dead
   const [forEmail, setForEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState(null);
+  const [confirmError, setConfirmError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef(null);
+  const confirmRef = useRef(null);
   const doneRef = useRef(null);
 
   useEffect(() => {
@@ -67,8 +71,11 @@ function ChoosePassword({ code }) {
     e.preventDefault();
     if (busy) return;
     setError(null);
+    setConfirmError(null);
     setNotice(null);
-    if (password.length < 8) { setError('Use at least 8 characters.'); inputRef.current?.focus(); return; }
+    const problem = newPasswordError(password, confirm);
+    if (problem?.field === 'password') { setError(problem.message); inputRef.current?.focus(); return; }
+    if (problem) { setConfirmError(problem.message); confirmRef.current?.focus(); return; }
     setBusy(true);
     try {
       await confirmReset(code, password);
@@ -87,7 +94,7 @@ function ChoosePassword({ code }) {
 
   if (phase === 'done') {
     return (
-      <AuthLayout>
+      <AuthLayout brand="newpass">
         <div ref={doneRef} tabIndex={-1} className="focus:outline-none">
           <Icon as={CircleCheck} />
           <h1 className="mt-5 text-balance text-4xl font-semibold leading-[1.1] tracking-[-0.03em]">Password updated</h1>
@@ -101,7 +108,7 @@ function ChoosePassword({ code }) {
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout brand="newpass">
       <AuthHeading title="Choose a new password">
         for <span className="break-all font-medium text-fg">{forEmail}</span>
       </AuthHeading>
@@ -115,6 +122,16 @@ function ChoosePassword({ code }) {
             placeholder="At least 8 characters"
             value={password}
             onChange={(e) => { setPassword(e.target.value); setError(null); }}
+          />
+        </Field>
+        <Field label="Confirm new password" error={confirmError}>
+          <PasswordInput
+            ref={confirmRef}
+            name="confirm-new-password"
+            autoComplete="new-password"
+            placeholder="Type it again"
+            value={confirm}
+            onChange={(e) => { setConfirm(e.target.value); setConfirmError(null); }}
           />
         </Field>
         <Button type="submit" size="lg" className="mt-1" loading={busy}>Save password</Button>

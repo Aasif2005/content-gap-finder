@@ -32,6 +32,11 @@ const BRANDS = {
     phrase: 'Forgot it?\nHappens to\nthe best astronauts.',
     line: 'We’ll send a link, and you’re back in orbit in a minute.',
   },
+  newpass: {
+    eyebrow: 'Cleared for launch',
+    phrase: 'New password.\nSame mission.\nOff you go.',
+    line: 'Make it a good one, then we’ll take it from here.',
+  },
   benefits: {
     eyebrow: 'Free during beta',
     phrase: 'Viewers are asking.\nNobody’s answering.\nBe first.',

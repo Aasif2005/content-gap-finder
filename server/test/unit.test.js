@@ -51,7 +51,7 @@ import {
   resetTimeLabel, reportMeta, reportName, describeRunError, describeLoadError,
 } from '../../web/src/lib/runRows.js';
 import { authError } from '../../web/src/lib/authErrors.js';
-import { safeNext, nextSuffix, passwordStrength, looksLikeEmail, emailTypoFix, MIN_NEW_PASSWORD, needsVerification as clientNeedsVerification } from '../../web/src/components/auth/helpers.js';
+import { newPasswordError, safeNext, nextSuffix, passwordStrength, looksLikeEmail, emailTypoFix, MIN_NEW_PASSWORD, needsVerification as clientNeedsVerification } from '../../web/src/components/auth/helpers.js';
 import { memberSince, resetsText, normalizeName, deleteConfirmed } from '../../web/src/components/profile/helpers.js';
 import { charge, analysesAffordable, searchCallsPerAnalysis, unitsPerAnalysis, nextQuotaReset, quotaDay } from '../src/lib/quota.js';
 import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet } from 'jose';
@@ -4007,5 +4007,19 @@ describe('removing a report from one history', { skip: !process.env.MONGODB_URI 
     assert.ok(await col('runs').findOne({ _id: 'r-feat' }));
     assert.ok(await col('runs').findOne({ _id: 'r-held' }));
     assert.equal(await orphanedAt('r-held'), undefined);
+  });
+});
+
+describe('new password and its confirmation', () => {
+  test('too short is reported on the password, before the match is checked', () => {
+    assert.deepEqual(newPasswordError('short', 'other'), { field: 'password', message: 'Use at least 8 characters.' });
+    assert.deepEqual(newPasswordError('', ''), { field: 'password', message: 'Use at least 8 characters.' });
+  });
+  test('a different confirmation is reported on the confirmation', () => {
+    assert.deepEqual(newPasswordError('long enough 1', 'long enough 2'), { field: 'confirm', message: 'The passwords don’t match.' });
+    assert.equal(newPasswordError('long enough 1', '')?.field, 'confirm');
+  });
+  test('matching passwords of enough length pass', () => {
+    assert.equal(newPasswordError('long enough 1', 'long enough 1'), null);
   });
 });

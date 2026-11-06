@@ -98,6 +98,16 @@ export const MIN_PASSWORD = 6;
 /** What a new account must use. Logging in keeps Firebase's own floor, so older accounts still work. */
 export const MIN_NEW_PASSWORD = 8;
 
+/**
+ * What is wrong with a new password and its confirmation, as { field, message }, or null when
+ * both are fine. Length comes first so the person fixes the password before retyping it.
+ */
+export function newPasswordError(password, confirm) {
+  if ([...String(password ?? '')].length < MIN_NEW_PASSWORD) return { field: 'password', message: `Use at least ${MIN_NEW_PASSWORD} characters.` };
+  if (password !== confirm) return { field: 'confirm', message: 'The passwords don’t match.' };
+  return null;
+}
+
 const COMMON = new Set([
   'password', 'password1', 'password12', 'password123', '12345678', '123456789', '1234567890', '123456',
   'qwerty', 'qwertyui', 'qwerty123', 'abcdefgh', 'abc12345', 'iloveyou', 'letmein', 'welcome1', 'admin123',
