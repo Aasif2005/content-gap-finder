@@ -78,7 +78,7 @@ export default function Dashboard() {
   return (
     <div className="pb-8">
       <div className="relative pt-4 sm:pt-8">
-        <h1 className="relative text-[44px] font-semibold leading-[1.05] tracking-[-0.035em] sm:text-[60px]">Mission control is ready.</h1>
+        <h1 className="relative text-[44px] font-semibold leading-[1.05] tracking-[-0.035em] sm:text-[60px]">Find it before they do.</h1>
         <p className="relative mt-3 text-[18px] text-fg-2">Search a niche, or pick up where you left off.</p>
         <div className="relative">
           <QuickSearch
