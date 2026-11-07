@@ -74,13 +74,11 @@ export default function Dashboard() {
   const watchRows = useMemo(() => (watches.data?.watches ?? []).map((w) => toWatchRow(w)), [watches.data]);
 
   const runList = runs.data?.runs ?? [];
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning.' : hour < 18 ? 'Good afternoon.' : 'Good evening.';
 
   return (
     <div className="pb-8">
       <div className="relative pt-4 sm:pt-8">
-        <h1 className="relative text-[44px] font-semibold leading-[1.05] tracking-[-0.035em] sm:text-[60px]">{greeting}</h1>
+        <h1 className="relative text-[44px] font-semibold leading-[1.05] tracking-[-0.035em] sm:text-[60px]">Mission control is ready.</h1>
         <p className="relative mt-3 text-[18px] text-fg-2">Search a niche, or pick up where you left off.</p>
         <div className="relative">
           <QuickSearch
