@@ -3403,6 +3403,16 @@ describe('site address, sitemap and real 404s', () => {
     const robots = robotsTxt('https://gap.example');
     assert.match(robots, /^Sitemap: https:\/\/gap\.example\/sitemap\.xml$/m);
     assert.match(robots, /^Disallow: \/api\/$/m);
+    // Search and answer engines may use the pages; training may not.
+    assert.match(robots, /^Content-Signal: search=yes, ai-input=yes, ai-train=no$/m);
+    // Pages that carry `noindex` must stay crawlable, or the tag is never seen.
+    assert.doesNotMatch(robots, /Disallow: \/(dashboard|profile)/);
+  });
+
+  test('every sitemap URL carries a real lastmod date', () => {
+    const xml = sitemapXml('https://gap.example');
+    const dates = xml.match(/<lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/g) ?? [];
+    assert.equal(dates.length, SITEMAP_PATHS.length);
   });
 
   test('previews get an absolute image; only known pages get a canonical link', () => {
@@ -3798,7 +3808,7 @@ test('sendFirebaseEmail asks Firebase to send, without asking for the link', asy
 });
 
 // --- prerendered public pages (what a crawler with no JavaScript sees) -----------
-import { SEO_PAGES, renderSeoPage, snapshotText } from '../src/lib/seoPages.js';
+import { SEO_PAGES, renderSeoPage, snapshotText, guideDate } from '../src/lib/seoPages.js';
 
 describe('prerendered public pages', () => {
   const template = '<!doctype html><html><head>\n<title>Gapstronaut</title>\n<meta name="description" content="x" />\n<meta property="og:title" content="Gapstronaut" />\n<meta property="og:image" content="https://gapstronaut.com/og.png" />\n</head><body><div id="root"></div></body></html>';
@@ -3829,7 +3839,8 @@ describe('prerendered public pages', () => {
       assert.ok(title.length >= 30 && title.length <= 60, `${route} title is ${title.length} chars`);
       assert.ok(!html.includes('undefined'), `${route} renders a missing field`);
       assert.equal((html.match(/<h1>/g) ?? []).length, 1, route);
-      assert.equal((html.match(/<h2>/g) ?? []).length, 1, route);
+      // A guide gives every section its own h2; every other page has one h2 and h3 sections.
+      assert.equal((html.match(/<h2>/g) ?? []).length, page.guide ? page.sections.length : 1, route);
       const url = `${origin}${route}`;
       assert.ok(html.includes(`<link rel="canonical" href="${url}" />`), route);
       assert.ok(html.includes(`<meta property="og:url" content="${url}" />`), route);
@@ -3839,6 +3850,21 @@ describe('prerendered public pages', () => {
       assert.ok(snapshotText(page).split(' ').length >= 200, `${route} has ${snapshotText(page).split(' ').length} words`);
       assert.ok(html.includes('<div id="root"><div class="seo-snap">'), route);
       assert.equal((html.match(/<title>/g) ?? []).length, 1, route);
+    }
+  });
+
+  test('guides: dated, long enough, no product internals, and an Article block with no invented ratings', () => {
+    const banned = /deepseek|language model|\bLLM\b|\bAI\b|\btokens?\b|quota|cluster|algorithm score/i;
+    for (const [route, page] of Object.entries(SEO_PAGES).filter(([, p]) => p.guide)) {
+      assert.match(page.updated, /^\d{1,2} [A-Z][a-z]+ \d{4}$/, route);
+      const text = snapshotText(page);
+      assert.ok(text.split(' ').length >= 700, `${route} has ${text.split(' ').length} words`);
+      assert.doesNotMatch(text, banned, route);
+      const ld = renderSeoPage(template, origin, route).match(/<script type="application\/ld\+json">(.*?)<\/script>/)?.[1];
+      const data = JSON.parse(ld);
+      assert.equal(data['@type'], 'Article');
+      assert.equal(data.dateModified, guideDate(page.updated));
+      assert.ok(!/aggregateRating|review|offers/i.test(ld), route);
     }
   });
 

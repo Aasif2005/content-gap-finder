@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Pricing from './Pricing.jsx';
 import SampleReport from './SampleReport.jsx';
-import { CtaCard, EvidenceSplit, FloatingCards, GapSplit, HowItWorks, Lenses, NicheStrip, Statement, ViewerQuote } from './Sections.jsx';
+import { CtaCard, EvidenceSplit, Faq, FloatingCards, GapSplit, HowItWorks, Lenses, NicheStrip, Statement, ViewerQuote } from './Sections.jsx';
 
 /**
  * Everything on the homepage below the hero. Its own chunk, fetched once the first screen has painted (see Home.jsx).
@@ -62,6 +62,7 @@ export default function HomeBelow({ views }) {
           <div className="cv"><Lenses /></div>
           <div className="cv"><ViewerQuote /></div>
           <div className="cv"><Pricing /></div>
+          <div className="cv"><Faq /></div>
           <div className="cv"><CtaCard /></div>
         </>
       )}

@@ -16,6 +16,9 @@ const COLUMNS = [
       { href: '/#get', label: 'What you get' },
       { href: '/#evidence', label: 'Evidence' },
       { href: '/signup', label: 'Start exploring' },
+      { href: '/sample-report', label: 'Sample report' },
+      { href: '/guides/youtube-content-gap-analysis', label: 'Content gap analysis' },
+      { href: '/guides/youtube-video-ideas-from-comments', label: 'Video ideas from comments' },
     ],
   },
   {

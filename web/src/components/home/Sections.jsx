@@ -3,6 +3,7 @@ import { Button, Derived, EvidenceMark } from '../ui/index.js';
 import { useAuth } from '../../lib/auth.jsx';
 import { EXAMPLE_VIEW } from './exampleReport.js';
 import { cx } from '../../lib/cx.js';
+import { FAQ } from '../../../../server/src/lib/faq.js';
 
 const SOFT = 'text-fg-2';
 const wrap = 'mx-auto max-w-[1200px] px-5 sm:px-10';
@@ -264,6 +265,23 @@ export function CtaCard() {
           {!signedIn && <Button href="/login" variant="ghost" size="lg" className="!rounded-full !px-8 !text-[17px] !font-medium text-fg">Log in</Button>}
         </div>
       </div>
+    </section>
+  );
+}
+
+/** Plain questions and answers, all visible: people and crawlers read the same words (server/src/lib/faq.js). */
+export function Faq() {
+  return (
+    <section id="faq" aria-labelledby="faq-h" className={`${wrap} ${gapTop} scroll-mt-6`}>
+      <h2 id="faq-h" className={`${h2} max-w-[720px]`}>Questions creators ask.</h2>
+      <dl className="mt-10 grid max-w-[820px] gap-8 md:mt-14">
+        {FAQ.map((f) => (
+          <div key={f.q}>
+            <dt className="text-xl font-semibold leading-snug tracking-[-0.015em] text-fg">{f.q}</dt>
+            <dd className={`mt-2 text-base leading-[1.6] md:text-[17px] ${SOFT}`}>{f.a}</dd>
+          </div>
+        ))}
+      </dl>
     </section>
   );
 }

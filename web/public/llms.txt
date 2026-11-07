@@ -19,6 +19,9 @@ Gapstronaut is a web app for YouTube creators. It does not invent statistics: ev
 ## Pages
 
 - [Home](https://gapstronaut.com/): what Gapstronaut does and how a report looks
+- [Sample report](https://gapstronaut.com/sample-report): a sample report showing what Gapstronaut produces for a niche
+- [YouTube content gap analysis](https://gapstronaut.com/guides/youtube-content-gap-analysis): a guide to finding the questions viewers keep asking that no video answers
+- [Video ideas from comments](https://gapstronaut.com/guides/youtube-video-ideas-from-comments): a guide to turning YouTube comments into video titles
 - [Privacy Policy](https://gapstronaut.com/privacy): what is collected, how long it is kept, and how to have it deleted
 - [Terms of Service](https://gapstronaut.com/terms): the terms of use, including the YouTube Terms of Service
 - [Sign up](https://gapstronaut.com/signup): create a free account

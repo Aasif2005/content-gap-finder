@@ -4,6 +4,8 @@ import Home from './pages/Home.jsx';
 // The legal pages are indexed on their own and are plain text: they ship in the entry, because a lazy chunk
 // meant a skeleton first and the text jumping in after (layout shift).
 import { PrivacyPage, TermsPage } from './pages/Legal.jsx';
+// The guides are plain text too, and indexed on their own: same reason.
+import Guide from './pages/Guide.jsx';
 
 // Loaded on arrival, so a first visit to the homepage does not download the whole app. A page fetched early
 // (`preloadRoute`, below) then draws at once, with no skeleton in between.
@@ -12,6 +14,7 @@ const Profile = lazyPage(() => import('./pages/Profile.jsx'));
 const Explorer = lazyPage(() => import('./pages/Explorer.jsx'));
 // The homepage is the entry point for most visits, so the other public pages are fetched when wanted (or once
 // the homepage has settled, see Home.jsx); their prerendered HTML is what crawlers read.
+const SampleReportPage = lazyPage(() => import('./pages/SampleReportPage.jsx'));
 const Login = lazyPage(() => import('./pages/Login.jsx'));
 const Signup = lazyPage(() => import('./pages/Signup.jsx'));
 const ResetPassword = lazyPage(() => import('./pages/ResetPassword.jsx'));
@@ -28,6 +31,7 @@ const appLoaders = {
   '/explore': Explorer.preload,
 };
 const publicLoaders = {
+  '/sample-report': SampleReportPage.preload,
   '/login': Login.preload,
   '/signup': Signup.preload,
   '/reset-password': ResetPassword.preload,
@@ -78,12 +82,15 @@ export const routes = [
     element: <Home />,
   },
   { path: '/login', indexable: true, title: 'Log in', fullTitle: 'Log in to Gapstronaut · Your Saved Gap Reports', description: 'Log in to Gapstronaut to reopen your saved reports for free and see the viewer comments behind every content gap. Pick up where you left off.', shell: 'bare', auth: 'public', element: <Login /> },
-  { path: '/signup', indexable: true, title: 'Sign up', fullTitle: 'Create a Free Gapstronaut Account · No Card Needed', description: 'Create a free Gapstronaut account and find the videos your audience is still asking for. No card needed.', shell: 'bare', auth: 'public', element: <Signup /> },
+  { path: '/signup', indexable: true, title: 'Sign up', fullTitle: 'Create a Free Gapstronaut Account · No Card Needed', description: 'Create a free Gapstronaut account and find the videos your audience is still asking for. No card needed. Free in beta, 3 gap reports a day.', shell: 'bare', auth: 'public', element: <Signup /> },
   { path: '/reset-password', indexable: true, title: 'Reset your password', fullTitle: 'Reset Your Gapstronaut Password · Get a Secure Link', description: 'Forgot your Gapstronaut password? Enter your email and we will send a secure link to choose a new one, so you can get back to your saved reports.', shell: 'bare', auth: 'public', element: <ResetPassword /> },
   { path: '/auth/action', title: 'Account link', description: 'Confirm your email or choose a new password for your Gapstronaut account.', shell: 'bare', auth: 'public', element: <AuthAction /> },
   { path: '/accept-terms', title: 'Agree to continue', description: 'Agree to the Gapstronaut Terms of Service and Privacy Policy to continue to your account.', shell: 'bare', auth: 'public', element: <AcceptTerms /> },
-  { path: '/privacy', indexable: true, title: 'Privacy Policy', fullTitle: 'Privacy Policy: What Gapstronaut Collects and Keeps', description: 'What Gapstronaut collects, how long it keeps it, and how to have it deleted.', shell: 'marketing', auth: 'public', element: <PrivacyPage /> },
-  { path: '/terms', indexable: true, title: 'Terms of Service', fullTitle: 'Terms of Service: Using Gapstronaut and YouTube Data', description: 'The terms for using Gapstronaut, including the YouTube Terms of Service they bind you to.', shell: 'marketing', auth: 'public', element: <TermsPage /> },
+  { path: '/privacy', indexable: true, title: 'Privacy Policy', fullTitle: 'Privacy Policy: What Gapstronaut Collects and Keeps', description: 'What Gapstronaut collects, how long it keeps it, and how to have it deleted. A plain-language policy covering accounts, reports and YouTube data.', shell: 'marketing', auth: 'public', element: <PrivacyPage /> },
+  { path: '/terms', indexable: true, title: 'Terms of Service', fullTitle: 'Terms of Service: Using Gapstronaut and YouTube Data', description: 'The terms for using Gapstronaut, including the YouTube Terms of Service they bind you to. Free in beta, with plain rules on accounts and your reports.', shell: 'marketing', auth: 'public', element: <TermsPage /> },
+  { path: '/sample-report', indexable: true, title: 'Sample report', fullTitle: 'Sample YouTube Content Gap Report: What You Get', description: 'See what a Gapstronaut report looks like: the content gaps in a niche, each one linked to the viewer comment and video behind it.', shell: 'marketing', auth: 'public', element: <SampleReportPage /> },
+  { path: '/guides/youtube-content-gap-analysis', indexable: true, title: 'YouTube content gap analysis', fullTitle: 'YouTube Content Gap Analysis: A Simple Guide', description: 'How to run a YouTube content gap analysis: find the questions viewers keep asking that no video in your niche answers well yet.', shell: 'marketing', auth: 'public', element: <Guide path="/guides/youtube-content-gap-analysis" /> },
+  { path: '/guides/youtube-video-ideas-from-comments', indexable: true, title: 'YouTube video ideas from comments', fullTitle: 'Find YouTube Video Ideas in the Comments', description: 'How to mine YouTube comments for video ideas: what to look for, how to tell real demand from noise, and how to turn a question into a title.', shell: 'marketing', auth: 'public', element: <Guide path="/guides/youtube-video-ideas-from-comments" /> },
   { path: '/dashboard', title: 'Dashboard', description: 'Your saved Gapstronaut reports and daily analyses, all in one place.', shell: 'app', auth: 'required', element: <Dashboard /> },
   { path: '/explore', title: 'Explore a niche', description: 'Search a niche to see the questions viewers keep asking that no YouTube video has answered yet.', shell: 'app', auth: 'required', element: <Explorer key="niche" mode="niche" /> },
   { path: '/channel', title: 'Analyze a channel', description: 'Paste a YouTube channel to see which videos work and what its own viewers want next.', shell: 'app', auth: 'required', element: <Explorer key="channel" mode="channel" /> },

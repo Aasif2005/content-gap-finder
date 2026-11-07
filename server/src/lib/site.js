@@ -10,13 +10,16 @@ import { renderSeoPage, seoPageFor } from './seoPages.js';
 
 // Every path the app's router knows (web/src/routes.jsx). A test keeps these in step.
 const APP_PATHS = [
-  /^\/$/, /^\/login$/, /^\/signup$/, /^\/reset-password$/, /^\/auth\/action$/, /^\/accept-terms$/, /^\/privacy$/, /^\/terms$/,
+  /^\/$/, /^\/login$/, /^\/signup$/, /^\/reset-password$/, /^\/auth\/action$/, /^\/accept-terms$/, /^\/privacy$/, /^\/terms$/, /^\/sample-report$/, /^\/guides\/youtube-content-gap-analysis$/, /^\/guides\/youtube-video-ideas-from-comments$/,
   /^\/dashboard$/, /^\/explore$/, /^\/channel$/, /^\/profile$/,
   /^\/r\/[a-zA-Z0-9_-]+$/, /^\/channel\/r\/[a-zA-Z0-9_-]+$/,
 ];
 
 // Worth a search result. Everything else is an account page or someone's report.
-export const SITEMAP_PATHS = ['/', '/privacy', '/terms', '/login', '/signup', '/reset-password'];
+export const SITEMAP_PATHS = [
+  '/', '/sample-report', '/guides/youtube-content-gap-analysis', '/guides/youtube-video-ideas-from-comments',
+  '/privacy', '/terms', '/login', '/signup', '/reset-password',
+];
 
 const trimSlashes = (path) => (path.length > 1 ? path.replace(/\/+$/, '') : path);
 
@@ -37,13 +40,43 @@ export function siteOrigin(req, configured = config.site.url) {
   return configured ? configured.replace(/\/+$/, '') : `${req.protocol}://${safeHost(req)}`;
 }
 
+/**
+ * The date each public page's content last really changed (YYYY-MM-DD). Bump the entry when the
+ * page's wording changes; never to "now" at build time, or crawlers learn to ignore it.
+ */
+export const SITEMAP_LASTMOD = {
+  '/': '2026-11-07',
+  '/sample-report': '2026-11-07',
+  '/guides/youtube-content-gap-analysis': '2026-11-07',
+  '/guides/youtube-video-ideas-from-comments': '2026-11-07',
+  '/privacy': '2026-11-07',
+  '/terms': '2026-11-07',
+  '/login': '2026-11-06',
+  '/signup': '2026-11-07',
+  '/reset-password': '2026-11-06',
+};
+
 export function sitemapXml(origin) {
-  const urls = SITEMAP_PATHS.map((p) => `  <url><loc>${origin}${p === '/' ? '/' : p}</loc></url>`).join('\n');
+  const urls = SITEMAP_PATHS.map((p) => {
+    const lastmod = SITEMAP_LASTMOD[p] ? `<lastmod>${SITEMAP_LASTMOD[p]}</lastmod>` : '';
+    return `  <url><loc>${origin}${p === '/' ? '/' : p}</loc>${lastmod}</url>`;
+  }).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 }
 
 export function robotsTxt(origin) {
-  return ['User-agent: *', 'Disallow: /api/', 'Disallow: /r/', 'Disallow: /channel/r/', 'Disallow: /dashboard', 'Disallow: /profile', '', `Sitemap: ${origin}/sitemap.xml`, ''].join('\n');
+  // /dashboard and /profile are not disallowed on purpose: crawlers must be able to fetch them to
+  // see their `noindex`; a robots block would hide it and let the bare URL be indexed from links.
+  return [
+    'User-agent: *',
+    'Content-Signal: search=yes, ai-input=yes, ai-train=no',
+    'Disallow: /api/',
+    'Disallow: /r/',
+    'Disallow: /channel/r/',
+    '',
+    `Sitemap: ${origin}/sitemap.xml`,
+    '',
+  ].join('\n');
 }
 
 /** Previews (og:image, twitter:image) need an absolute image URL. */

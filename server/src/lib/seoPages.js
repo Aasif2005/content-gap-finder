@@ -11,16 +11,24 @@
  * web/src/routes.jsx (a test checks it). Adding a public route? Add it here too.
  */
 
+import { GUIDES } from './guides.js';
+import { FAQ } from './faq.js';
+
 export const SITE_NAME = 'Gapstronaut';
 
 const nav = [
   { href: '/', label: 'Home' },
   { href: '/#how', label: 'How it works' },
   { href: '/#pricing', label: 'Pricing' },
+  { href: '/sample-report', label: 'Sample report' },
+  { href: '/guides/youtube-content-gap-analysis', label: 'Guides' },
   { href: '/login', label: 'Log in' },
   { href: '/signup', label: 'Sign up free' },
 ];
 const footer = [
+  { href: '/sample-report', label: 'Sample report' },
+  { href: '/guides/youtube-content-gap-analysis', label: 'YouTube content gap analysis' },
+  { href: '/guides/youtube-video-ideas-from-comments', label: 'Video ideas from comments' },
   { href: '/privacy', label: 'Privacy Policy' },
   { href: '/terms', label: 'Terms of Service' },
   { href: '/signup', label: 'Create a free account' },
@@ -73,8 +81,39 @@ export const SEO_PAGES = {
           'Start free: 3 analyses and 20 Make it drafts a day. Reopening a saved report costs nothing, and no card is needed. Paid plans for heavier use are on the waitlist.',
         ],
       },
+      {
+        h3: 'Questions creators ask.',
+        p: FAQ.map((f) => `${f.q} ${f.a}`),
+      },
     ],
-    ctas: [{ href: '/signup', label: 'Start exploring' }, { href: '/login', label: 'Log in to your reports' }],
+    ctas: [
+      { href: '/signup', label: 'Start exploring' },
+      { href: '/login', label: 'Log in to your reports' },
+      { href: '/sample-report', label: 'See a sample report' },
+      { href: '/guides/youtube-content-gap-analysis', label: 'Read: YouTube content gap analysis' },
+    ],
+  },
+
+  '/sample-report': {
+    file: 'sample-report',
+    title: 'Sample YouTube Content Gap Report: What You Get',
+    description: 'See what a Gapstronaut report looks like: the content gaps in a niche, each one linked to the viewer comment and video behind it.',
+    h1: 'What a Gapstronaut report looks like',
+    intro: 'This is a sample of what Gapstronaut gives you for a niche: the gaps found in it, and for each one the viewer comments that asked for it and the videos they were left under. Open any gap to see the evidence.',
+    h2: 'What a Gapstronaut report shows',
+    sections: [
+      { h3: 'Content gaps', p: ['Questions viewers keep asking that no video in the niche answers well yet. Each gap comes with a suggested video title and the exact comments behind it, so you can check the demand yourself before you film.'] },
+      { h3: 'Trending now', p: ['Angles that are working in the niche right now, ranked against each channel’s own norm rather than raw views, so a small channel with a breakout video is not hidden behind a giant one.'] },
+      { h3: 'Complaints', p: ['What viewers dislike about the videos that already exist, and what to do instead. These are the missing steps and unclear explanations that make people leave a comment.'] },
+      { h3: 'Topics to avoid', p: ['Angles with plenty of views and little response from viewers, so you can skip crowded ground and spend the week on something with a real audience.'] },
+      { h3: 'Evidence on every claim', p: ['Every line in a report links back to the viewer comment and the YouTube video it came from. Numbers that come from YouTube are shown as returned. Numbers we calculate are marked so you can tell them apart.'] },
+      { h3: 'Try it on your own niche', p: ['Create a free account, type a niche or paste a channel, and get a report of your own in about a minute and a half. It is free during the beta, with 3 new reports a day, and reopening a saved report is always free.'] },
+    ],
+    ctas: [
+      { href: '/signup', label: 'Create a free account' },
+      { href: '/guides/youtube-content-gap-analysis', label: 'Guide: YouTube content gap analysis' },
+      { href: '/guides/youtube-video-ideas-from-comments', label: 'Guide: video ideas from comments' },
+    ],
   },
 
   '/login': {
@@ -116,7 +155,7 @@ export const SEO_PAGES = {
   '/signup': {
     file: 'signup',
     title: 'Create a Free Gapstronaut Account · No Card Needed',
-    description: 'Create a free Gapstronaut account and find the videos your audience is still asking for. No card needed.',
+    description: 'Create a free Gapstronaut account and find the videos your audience is still asking for. No card needed. Free in beta, 3 gap reports a day.',
     h1: 'Create your free account',
     intro: 'Find the videos your audience is still asking for. No card needed.',
     h2: 'What a free account includes',
@@ -194,7 +233,7 @@ export const SEO_PAGES = {
   '/privacy': {
     file: 'privacy',
     title: 'Privacy Policy: What Gapstronaut Collects and Keeps',
-    description: 'What Gapstronaut collects, how long it keeps it, and how to have it deleted.',
+    description: 'What Gapstronaut collects, how long it keeps it, and how to have it deleted. A plain-language policy covering accounts, reports and YouTube data.',
     h1: 'Privacy Policy',
     intro: 'Gapstronaut helps creators see what is trending in a niche, what viewers are asking for that nobody has made, and what to avoid. This policy explains what the app reads, what it keeps, who it shares data with, and how to ask for something to be deleted.',
     h2: 'How Gapstronaut handles your data',
@@ -213,7 +252,7 @@ export const SEO_PAGES = {
   '/terms': {
     file: 'terms',
     title: 'Terms of Service: Using Gapstronaut and YouTube Data',
-    description: 'The terms for using Gapstronaut, including the YouTube Terms of Service they bind you to.',
+    description: 'The terms for using Gapstronaut, including the YouTube Terms of Service they bind you to. Free in beta, with plain rules on accounts and your reports.',
     h1: 'Terms of Service',
     intro: 'These terms apply when you use Gapstronaut. By creating an account or running an analysis you agree to them, and to the YouTube Terms of Service, which also bind you when you use data from YouTube.',
     h2: 'The rules for using Gapstronaut',
@@ -230,6 +269,9 @@ export const SEO_PAGES = {
   },
 };
 
+// The how-to guides come from guides.js; their sections are h2s, so the snapshot knows them by `guide`.
+for (const [path, g] of Object.entries(GUIDES)) SEO_PAGES[path] = { ...g, guide: true, h2: g.sections[0].h2 };
+
 export const seoPageFor = (path) => SEO_PAGES[path.length > 1 ? path.replace(/\/+$/, '') : path] ?? null;
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -237,8 +279,12 @@ const links = (items) => items.map((l) => `<a href="${esc(l.href)}">${esc(l.labe
 
 /** The plain-HTML body of a page: one h1, one h2, h3 sections, and links to the rest of the site. */
 export function snapshotHtml(page) {
-  const sections = page.sections.map((s) => `<section><h3>${esc(s.h3)}</h3>${s.p.map((t) => `<p>${esc(t)}</p>`).join('')}</section>`).join('');
-  return `<div class="seo-snap"><header><a href="/">${SITE_NAME}</a><nav>${links(nav)}</nav></header><main><h1>${esc(page.h1)}</h1><p>${esc(page.intro)}</p><h2>${esc(page.h2)}</h2>${sections}<p>${links(page.ctas ?? [])}</p></main><footer><nav>${links(footer)}</nav><p>© ${SITE_NAME}. Gapstronaut is not affiliated with or endorsed by YouTube.</p></footer></div>`;
+  // Guides give every section its own h2; other pages have one h2 and h3 sections under it.
+  const heading = page.guide ? 'h2' : 'h3';
+  const sections = page.sections.map((s) => `<section><${heading}>${esc(s.h2 ?? s.h3)}</${heading}>${s.p.map((t) => `<p>${esc(t)}</p>`).join('')}</section>`).join('');
+  const lead = page.guide ? '' : `<h2>${esc(page.h2)}</h2>`;
+  const updated = page.updated ? `<p>Updated ${esc(page.updated)}</p>` : '';
+  return `<div class="seo-snap"><header><a href="/">${SITE_NAME}</a><nav>${links(nav)}</nav></header><main><h1>${esc(page.h1)}</h1>${updated}<p>${esc(page.intro)}</p>${lead}${sections}<p>${links(page.ctas ?? [])}</p></main><footer><nav>${links(footer)}</nav><p>© ${SITE_NAME}. Gapstronaut is not affiliated with or endorsed by YouTube.</p></footer></div>`;
 }
 
 const setMeta = (html, attr, name, value) => {
@@ -255,7 +301,22 @@ export const snapshotText = (page) => snapshotHtml(page).replace(/<[^>]+>/g, ' '
  * carries any: who runs the site and what the product is. Nothing here may claim what is not true, so
  * there are no ratings, reviews or prices (pricing is a launch offer, and nothing has been reviewed).
  */
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** '7 November 2026' -> '2026-11-07' (the format schema.org and sitemaps want). */
+export function guideDate(text) {
+  const [d, m, y] = String(text).split(' ');
+  return `${y}-${String(MONTHS.indexOf(m) + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
 export function structuredData(origin, path) {
+  const guide = GUIDES[path];
+  if (guide) {
+    const org = { '@type': 'Organization', name: SITE_NAME, url: `${origin}/` };
+    return [{
+      '@context': 'https://schema.org', '@type': 'Article', headline: guide.h1, description: guide.description,
+      mainEntityOfPage: `${origin}${path}`, dateModified: guideDate(guide.updated), author: org, publisher: org,
+    }];
+  }
   if (path !== '/') return [];
   const url = `${origin}/`;
   return [
