@@ -31,6 +31,7 @@ const footer = [
   { href: '/guides/youtube-video-ideas-from-comments', label: 'Video ideas from comments' },
   { href: '/guides/youtube-competitor-analysis', label: 'YouTube competitor analysis' },
   { href: '/guides/youtube-video-ideas-to-get-subscribers', label: 'Video ideas to get subscribers' },
+  { href: '/guides/youtube-video-ideas', label: 'YouTube video ideas' },
   { href: '/privacy', label: 'Privacy Policy' },
   { href: '/terms', label: 'Terms of Service' },
   { href: '/signup', label: 'Create a free account' },
@@ -117,6 +118,7 @@ export const SEO_PAGES = {
       { href: '/guides/youtube-video-ideas-from-comments', label: 'Guide: video ideas from comments' },
       { href: '/guides/youtube-competitor-analysis', label: 'Guide: YouTube competitor analysis' },
       { href: '/guides/youtube-video-ideas-to-get-subscribers', label: 'Guide: video ideas to get subscribers' },
+      { href: '/guides/youtube-video-ideas', label: 'Guide: 40 YouTube video ideas' },
     ],
   },
 

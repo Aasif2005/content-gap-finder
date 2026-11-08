@@ -21,6 +21,7 @@ const COLUMNS = [
       { href: '/guides/youtube-video-ideas-from-comments', label: 'Video ideas from comments' },
       { href: '/guides/youtube-competitor-analysis', label: 'Competitor analysis' },
       { href: '/guides/youtube-video-ideas-to-get-subscribers', label: 'Ideas to get subscribers' },
+      { href: '/guides/youtube-video-ideas', label: 'YouTube video ideas' },
     ],
   },
   {

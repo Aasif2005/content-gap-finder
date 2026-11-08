@@ -340,6 +340,124 @@ export const GUIDES = {
       { href: '/sample-report', label: 'See a sample report' },
       { href: '/guides/youtube-video-ideas-from-comments', label: 'Find video ideas in the comments' },
       { href: '/guides/youtube-competitor-analysis', label: 'YouTube competitor analysis' },
+      { href: '/guides/youtube-video-ideas', label: '40 YouTube video ideas, by channel type' },
+    ],
+  },
+
+  '/guides/youtube-video-ideas': {
+    file: 'guide-youtube-video-ideas',
+    title: 'YouTube Video Ideas: 40 to Try (Beginners, Faceless, Shorts)',
+    description: '40 YouTube video ideas for beginners, faceless channels, gaming, Shorts and more, each with an example title and a reason it works.',
+    h1: 'YouTube video ideas: 40 to try, for every kind of channel',
+    updated: '8 November 2026',
+    intro: 'Most lists of video ideas on YouTube give you a hundred titles and no way to choose. This one is grouped by the kind of channel you run, so you can skip to yours. Every idea comes with an example title and a reason it works, and the end of the page shows a quick check to run before you spend a weekend filming.',
+    sections: [
+      {
+        h2: 'YouTube video ideas for beginners',
+        p: [
+          '1. Your first video, on the thing you know best: you start where you are confident, and it shows viewers what the channel is for. Example: “My first video: how I keep basil alive all year”.',
+          '2. A true beginner’s guide to your niche: newcomers search for this all the time, and they stay for the next step. Example: “Fishing for complete beginners: what you actually need”.',
+          '3. Trying something for the first time: viewers enjoy watching someone learn, and you do not need to be an expert yet. Example: “I tried rock climbing for the first time”.',
+          '4. A question from the YouTube search bar: type your topic and read the suggestions that appear, because each one is something people really search for. Example: “How to clean a cast iron pan after cooking”.',
+          '5. Unboxing and first impressions: they are quick to make, and people look for them just before they buy. Example: “Unboxing the cheapest 3D printer I could find”.',
+          '6. A collab with a creator your size: each of you gets introduced to the other’s viewers. Example: “Two beginner cooks, one recipe: who wins?”.',
+          'If your goal is subscribers rather than views, the guide to video ideas to get subscribers has fifteen ideas built for that.',
+        ],
+      },
+      {
+        h2: 'Faceless YouTube video ideas',
+        p: [
+          '7. Screen-recorded tutorials: all you need is your screen and your voice. Example: “How to make a monthly budget in Google Sheets”.',
+          '8. Hands-only process videos: the work is the star, so nobody misses your face. Example: “Painting a sunset in ten minutes, hands only”.',
+          '9. Voiceover explainers: a clear explanation over simple visuals works in almost any niche. Example: “Why do cats knead? Explained”.',
+          '10. Ranked lists, using your own footage: rankings start friendly arguments in the comments. Long clips from films or shows tend to get copyright claims, so film your own. Example: “Every budget fountain pen I own, ranked”.',
+          '11. Ambience and background videos, with sound and footage you own: people leave them playing for hours. Make each one different, because near-identical loops can lose monetisation under YouTube’s rules on mass-produced videos. Example: “Rainy café ambience for studying, one hour”.',
+          '12. Story narration: a good story holds attention without anyone on screen. Example: “The strangest shipwreck in history”.',
+        ],
+      },
+      {
+        h2: 'Gaming video ideas',
+        p: [
+          '13. Challenge runs: one rule that makes a familiar game hard again gives old fans a reason to watch. Example: “Beating Minecraft without a crafting table”.',
+          '14. A first-year guide to a popular game: new players search for exactly this. Example: “Stardew Valley first year: what to do, in order”.',
+          '15. Hidden details: fans love finding what they missed. Example: “Hidden details in Hollow Knight you probably missed”.',
+          '16. Beginner against expert: the gap between them is the entertainment. Example: “Can a total beginner beat a pro with one tip?”.',
+          '17. Trailer breakdowns with real commentary: big releases bring big searches. Add your own analysis, because re-uploading clips is not enough. Example: “The GTA VI trailer, frame by frame”.',
+          '18. A long build, shown in one video: the payoff at the end keeps people watching. Example: “I built a working city in Minecraft in a hundred days”.',
+        ],
+      },
+      {
+        h2: 'YouTube Shorts ideas',
+        p: [
+          '19. One tip in thirty seconds: short enough to watch twice and save. Example: “The one setting that fixes blurry phone photos”.',
+          '20. Before and after: the change is the hook. Example: “My desk setup, before and after”.',
+          '21. A reply to a comment on your channel, made as a Short: the reply shows under the comment, and it tells viewers you listen. Example: “You asked how I fold dumplings: here is how”.',
+          '22. One common mistake: people stop scrolling when they recognise themselves. Example: “The mistake that makes your rice mushy”.',
+          '23. The best moment of a long video: it works as a trailer for the full one. Example: “My twenty-minute pasta recipe, in fifty seconds (full video linked)”.',
+          '24. A fast process time-lapse: a satisfying result in seconds. Example: “Building a bookshelf in forty-five seconds”.',
+        ],
+      },
+      {
+        h2: 'Video ideas with a better chance to go viral',
+        p: [
+          'Nobody can promise a viral video, but these formats tend to travel further than usual.',
+          '25. Experiments with a clear rule: the question of whether it will work keeps people watching. Example: “I lived on $10 a day for a week”.',
+          '26. Cheap against expensive: everyone wants to know whether the extra money is worth it. Example: “$20 vs $200 headphones: can you hear the difference?”.',
+          '27. Your angle on a trend in your niche: you ride a search that is already growing. Example: “Is zone 2 training worth it for beginners?”.',
+          '28. Explaining news in your niche: people want to know what a change means for them. Example: “What the latest iPhone update changes for photographers”.',
+          '29. A big personal challenge: the stakes make it worth sharing. Example: “I cooked every recipe in a 1950s cookbook”.',
+          '30. Behind the scenes of something people rarely see: curiosity does the work. Example: “A night shift inside a commercial bakery”.',
+        ],
+      },
+      {
+        h2: 'YouTube video ideas to make money',
+        p: [
+          'Ads need the YouTube Partner Program. Until you are in it, links and your own products are the way to earn.',
+          '31. Software tutorials: people who search for them want to get something done, often for work. Example: “Notion for beginners: set up your first page”.',
+          '32. Buying guides: viewers are about to buy. Say clearly when you earn from your links, and tick YouTube’s paid promotion box for sponsored videos. Example: “The best budget microphones for new YouTubers”.',
+          '33. How-to-choose guides: they help with a decision, and decisions lead to purchases. Example: “How to choose your first road bike”.',
+          '34. Your process, leading into something you sell: viewers who like the method may want the template or the course. Example: “How I plan a month of meals in one hour”.',
+          '35. Fix-it tutorials for costly problems: saving people money earns trust quickly. Example: “How to fix a leaking tap without a plumber”.',
+        ],
+      },
+      {
+        h2: 'Video ideas for students and teens',
+        p: [
+          'Whatever you film, keep your school, street and daily routine private.',
+          '36. Study with me: people play it while they study, again and again. Example: “Two-hour study with me, with breaks”.',
+          '37. A day in my life: viewers like seeing a life a little like theirs, or one they want. Example: “A day in my life as a nursing student”.',
+          '38. A budget room makeover: a low cost makes it something viewers can copy. Example: “Dorm room makeover for $50”.',
+          '39. Your exam method: it gets searched every exam season. Example: “How I revise for exams: my exact method”.',
+          '40. School-year advice: useful to everyone a year behind you. Example: “What I would tell myself on day one of high school”.',
+        ],
+      },
+      {
+        h2: 'How to tell if an idea is worth filming',
+        p: [
+          'Check four things. Viewers already ask for it in the comments under recent videos in your niche. People search for it, and the suggestions in the YouTube search bar are a quick way to check. The existing videos on it are weak: old, vague, or not really answering it. And you can make something better or different.',
+          'If an idea passes fewer than two of these, pick another. There are plenty more on this page.',
+        ],
+      },
+      {
+        h2: 'Where to find more ideas',
+        p: [
+          'The comments under videos in your niche are the richest source, and the guide to finding video ideas in the comments shows how to read them. The videos that did far better than their own channel usually does are the next, and the competitor analysis guide shows how to spot them.',
+          'Your own channel helps too. In YouTube Studio, the Reach tab in Analytics has a card for the YouTube search traffic source that shows what viewers searched when they found your videos. Those terms are ideas people have already typed.',
+        ],
+      },
+      {
+        h2: 'Finding ideas for your niche with Gapstronaut',
+        p: [
+          'A list gives you formats. Gapstronaut gives you topics: type a niche, or paste a channel, and it reads the comments under the videos that are working. It lists the questions nobody has answered yet, each linked to the real comment it came from, along with topics to skip and a script brief to start from.',
+          'It is free while in beta, with no card needed, and you get three new reports a day. Reopening a saved report is always free.',
+        ],
+      },
+    ],
+    ctas: [
+      { href: '/signup', label: 'Create a free account' },
+      { href: '/sample-report', label: 'See a sample report' },
+      { href: '/guides/youtube-video-ideas-to-get-subscribers', label: 'Video ideas to get subscribers' },
+      { href: '/guides/youtube-video-ideas-from-comments', label: 'Find video ideas in the comments' },
     ],
   },
 };

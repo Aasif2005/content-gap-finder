@@ -48,6 +48,7 @@ export default function SampleReportPage() {
         <Link href="/guides/youtube-video-ideas-from-comments" className="font-medium text-fg underline underline-offset-2 hover:text-focus">Guide: video ideas from comments</Link>
         <Link href="/guides/youtube-competitor-analysis" className="font-medium text-fg underline underline-offset-2 hover:text-focus">Guide: YouTube competitor analysis</Link>
         <Link href="/guides/youtube-video-ideas-to-get-subscribers" className="font-medium text-fg underline underline-offset-2 hover:text-focus">Guide: video ideas to get subscribers</Link>
+        <Link href="/guides/youtube-video-ideas" className="font-medium text-fg underline underline-offset-2 hover:text-focus">Guide: 40 YouTube video ideas</Link>
       </div>
     </div>
   );
