@@ -29,6 +29,7 @@ const footer = [
   { href: '/sample-report', label: 'Sample report' },
   { href: '/guides/youtube-content-gap-analysis', label: 'YouTube content gap analysis' },
   { href: '/guides/youtube-video-ideas-from-comments', label: 'Video ideas from comments' },
+  { href: '/guides/youtube-competitor-analysis', label: 'YouTube competitor analysis' },
   { href: '/privacy', label: 'Privacy Policy' },
   { href: '/terms', label: 'Terms of Service' },
   { href: '/signup', label: 'Create a free account' },
@@ -113,6 +114,7 @@ export const SEO_PAGES = {
       { href: '/signup', label: 'Create a free account' },
       { href: '/guides/youtube-content-gap-analysis', label: 'Guide: YouTube content gap analysis' },
       { href: '/guides/youtube-video-ideas-from-comments', label: 'Guide: video ideas from comments' },
+      { href: '/guides/youtube-competitor-analysis', label: 'Guide: YouTube competitor analysis' },
     ],
   },
 

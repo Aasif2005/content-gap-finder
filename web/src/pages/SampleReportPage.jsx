@@ -46,6 +46,7 @@ export default function SampleReportPage() {
         <Button href="/signup" size="lg" className="!rounded-full !px-8 !text-[17px]">Try it on your niche, free</Button>
         <Link href="/guides/youtube-content-gap-analysis" className="font-medium text-fg underline underline-offset-2 hover:text-focus">Guide: YouTube content gap analysis</Link>
         <Link href="/guides/youtube-video-ideas-from-comments" className="font-medium text-fg underline underline-offset-2 hover:text-focus">Guide: video ideas from comments</Link>
+        <Link href="/guides/youtube-competitor-analysis" className="font-medium text-fg underline underline-offset-2 hover:text-focus">Guide: YouTube competitor analysis</Link>
       </div>
     </div>
   );

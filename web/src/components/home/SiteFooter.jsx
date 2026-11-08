@@ -19,6 +19,7 @@ const COLUMNS = [
       { href: '/sample-report', label: 'Sample report' },
       { href: '/guides/youtube-content-gap-analysis', label: 'Content gap analysis' },
       { href: '/guides/youtube-video-ideas-from-comments', label: 'Video ideas from comments' },
+      { href: '/guides/youtube-competitor-analysis', label: 'Competitor analysis' },
     ],
   },
   {

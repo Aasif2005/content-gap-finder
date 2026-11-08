@@ -18,6 +18,7 @@
     { "source": "/sample-report", "destination": "/seo/sample-report.html" },
     { "source": "/guides/youtube-content-gap-analysis", "destination": "/seo/guide-youtube-content-gap-analysis.html" },
     { "source": "/guides/youtube-video-ideas-from-comments", "destination": "/seo/guide-youtube-video-ideas-from-comments.html" },
+    { "source": "/guides/youtube-competitor-analysis", "destination": "/seo/guide-youtube-competitor-analysis.html" },
     { "source": "/dashboard", "destination": "/app.html" },
     { "source": "/explore", "destination": "/app.html" },
     { "source": "/channel", "destination": "/app.html" },

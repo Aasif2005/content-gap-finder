@@ -10,14 +10,14 @@ import { renderSeoPage, seoPageFor } from './seoPages.js';
 
 // Every path the app's router knows (web/src/routes.jsx). A test keeps these in step.
 const APP_PATHS = [
-  /^\/$/, /^\/login$/, /^\/signup$/, /^\/reset-password$/, /^\/auth\/action$/, /^\/accept-terms$/, /^\/privacy$/, /^\/terms$/, /^\/sample-report$/, /^\/guides\/youtube-content-gap-analysis$/, /^\/guides\/youtube-video-ideas-from-comments$/,
+  /^\/$/, /^\/login$/, /^\/signup$/, /^\/reset-password$/, /^\/auth\/action$/, /^\/accept-terms$/, /^\/privacy$/, /^\/terms$/, /^\/sample-report$/, /^\/guides\/youtube-content-gap-analysis$/, /^\/guides\/youtube-video-ideas-from-comments$/, /^\/guides\/youtube-competitor-analysis$/,
   /^\/dashboard$/, /^\/explore$/, /^\/channel$/, /^\/profile$/,
   /^\/r\/[a-zA-Z0-9_-]+$/, /^\/channel\/r\/[a-zA-Z0-9_-]+$/,
 ];
 
 // Worth a search result. Everything else is an account page or someone's report.
 export const SITEMAP_PATHS = [
-  '/', '/sample-report', '/guides/youtube-content-gap-analysis', '/guides/youtube-video-ideas-from-comments',
+  '/', '/sample-report', '/guides/youtube-content-gap-analysis', '/guides/youtube-video-ideas-from-comments', '/guides/youtube-competitor-analysis',
   '/privacy', '/terms', '/login', '/signup', '/reset-password',
 ];
 
@@ -49,6 +49,7 @@ export const SITEMAP_LASTMOD = {
   '/sample-report': '2026-11-07',
   '/guides/youtube-content-gap-analysis': '2026-11-07',
   '/guides/youtube-video-ideas-from-comments': '2026-11-07',
+  '/guides/youtube-competitor-analysis': '2026-11-08',
   '/privacy': '2026-11-07',
   '/terms': '2026-11-07',
   '/login': '2026-11-06',

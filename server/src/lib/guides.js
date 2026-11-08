@@ -73,6 +73,7 @@ export const GUIDES = {
       { href: '/signup', label: 'Create a free account' },
       { href: '/sample-report', label: 'See a sample report' },
       { href: '/guides/youtube-video-ideas-from-comments', label: 'Next: find video ideas in the comments' },
+      { href: '/guides/youtube-competitor-analysis', label: 'Study what works for your competitors' },
     ],
   },
 
@@ -150,6 +151,79 @@ export const GUIDES = {
       { href: '/signup', label: 'Create a free account' },
       { href: '/sample-report', label: 'See a sample report' },
       { href: '/guides/youtube-content-gap-analysis', label: 'Next: run a content gap analysis' },
+      { href: '/guides/youtube-competitor-analysis', label: 'Study what works for your competitors' },
+    ],
+  },
+
+  '/guides/youtube-competitor-analysis': {
+    file: 'guide-youtube-competitor-analysis',
+    title: 'YouTube Competitor Analysis: How to Do It, Step by Step',
+    description: 'How to do a YouTube competitor analysis: find the rival videos that beat their own average, what viewers still ask under them, and what to make next.',
+    h1: 'YouTube competitor analysis: see what works for rivals, then make what they missed',
+    updated: '8 November 2026',
+    intro: 'A YouTube competitor analysis is a close look at the channels your viewers already watch: which of their videos work, why they work, and what those videos still leave out. This guide shows how to do one by hand, what to look at, what to ignore, and how to turn what you find into a video of your own.',
+    sections: [
+      {
+        h2: 'Pick the right competitors',
+        p: [
+          'Choose three to five channels in your exact niche. The most useful ones are a little bigger than you, about the size you want to be next, because what works for them is within reach. A huge channel in a neighbouring topic is a poor guide: its views often come from its name, not from the video.',
+          'Include at least one channel that grew recently. A channel that took off in the last year shows what viewers want now, while an older channel’s best videos may reflect a niche that has since moved on.',
+        ],
+      },
+      {
+        h2: 'Find the videos that beat their own average',
+        p: [
+          'Do not start from a channel’s most viewed videos. Start from the ones that did far better than that channel usually does. For example, if a channel’s recent uploads tend to get around 20,000 views and one got 200,000, that video probably reached well past its regular viewers. Something about its topic or angle pulled new people in.',
+          'Look at each channel’s last twenty or thirty uploads, note the usual view count, and circle anything at several times that number. Write down the topic and the angle, not just the title. “Beginner mistakes” or “what I wish I knew” is an angle you can use in your own niche; the exact title is not.',
+          'Give new videos time. A video posted two days ago has not had its chance yet, so compare videos that have been up for at least a few weeks.',
+        ],
+      },
+      {
+        h2: 'Read the comments under their best videos',
+        p: [
+          'The comments on a rival’s outlier tell you two things: what viewers liked enough to say so, and what the video did not answer. The second list is your opening. Note every unanswered question and every comment like “still confused about” or “can you do one on”, in the viewer’s own words.',
+          'When the same question appears under more than one rival’s video, it is a strong sign of a content gap: a question nobody in the niche answers well yet. The content gap guide shows how to confirm one before you film.',
+        ],
+      },
+      {
+        h2: 'Compare titles, thumbnails and formats',
+        p: [
+          'Line up the winning videos and look for patterns. Do the titles promise an outcome, name a mistake, or use a number? Are the thumbnails a face, a before and after, or a single object? Are the winners long tutorials, short answers or Shorts? Note the pattern, not the wording. Copying a title or thumbnail closely rarely works and can get you in trouble.',
+          'Notice what they stopped making, too. A series that ended while its comments still ask for more is a request nobody is meeting.',
+        ],
+      },
+      {
+        h2: 'Decide what to make, and what to skip',
+        p: [
+          'Make a video when viewers are asking, a rival’s video shows the topic has demand, and the existing answers leave something out. Skip a topic when several strong, recent videos already cover it well and you have nothing new to add. A competitor’s success tells you there is demand. It does not tell you there is room.',
+          'Aim to be different, not a copy. The best result of a competitor analysis is a video that answers the question the rival’s viewers were left with, in your own voice.',
+        ],
+      },
+      {
+        h2: 'What to look for in a YouTube competitor analysis tool',
+        p: [
+          'Doing this by hand works, but it takes hours across several channels. If you use a tool, check three things. It should work from public YouTube data, so nobody has to connect their account. It should compare a video with its own channel’s usual numbers, not only with the biggest channels. And it should show the real comments behind every idea, so you can check the demand yourself instead of trusting a score.',
+        ],
+      },
+      {
+        h2: 'Keep it going',
+        p: [
+          'Competitors keep publishing and viewers keep asking. A short review every few weeks, covering their new uploads, the outliers among them and the questions under those, keeps your list of ideas current. Keep your notes in one place: the video, the angle, the repeated question, and whether you made something from it.',
+        ],
+      },
+      {
+        h2: 'Doing it faster with Gapstronaut',
+        p: [
+          'Gapstronaut does the reading for you. Paste a competitor’s channel, or type a niche, and it reads the comments under the videos that are working. It lists the questions nobody has answered, each linked to the real comment it came from, along with topics to skip and a script brief to start from. When you type a niche, it also marks the videos that did far better than their own channel’s usual numbers.',
+          'It is free while in beta, with no card needed, and you get three new reports a day. Reopening a saved report is always free.',
+        ],
+      },
+    ],
+    ctas: [
+      { href: '/signup', label: 'Create a free account' },
+      { href: '/sample-report', label: 'See a sample report' },
+      { href: '/guides/youtube-content-gap-analysis', label: 'Next: run a content gap analysis' },
+      { href: '/guides/youtube-video-ideas-from-comments', label: 'Find video ideas in the comments' },
     ],
   },
 };
