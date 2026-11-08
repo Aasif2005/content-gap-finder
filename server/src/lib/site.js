@@ -47,8 +47,8 @@ export function siteOrigin(req, configured = config.site.url) {
 export const SITEMAP_LASTMOD = {
   '/': '2026-11-07',
   '/sample-report': '2026-11-07',
-  '/guides/youtube-content-gap-analysis': '2026-11-07',
-  '/guides/youtube-video-ideas-from-comments': '2026-11-07',
+  '/guides/youtube-content-gap-analysis': '2026-11-08',
+  '/guides/youtube-video-ideas-from-comments': '2026-11-08',
   '/guides/youtube-competitor-analysis': '2026-11-08',
   '/privacy': '2026-11-07',
   '/terms': '2026-11-07',

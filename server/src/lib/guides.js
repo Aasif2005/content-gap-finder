@@ -14,7 +14,7 @@ export const GUIDES = {
     title: 'YouTube Content Gap Analysis: A Simple Guide',
     description: 'How to run a YouTube content gap analysis: find the questions viewers keep asking that no video in your niche answers well yet.',
     h1: 'YouTube content gap analysis: find what your viewers still can’t get',
-    updated: '7 November 2026',
+    updated: '8 November 2026',
     intro: 'A content gap is a question viewers keep asking that no video in your niche answers well yet. This guide shows how to find those gaps by hand, how to tell a real gap from a crowded topic, and how to turn one into a video worth making.',
     sections: [
       {
@@ -34,9 +34,16 @@ export const GUIDES = {
       {
         h2: 'How to run a content gap analysis by hand',
         p: [
-          'Start by choosing a narrow niche and listing ten to twenty recent videos in it that are doing well. Look at your own channel, your closest competitors, and the videos YouTube keeps recommending for the topic.',
+          'Start by choosing a narrow niche and listing ten to twenty recent videos in it that are doing well. Look at your own channel, your closest competitors, and the videos YouTube keeps recommending for the topic. The competitor analysis guide shows how to pick those channels.',
           'Open the comments on each one and read them, sorted by top and by newest. Write down every question that is not answered in the video, plus every phrase like “I still don’t understand” or “can you make a video on”. Keep the wording as written.',
           'Next, group the notes. The same question showing up under different videos, or from different people under one video, is the first sign of a gap. Finally, take each repeated question and search for it on YouTube yourself. If the top results answer it clearly and recently, it is not a gap. If they answer a nearby question, or answer it badly, it is.',
+        ],
+      },
+      {
+        h2: 'A worked example',
+        p: [
+          'Say your channel is about home espresso. You list fifteen recent videos in the niche that are doing well: beginner setups, grinder reviews, latte art. Reading their comments, you notice the same complaint again and again, in different words: “my shots taste sour even though I followed the recipe exactly”. It shows up under the setup videos and the grinder videos alike.',
+          'You search for it on YouTube. The top results explain grind size in general, and a few mention sour shots in passing, but none starts from the viewer’s situation: the same recipe, a new bag of beans, and suddenly sour coffee. That is a gap. A video built around that exact situation, answering it in the first minute, speaks to people who have already said they need it.',
         ],
       },
       {
@@ -62,6 +69,19 @@ export const GUIDES = {
         ],
       },
       {
+        h2: 'Common mistakes',
+        p: [
+          'The most common mistake is treating one loud comment as demand. A single passionate question is a lead, not a gap, until other people ask it too. The second is counting praise as interest: “great video” tells you people enjoyed it, not what they still need.',
+          'Another is copying the question but not adding an angle. If your video answers the same thing in the same way as the existing ones, it does not fill a gap. The last is waiting too long. A gap closes when someone else answers it, so a real one is worth filming soon.',
+        ],
+      },
+      {
+        h2: 'A quick checklist before you film',
+        p: [
+          'Before you commit to a gap, check five things. More than one person asked it. You can write the title from the question. The top search results do not answer it clearly. You can answer it with some authority. And you can answer it in the first minute of the video. If all five are true, film it.',
+        ],
+      },
+      {
         h2: 'Doing it faster with Gapstronaut',
         p: [
           'Reading hundreds of comments by hand is slow. Gapstronaut does that reading for you: type a niche, or paste a channel, and it reads the comments under the videos that are working. It lists the questions nobody has answered, each one linked to the real comment it came from, along with topics to skip and a script brief to start from.',
@@ -82,7 +102,7 @@ export const GUIDES = {
     title: 'Find YouTube Video Ideas in the Comments',
     description: 'How to mine YouTube comments for video ideas: what to look for, how to tell real demand from noise, and how to turn a question into a title.',
     h1: 'How to find YouTube video ideas in the comments',
-    updated: '7 November 2026',
+    updated: '8 November 2026',
     intro: 'The comments under a video are a free list of what viewers want next. This guide shows where to look, which comments are worth saving, which to ignore, and how to turn a question into a title you can film this week.',
     sections: [
       {
@@ -97,6 +117,14 @@ export const GUIDES = {
         p: [
           'Start with your own recent videos, since those viewers already like what you make. Then move to the top videos in your niche and to the channels your viewers also watch. Pick videos with plenty of comments, because a handful of replies tells you very little.',
           'Sort by top comments first, because they show what other viewers agreed with. Then sort by newest to catch what people are asking now.',
+        ],
+      },
+      {
+        h2: 'How to come up with YouTube video ideas when you are stuck',
+        p: [
+          'When the comments on your own videos run dry, widen the net. Read the comments on a rival’s best recent videos, especially the ones that did far better than that channel usually does. The competitor analysis guide shows how to spot them. Those comments come from viewers who already care about your topic.',
+          'Next, type your topic into the YouTube search box and read the suggestions that appear as you type. They are phrased the way viewers phrase things. Keep any suggestion that matches a question you have seen in the comments, because two sources agreeing is a stronger sign than either one alone.',
+          'Finally, go back to the comments on your own older videos. Questions people asked a year ago may still be unanswered, and you already have the audience that asked them.',
         ],
       },
       {
@@ -121,7 +149,14 @@ export const GUIDES = {
         ],
       },
       {
-        h2: 'Check before you film',
+        h2: 'A worked example',
+        p: [
+          'Say you run a houseplant channel. Under several of your repotting videos, viewers write things like “leaves started turning yellow a week after I repotted it” and “same thing happened to my monstera, did I kill it?”, and other viewers reply “same”. That is one question, asked many ways, by people who want to save the plant.',
+          'In their words, the title might be “Yellow Leaves After Repotting: What It Means and What to Do”. The one-sentence promise: why leaves turn yellow after a repot, and what to check before you panic. That sentence fits, so it is a video, not just a topic.',
+        ],
+      },
+      {
+        h2: 'How to research a video idea before you film',
         p: [
           'Search for the question yourself. If the first results answer it clearly, look for an angle they missed, or move on. If they answer something close but not the question, you have found the gap.',
           'Look at a few of the videos that came up. Are they recent? Do their own comments still ask the same thing? If viewers are still asking under the best existing answer, the answer is not working for them, and there is room for yours.',
