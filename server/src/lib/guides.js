@@ -187,6 +187,7 @@ export const GUIDES = {
       { href: '/sample-report', label: 'See a sample report' },
       { href: '/guides/youtube-content-gap-analysis', label: 'Next: run a content gap analysis' },
       { href: '/guides/youtube-competitor-analysis', label: 'Study what works for your competitors' },
+      { href: '/guides/youtube-video-ideas-to-get-subscribers', label: 'Video ideas to get subscribers' },
     ],
   },
 
@@ -259,6 +260,85 @@ export const GUIDES = {
       { href: '/sample-report', label: 'See a sample report' },
       { href: '/guides/youtube-content-gap-analysis', label: 'Next: run a content gap analysis' },
       { href: '/guides/youtube-video-ideas-from-comments', label: 'Find video ideas in the comments' },
+    ],
+  },
+  '/guides/youtube-video-ideas-to-get-subscribers': {
+    file: 'guide-youtube-video-ideas-to-get-subscribers',
+    title: 'YouTube Video Ideas to Get Subscribers (15 to Try)',
+    description: '15 YouTube video ideas to get subscribers: ideas that answer what viewers already ask, start a viewing habit, and give people a reason to come back.',
+    h1: 'YouTube video ideas to get subscribers: 15 to try, and how to pick yours',
+    updated: '8 November 2026',
+    intro: 'Views come from one good video. Subscribers come from viewers deciding they want the next one too. These 15 ideas are built around that: most start from something viewers already ask for, and all of them give viewers a reason to come back. Each comes with an example title from one sample niche, home baking, so you can see how it might look.',
+    sections: [
+      {
+        h2: 'Why some videos win subscribers and others only win views',
+        p: [
+          'Viewers tend to subscribe when a video solves something for them and makes it clear there is more where that came from. A one-off viral clip can bring thousands of views and few subscribers, because nothing promises a next time. A video that answers a real question, from a channel that obviously answers questions like it, gives people a reason to press the button.',
+          'So the best ideas do two jobs: they meet a need viewers have already said out loud, and they point to what comes next.',
+        ],
+      },
+      {
+        h2: 'Ideas that answer what viewers ask',
+        p: [
+          '1. The unanswered question: find a question that keeps coming up in the comments in your niche and that no video answers clearly, then answer it in the first minute. People who searched for it and found you are likely to want your next answer too. Example: “Why your sourdough comes out flat, and how to fix it”.',
+          '2. Part two of your most requested video: if viewers keep asking for a follow-up, make it. They have told you they want more. Example: “Sourdough part two: the shaping you asked about”.',
+          '3. The fix-it video: people arrive stuck and leave helped, which builds trust. Example: “Why your cookies spread, and how to stop it”.',
+          '4. Beginner mistakes: list the mistakes newcomers in your niche make, using the problems viewers describe in comments. Example: “Bread mistakes beginners make, and how to avoid them”.',
+          '5. The FAQ roundup: answer the ten questions you get asked most, one after another. It is quick to make, and each answer can lead into a fuller video later. Example: “Your ten most asked baking questions, answered”.',
+        ],
+      },
+      {
+        h2: 'Ideas that start a habit',
+        p: [
+          '6. A numbered series: a challenge, a build or a course in episodes. Episode one gives viewers a reason to subscribe, because they want episode two. Example: “Thirty days of sourdough: day one”.',
+          '7. Progress updates: document a goal over weeks. Viewers who care about the outcome subscribe to see it. Example: “Learning to laminate dough: week four”.',
+          '8. A regular roundup: a monthly look at what changed in your niche gives people a reason to come back on a schedule. Example: “What changed in home baking this month”.',
+        ],
+      },
+      {
+        h2: 'Ideas that borrow proven demand',
+        p: [
+          '9. Your take on a rival’s standout topic: when a video does far better than its channel usually does, the topic has pull. Cover it from a different angle, or answer what its comments say it left out. Example: if a rival’s no-knead bread video took off, “No-knead bread, tested three ways”.',
+          '10. You asked, I tested: take a question viewers argue about and test it on camera. Example: “You asked, I tested: does cold proofing make better bread?”.',
+          '11. The myth test: pick a common claim in your niche and check whether it holds up. Example: “Do you really need to sift flour? I tested it”.',
+          '12. The comparison viewers keep asking for: “X or Y?” debates in comments are ready-made titles. Example: “Instant yeast or sourdough starter: which should you start with?”.',
+        ],
+      },
+      {
+        h2: 'Ideas that show who is behind the channel',
+        p: [
+          '13. Your setup or process: viewers who like your results want to see how you get them. Faceless channels can show the process or the workspace instead. Example: “My whole baking setup, and what I would skip”.',
+          '14. The long-term review: an honest look at something after months of real use. Example: “My stand mixer after a year of weekly bread”.',
+          '15. What I would do if I started again: your hard-won advice for someone at the start. It works in most niches. Example: “If I started baking bread again, I would do this”.',
+        ],
+      },
+      {
+        h2: 'How to pick the right idea for your channel',
+        p: [
+          'Do not try all fifteen. Start with the ones your viewers are already asking for: the comments on your recent videos and on the best recent videos in your niche will tell you, and the guide to finding video ideas in the comments shows how to read them.',
+          'Pick ideas you can keep making. A series you abandon after two episodes teaches viewers not to wait for you.',
+        ],
+      },
+      {
+        h2: 'Make the reason to subscribe obvious',
+        p: [
+          'Say what the channel is for, in one sentence, somewhere in the video. Viewers subscribe to a promise, not just a video.',
+          'End by pointing at the next video, not at the subscribe button alone. When the next video answers the question this one raised, the click feels natural.',
+        ],
+      },
+      {
+        h2: 'Finding these ideas faster with Gapstronaut',
+        p: [
+          'The hard part of most ideas above is knowing what viewers are asking. Gapstronaut reads the comments under the videos that are working in your niche, or on a channel you paste. It lists the questions nobody has answered, each linked to the real comment it came from, along with topics to skip and a script brief to start from.',
+          'It is free while in beta, with no card needed, and you get three new reports a day. Reopening a saved report is always free.',
+        ],
+      },
+    ],
+    ctas: [
+      { href: '/signup', label: 'Create a free account' },
+      { href: '/sample-report', label: 'See a sample report' },
+      { href: '/guides/youtube-video-ideas-from-comments', label: 'Find video ideas in the comments' },
+      { href: '/guides/youtube-competitor-analysis', label: 'YouTube competitor analysis' },
     ],
   },
 };
