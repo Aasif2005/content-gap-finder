@@ -22,6 +22,7 @@ export const GUIDES = {
         p: [
           'A content gap is the distance between what viewers want to know and what the videos on a topic actually tell them. It is not the same as a keyword gap. A keyword gap starts from what people type into a search box. A content gap starts from what viewers say after they have already watched something and still could not get the answer.',
           'For example, in a sourdough niche, lots of videos show how to feed a starter. A gap might be the question viewers keep leaving under those videos: why does my starter smell like nail polish remover, and is it dead? Plenty of people ask, and few videos answer it directly.',
+          'You may have seen content gap analysis for websites, which compares your existing content with competitor content and the search volume behind each keyword. On YouTube, the same idea works better from the comments: search volume shows what people type, while comments show what they still could not get from the videos that exist.',
         ],
       },
       {
@@ -115,7 +116,7 @@ export const GUIDES = {
       {
         h2: 'Where to look first',
         p: [
-          'Start with your own recent videos, since those viewers already like what you make. Then move to the top videos in your niche and to the channels your viewers also watch. Pick videos with plenty of comments, because a handful of replies tells you very little.',
+          'Start with your own recent videos, since those viewers already like what you make. Then move to the top videos in your niche and to the channels your viewers also watch. Pick videos with plenty of comments, because a handful of replies tells you very little. On your own YouTube channel, YouTube Studio shows the comments from all your videos in one place, so you do not have to open them one by one.',
           'Sort by top comments first, because they show what other viewers agreed with. Then sort by newest to catch what people are asking now.',
         ],
       },
@@ -202,14 +203,14 @@ export const GUIDES = {
       {
         h2: 'Pick the right competitors',
         p: [
-          'Choose three to five channels in your exact niche. The most useful ones are a little bigger than you, about the size you want to be next, because what works for them is within reach. A huge channel in a neighbouring topic is a poor guide: its views often come from its name, not from the video.',
+          'Choose three to five YouTube competitors in your exact niche. The most useful ones are a little bigger than you, about the size you want to be next, because what works for them is within reach. A huge channel in a neighbouring topic is a poor guide: its views often come from its name, not from the video.',
           'Include at least one channel that grew recently. A channel that took off in the last year shows what viewers want now, while an older channel’s best videos may reflect a niche that has since moved on.',
         ],
       },
       {
         h2: 'Find the videos that beat their own average',
         p: [
-          'Do not start from a channel’s most viewed videos. Start from the ones that did far better than that channel usually does. For example, if a channel’s recent uploads tend to get around 20,000 views and one got 200,000, that video probably reached well past its regular viewers. Something about its topic or angle pulled new people in.',
+          'Do not start from a channel’s most viewed videos. Start from the ones that did far better than that channel usually does. For example, if a channel’s recent uploads tend to get around 20,000 views and one got 200,000, that video probably reached well past its regular viewers. Something about its topic or angle pulled new people in. A channel’s top performing videos by total views mostly show its oldest hits; the outliers show what is pulling viewers in now.',
           'Look at each channel’s last twenty or thirty uploads, note the usual view count, and circle anything at several times that number. Write down the topic and the angle, not just the title. “Beginner mistakes” or “what I wish I knew” is an angle you can use in your own niche; the exact title is not.',
           'Give new videos time. A video posted two days ago has not had its chance yet, so compare videos that have been up for at least a few weeks.',
         ],
@@ -244,7 +245,7 @@ export const GUIDES = {
       {
         h2: 'Keep it going',
         p: [
-          'Competitors keep publishing and viewers keep asking. A short review every few weeks, covering their new uploads, the outliers among them and the questions under those, keeps your list of ideas current. Keep your notes in one place: the video, the angle, the repeated question, and whether you made something from it.',
+          'Competitors keep publishing and viewers keep asking. A short review every few weeks, covering their new uploads, the outliers among them and the questions under those, keeps your list of ideas current. Keep your notes in one place: the video, the angle, the repeated question, and whether you made something from it. Over time, these notes become a content strategy built on what viewers asked for, which is steadier channel growth than chasing whatever went viral last week.',
         ],
       },
       {
