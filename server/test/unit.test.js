@@ -3971,7 +3971,7 @@ test('llms.txt lists only real public pages; vercel.json sends Permissions-Polic
   assert.ok(paths.length >= 4);
   for (const p of paths) assert.ok(SEO_PAGES[p], `${p} is a public page`);
   const vercel = JSON.parse(fs.readFileSync(new URL('../../web/vercel.json', import.meta.url), 'utf8'));
-  const all = vercel.headers.find((h) => h.source === '/(.*)').headers;
+  const all = vercel.headers.find((h) => h.source === '/((?!__/).*)').headers;
   const pp = all.find((h) => h.key === 'Permissions-Policy')?.value ?? '';
   for (const f of ['camera=()', 'microphone=()', 'geolocation=()']) assert.ok(pp.includes(f), f);
 });
